@@ -16,10 +16,12 @@ import ipaddress
 import socket
 import ssl
 import threading
+import time
+import zlib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 Resolver = Callable[[str], Sequence[str]]
 """호스트 이름 → IP 문자열들. 시험은 결정적 대역을 넣는다."""
@@ -236,16 +238,24 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
             if self._aborted:
                 raw.close()
                 raise TimeoutError("deadline")
-        self.sock = self._tls.wrap_socket(raw, server_hostname=self.host)
+        # 손잡기 전에 self.sock을 걸어 둬야 감시자가 느린 손잡기도 끊을 수 있다.
+        tls_sock = self._tls.wrap_socket(raw, server_hostname=self.host, do_handshake_on_connect=False)
+        with self._lock:
+            self.sock = tls_sock
+            if self._aborted:
+                raise TimeoutError("deadline")
+        tls_sock.do_handshake()
 
     def abort(self) -> None:
         """시간 상한 감시자가 부른다 — 막혀 있는 recv/handshake를 깨운다."""
         with self._lock:
             self._aborted = True
-            raw = self._raw
-        if raw is not None:
+            # wrap_socket이 raw의 fd를 넘겨받으므로(raw.detach) TLS 뒤엔 self.sock을 끊는다.
+            target = self.sock if self.sock is not None else self._raw
+        if target is not None:
             try:
-                raw.shutdown(socket.SHUT_RDWR)
+                # SSLSocket.shutdown은 _sslobj를 비워 읽던 스레드를 엉뚱하게 깨운다 — fd만 끊는다.
+                socket.socket.shutdown(target, socket.SHUT_RDWR)
             except OSError:
                 pass
 
@@ -280,18 +290,57 @@ class SafeHttpClient:
         headers: Mapping[str, str] | None = None,
         body: bytes | None = None,
     ) -> SafeResponse:
-        target = check_url(url, self._allow)
-        return self._exchange(target, method.upper(), dict(headers or {}), body)
+        """요청 하나. 리다이렉트는 직접 따라가며 홉마다 URL·해석·IP 검사를 다시 한다.
 
-    def _resolve_checked(self, host: str) -> str:
-        try:
-            answers = list(self._resolver(host))
-        except OSError as exc:
-            raise SafeHttpError(SafeHttpErrorCode.DNS_FAILED, host) from exc
-        if not answers:
-            raise SafeHttpError(SafeHttpErrorCode.DNS_FAILED, host)
+        시간 상한은 모든 홉을 합친 전체 시간이다.
+        """
+        deadline = time.monotonic() + self._limits.total_timeout
+        current = url
+        method = method.upper()
+        send_headers = dict(headers or {})
+        previous_host: str | None = None
+        for _hop in range(self._limits.max_redirects + 1):
+            target = check_url(current, self._allow)
+            if previous_host is not None and target.host != previous_host:
+                send_headers = {
+                    k: v for k, v in send_headers.items() if k.lower() not in _CREDENTIAL_HEADERS
+                }
+            resp = self._exchange(target, method, send_headers, body, deadline)
+            if resp.status not in _REDIRECT_STATUSES:
+                return resp
+            location = resp.header("location")
+            if not location:
+                raise SafeHttpError(SafeHttpErrorCode.BAD_REDIRECT, f"{target.host} {resp.status}")
+            current = urljoin(target.url, location.strip())
+            if resp.status == 303 or (resp.status in (301, 302) and method == "POST"):
+                method = "GET" if method != "HEAD" else method
+                body = None
+                send_headers = {k: v for k, v in send_headers.items() if k.lower() != "content-type"}
+            previous_host = target.host
+        raise SafeHttpError(SafeHttpErrorCode.TOO_MANY_REDIRECTS, str(self._limits.max_redirects))
+
+    # ── 한 홉 ────────────────────────────────────────────────────────────────
+
+    def _resolve_checked(self, host: str, deadline: float) -> str:
+        """해석은 별도 스레드에서 — getaddrinfo는 끊을 수 없어 남은 시간만 기다리고 버린다."""
+        box: list[Sequence[str]] = []
+        err: list[BaseException] = []
+
+        def run() -> None:
+            try:
+                box.append(self._resolver(host))
+            except BaseException as exc:  # noqa: BLE001 — 스레드 밖으로 그대로 옮긴다
+                err.append(exc)
+
+        worker = threading.Thread(target=run, name="safe-http-resolve", daemon=True)
+        worker.start()
+        worker.join(_remaining(deadline))
+        if worker.is_alive():
+            raise SafeHttpError(SafeHttpErrorCode.TIMEOUT, f"resolve {host}")
+        if err or not box or not box[0]:
+            raise SafeHttpError(SafeHttpErrorCode.DNS_FAILED, host) from (err[0] if err else None)
         checked: list[str] = []
-        for answer in answers:
+        for answer in box[0]:
             try:
                 ip = ipaddress.ip_address(answer)
             except ValueError as exc:
@@ -301,29 +350,125 @@ class SafeHttpClient:
             checked.append(str(ip))
         return checked[0]
 
-    def _exchange(self, target: _Target, method: str, headers: dict[str, str], body: bytes | None) -> SafeResponse:
-        address = self._resolve_checked(target.host)
+    def _exchange(
+        self, target: _Target, method: str, headers: dict[str, str], body: bytes | None, deadline: float
+    ) -> SafeResponse:
+        address = self._resolve_checked(target.host, deadline)
         conn = _PinnedHTTPSConnection(
-            target.host, address=address, dial=self._dial, tls=self._tls, timeout=self._limits.total_timeout
+            target.host, address=address, dial=self._dial, tls=self._tls, timeout=_remaining(deadline)
         )
+        # 바이트를 한 방울씩 흘리는 서버(slowloris)는 recv마다의 시간 상한을 피해 간다.
+        # 마감 시각에 소켓을 끊는 감시자가 전체 시간을 지킨다.
+        watchdog = threading.Timer(_remaining(deadline), conn.abort)
+        watchdog.daemon = True
+        watchdog.start()
         try:
-            try:
-                conn.connect()
-            except (ssl.SSLError, ssl.CertificateError) as exc:
+            return self._talk(conn, target, address, method, headers, body, deadline)
+        except SafeHttpError:
+            raise
+        except Exception as exc:
+            if time.monotonic() >= deadline or isinstance(exc, TimeoutError):
+                raise SafeHttpError(SafeHttpErrorCode.TIMEOUT, target.host) from exc
+            if isinstance(exc, (ssl.SSLError, ssl.CertificateError)):
                 raise SafeHttpError(SafeHttpErrorCode.TLS_FAILED, target.host) from exc
-            except OSError as exc:
+            if isinstance(exc, http.client.HTTPException):
+                raise SafeHttpError(SafeHttpErrorCode.BAD_RESPONSE, target.host) from exc
+            if isinstance(exc, ValueError):  # 헤더에 CR/LF 등 — http.client가 막는다
+                raise SafeHttpError(SafeHttpErrorCode.INVALID_REQUEST, target.host) from exc
+            if isinstance(exc, OSError):
                 raise SafeHttpError(SafeHttpErrorCode.CONNECT_FAILED, f"{target.host} -> {address}") from exc
-            conn.putrequest(method, target.path, skip_host=True, skip_accept_encoding=True)
-            conn.putheader("Host", target.host)
-            for name, value in headers.items():
-                if name.lower() not in {"host", "connection", "content-length", "transfer-encoding"}:
-                    conn.putheader(name, value)
-            conn.putheader("Connection", "close")
-            if body is not None:
-                conn.putheader("Content-Length", str(len(body)))
-            conn.endheaders(body)
-            resp = conn.getresponse()
-            data = resp.read()
-            return SafeResponse(resp.status, tuple(resp.getheaders()), data, target.url)
+            raise
         finally:
+            watchdog.cancel()
             conn.close()
+
+    def _talk(
+        self,
+        conn: _PinnedHTTPSConnection,
+        target: _Target,
+        address: str,
+        method: str,
+        headers: dict[str, str],
+        body: bytes | None,
+        deadline: float,
+    ) -> SafeResponse:
+        conn.connect()
+        conn.putrequest(method, target.path, skip_host=True, skip_accept_encoding=True)
+        conn.putheader("Host", target.host)
+        conn.putheader("Accept-Encoding", "gzip, deflate")
+        for name, value in headers.items():
+            if name.lower() not in _MANAGED_HEADERS:
+                conn.putheader(name, value)
+        conn.putheader("Connection", "close")
+        if body is not None:
+            conn.putheader("Content-Length", str(len(body)))
+        _set_timeout(conn, deadline)
+        conn.endheaders(body)
+        _set_timeout(conn, deadline)
+        resp = conn.getresponse()
+        data = self._read_body(conn, resp, deadline) if resp.status not in _REDIRECT_STATUSES else b""
+        return SafeResponse(resp.status, tuple(resp.getheaders()), data, target.url)
+
+    def _read_body(
+        self, conn: _PinnedHTTPSConnection, resp: http.client.HTTPResponse, deadline: float
+    ) -> bytes:
+        limit = self._limits.max_body_bytes
+        declared = resp.getheader("content-length")
+        if declared and declared.strip().isdigit() and int(declared) > limit:
+            raise SafeHttpError(SafeHttpErrorCode.TOO_LARGE, f"declared {declared}")
+        encoding = (resp.getheader("content-encoding") or "identity").strip().lower()
+        if encoding in ("gzip", "x-gzip"):
+            decoder: zlib._Decompress | None = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        elif encoding == "deflate":
+            decoder = zlib.decompressobj(32 + zlib.MAX_WBITS)  # zlib·gzip 머리 자동 판별
+        elif encoding == "identity":
+            decoder = None
+        else:
+            raise SafeHttpError(SafeHttpErrorCode.BAD_RESPONSE, f"encoding {encoding}")
+        out = bytearray()
+        wire = 0
+        while True:
+            _set_timeout(conn, deadline)
+            chunk = resp.read1(_READ_CHUNK)
+            if not chunk:
+                break
+            wire += len(chunk)
+            if wire > limit:
+                raise SafeHttpError(SafeHttpErrorCode.TOO_LARGE, "body")
+            if decoder is None:
+                out += chunk
+            else:
+                try:
+                    out += decoder.decompress(chunk, limit + 1 - len(out))
+                except zlib.error as exc:
+                    raise SafeHttpError(SafeHttpErrorCode.BAD_RESPONSE, "bad compressed body") from exc
+                if decoder.unconsumed_tail:
+                    raise SafeHttpError(SafeHttpErrorCode.TOO_LARGE, "decompressed body")
+            if len(out) > limit:
+                raise SafeHttpError(SafeHttpErrorCode.TOO_LARGE, "body")
+        if decoder is not None:
+            out += decoder.flush()
+            if len(out) > limit:
+                raise SafeHttpError(SafeHttpErrorCode.TOO_LARGE, "decompressed body")
+        return bytes(out)
+
+
+_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+_CREDENTIAL_HEADERS = frozenset({"authorization", "proxy-authorization", "cookie"})
+_MANAGED_HEADERS = frozenset(
+    {"host", "connection", "content-length", "transfer-encoding", "accept-encoding", "proxy-authorization"}
+)
+_READ_CHUNK = 16 * 1024
+
+
+def _remaining(deadline: float) -> float:
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise SafeHttpError(SafeHttpErrorCode.TIMEOUT, "deadline")
+    return left
+
+
+def _set_timeout(conn: _PinnedHTTPSConnection, deadline: float) -> None:
+    left = _remaining(deadline)
+    if conn.sock is not None:
+        conn.sock.settimeout(left)

@@ -569,6 +569,25 @@ def test_total_deadline_covers_slow_server_headers_and_body(
     assert time.monotonic() - started < SHORT.total_timeout + 0.5
 
 
+def test_deadline_covers_stalled_tls_handshake() -> None:
+    """TCP는 받지만 TLS 손잡기에 답하지 않는 서버."""
+    silent = socket.create_server(("127.0.0.1", 0))
+    port = silent.getsockname()[1]
+
+    def dial(address: str, _port: int, timeout: float) -> socket.socket:
+        return socket.create_connection(("127.0.0.1", port), timeout)
+
+    client = SafeHttpClient(AllowList(ALLOWED), resolver=_dns(), dial=dial, limits=SHORT)
+    started = time.monotonic()
+    try:
+        with pytest.raises(SafeHttpError) as exc:
+            client.request("GET", "https://api.example.com/ok")
+    finally:
+        silent.close()
+    assert exc.value.code == SafeHttpErrorCode.TIMEOUT
+    assert time.monotonic() - started < SHORT.total_timeout + 0.5
+
+
 def test_slow_resolver_counts_toward_deadline(server: TestServer, pki: Pki) -> None:
     def slow(host: str) -> Sequence[str]:
         time.sleep(2)
