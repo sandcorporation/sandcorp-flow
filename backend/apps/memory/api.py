@@ -42,58 +42,22 @@ def list_sessions(request, limit: int = 50, offset: int = 0):
     """
     from datetime import timedelta
     from django.utils import timezone
-    from django.db.models import Max, Q
-    from apps.chat.models import ChatSession
-    from apps.escalation.models import Escalation
-    from apps.chat import presence
+    from apps.memory import services
 
-    tenant = request.auth.tenant
-    esc_map = {
-        str(sid): status
-        for sid, status in Escalation.objects.filter(
-            session__tenant_id=tenant.id,
-            status__in=[Escalation.STATUS_PENDING, Escalation.STATUS_CLAIMED],
-        ).values_list("session_id", "status")
-    }
-    active_ids = presence.active_sessions(str(tenant.id))
-    pinned_ids = set(esc_map) | active_ids
     cutoff = timezone.now() - timedelta(days=SESSION_WINDOW_DAYS)
-
-    qs = (
-        ChatSession.objects.filter(tenant_id=tenant.id, is_test=False)
-        .filter(Q(created_at__gte=cutoff) | Q(id__in=pinned_ids))
-        .annotate(last_msg=Max("messages__created_at"))
-    )
-
-    def tier(sid: str) -> int:
-        st = esc_map.get(sid)
-        if st == Escalation.STATUS_PENDING:
-            return 0
-        if st == Escalation.STATUS_CLAIMED:
-            return 1
-        return 2 if sid in active_ids else 3
-
-    rows = []
-    for s in qs:
-        sid = str(s.id)
-        last = getattr(s, "last_msg", None) or s.created_at  # .annotate() 동적 필드
-        rows.append({
-            "session_id": sid,
-            "visitor_id": s.visitor_id,
-            "is_hitl": s.is_hitl,
-            "escalation_status": esc_map.get(sid, ""),
-            "active": sid in active_ids,
-            "created_at": s.created_at.isoformat(),
-            "last_activity": last.isoformat(),
-            "_tier": tier(sid),
-            "_last": last,
-        })
-    rows.sort(key=lambda r: r["_last"], reverse=True)  # 최근순
-    rows.sort(key=lambda r: r["_tier"])                # 계층 우선(stable)
-    page = rows[offset:offset + limit]
-    for r in page:
-        r.pop("_tier"); r.pop("_last")
-    return page
+    rows = services.list_session_rows(request.auth.tenant.id, since=cutoff)
+    return [
+        {
+            "session_id": r.session_id,
+            "visitor_id": r.visitor_id,
+            "is_hitl": r.is_hitl,
+            "escalation_status": r.escalation_status,
+            "active": r.active,
+            "created_at": r.created_at.isoformat(),
+            "last_activity": r.last_activity.isoformat(),
+        }
+        for r in rows[offset:offset + limit]
+    ]
 
 
 class TakeoverOut(Schema):
