@@ -39,7 +39,7 @@ def local_search(tenant_id: uuid.UUID | str, query: str, *, top_k: int = 5) -> l
     """엔티티 중심 근거 — 질의로 resolved Entity를 찾고 그 이웃 관계를 모은다(ADR-0010)."""
     from apps.rag.graph_store import GraphStore
 
-    gs = GraphStore(str(tenant_id))
+    gs = GraphStore.for_search(tenant_id)  # 체험 테넌트는 도서관의 자기 예제 묶음만(#134)
     hits: list[EntityHit] = []
     seen_entities: set[str] = set()
     seen_edges: set[tuple[str, str, str | None]] = set()
@@ -72,7 +72,7 @@ def search_subgraph(tenant_id: uuid.UUID | str, query: str) -> dict[str, list]:
     """Knowledge Graph 인스펙터 — 이름/설명 매칭 엔티티 + 각 1홉 이웃을 {nodes, edges}로."""
     from apps.rag.graph_store import GraphStore
 
-    gs = GraphStore(str(tenant_id))
+    gs = GraphStore.for_search(tenant_id)  # 체험 테넌트는 도서관의 자기 예제 묶음만(#134)
     nodes_by_name: dict[str, dict] = {}
     edges: list[dict] = []
     seen_edges: set[tuple[str, str]] = set()

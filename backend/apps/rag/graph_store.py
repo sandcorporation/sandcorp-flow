@@ -6,6 +6,9 @@
 per-Tenant 임베딩 차원은 차원별 vec 테이블(kg_*_vec_d{dim})로 라우팅하고, 검색은 tenant_id
 스코프 + HNSW(+iterative scan)다. 비-벡터(엣지·meta)는 정적 공유 테이블(마이그레이션, ADR-0021).
 """
+import uuid
+from collections.abc import Sequence
+
 # 같은 deep module 인터페이스를 Postgres로 백킹한다. per-Tenant 임베딩 차원은 차원별 테이블
 # (kg_text_unit_d{dim} 등)로 라우팅하고, 검색은 tenant_id 스코프 + HNSW(+iterative scan)다.
 # 비-벡터(엣지·meta)는 정적 공유 테이블(마이그레이션). 모든 쿼리에 tenant_id를 강제 주입한다.
@@ -29,12 +32,28 @@ class GraphStore:
     (kg_text_unit·kg_mention)에, 임베딩은 차원별 vec 테이블(kg_*_vec_d{dim})에 둔다 — 임베딩
     차원이 바뀌어도(reembed) 메타데이터가 보존되고 임베딩만 새 차원으로 재기록된다."""
 
-    def __init__(self, tenant_id: str):
+    def __init__(self, tenant_id: str, *, document_ids: "Sequence[str] | None" = None):
         if not tenant_id:
             raise ValueError("tenant_id is required")
         self.tenant_id = str(tenant_id)
+        # 검색을 이 문서들에서 나온 행으로만 좁힌다(None = 테넌트 전체). 체험 테넌트가 도서관의 자기 예제 묶음만 보게(#134).
+        self.document_ids: list[str] | None = [str(d) for d in document_ids] if document_ids is not None else None
         self._dim_cache = None
         self._ensured = set()  # 이 인스턴스에서 DDL 보장한 vec 테이블(중복 DDL 회피)
+
+    @classmethod
+    def for_search(cls, tenant_id: "uuid.UUID | str") -> "GraphStore":
+        """지식 검색용 저장소. 체험 테넌트면 체험 도서관 그래프를 그 예제 문서로 좁혀 연다(ADR-0030)."""
+        from apps.tenants.try_tenant import knowledge_scope
+
+        scope = knowledge_scope(tenant_id)
+        return cls(scope.store_tenant_id, document_ids=scope.document_ids)
+
+    def _doc_filter(self, column: str) -> tuple[str, list[list[str]]]:
+        """검색 쿼리에 붙일 문서 범위 조건(``AND col = ANY(%s)``)과 그 인자."""
+        if self.document_ids is None:
+            return "", []
+        return f" AND {column} = ANY(%s)", [self.document_ids]
 
     def _dim(self) -> int:
         """테넌트의 현 임베딩 차원. 데이터에 기록된 값(kg_graph_meta.embed_dim)을 우선하고,
@@ -154,6 +173,7 @@ class GraphStore:
         from django.db import connection, transaction
         lit = _vec_literal(query_embedding)
         tbl = f"kg_text_unit_vec_d{len(query_embedding)}"  # 질의 임베딩 길이로 라우팅
+        doc_sql, doc_args = self._doc_filter("tu.source_document_id")
         try:
             # savepoint로 격리 — vec 테이블 부재/차원불일치 시 바깥 트랜잭션을 오염시키지 않는다.
             with transaction.atomic(), connection.cursor() as cur:
@@ -161,8 +181,8 @@ class GraphStore:
                     f"SELECT tu.content, tu.source_document_id, 1 - (v.embedding <=> %s::vector) AS score "
                     f"FROM {tbl} v JOIN kg_text_unit tu "
                     "ON tu.tenant_id=v.tenant_id AND tu.unit_id=v.unit_id "
-                    "WHERE v.tenant_id=%s ORDER BY v.embedding <=> %s::vector LIMIT %s",
-                    [lit, self.tenant_id, lit, top_k],
+                    f"WHERE v.tenant_id=%s{doc_sql} ORDER BY v.embedding <=> %s::vector LIMIT %s",
+                    [lit, self.tenant_id, *doc_args, lit, top_k],
                 )
                 return [{"content": r[0], "source_document_id": r[1], "score": r[2]} for r in cur.fetchall()]
         except Exception:
@@ -283,12 +303,14 @@ class GraphStore:
         from django.db import connection
         cols = ("mention_id", "name", "entity_type", "description", "source_document_id")
         by_mid = {}
+        doc_sql, doc_args = self._doc_filter("source_document_id")
+        m_doc_sql, _ = self._doc_filter("m.source_document_id")
         with connection.cursor() as cur:
             cur.execute(
                 "SELECT mention_id, name, entity_type, description, source_document_id FROM kg_mention "
                 "WHERE tenant_id=%s AND (position(lower(%s) in lower(name))>0 "
-                "OR position(lower(%s) in lower(coalesce(description,'')))>0)",
-                [self.tenant_id, term, term],
+                f"OR position(lower(%s) in lower(coalesce(description,'')))>0){doc_sql}",
+                [self.tenant_id, term, term, *doc_args],
             )
             for r in cur.fetchall():
                 by_mid[r[0]] = dict(zip(cols, r))
@@ -304,8 +326,8 @@ class GraphStore:
                     "SELECT m.mention_id, m.name, m.entity_type, m.description, m.source_document_id "
                     f"FROM {mvec} v JOIN kg_mention m "
                     "ON m.tenant_id=v.tenant_id AND m.mention_id=v.mention_id "
-                    "WHERE v.tenant_id=%s ORDER BY v.embedding <=> %s::vector LIMIT %s",
-                    [self.tenant_id, q, top_k],
+                    f"WHERE v.tenant_id=%s{m_doc_sql} ORDER BY v.embedding <=> %s::vector LIMIT %s",
+                    [self.tenant_id, *doc_args, q, top_k],
                 )
                 for r in cur.fetchall():
                     by_mid.setdefault(r[0], dict(zip(cols, r)))
@@ -357,15 +379,17 @@ class GraphStore:
     def neighbors(self, name: str) -> dict:
         """이름의 Mention + 1-hop RELATED 이웃·엣지를 {nodes, edges}로 (tenant 스코프, 이름 기준)."""
         from django.db import connection
+        seed_doc, doc_args = self._doc_filter("source_document_id")
+        mm_doc, _ = self._doc_filter("mm.source_document_id")
         with connection.cursor() as cur:
             cur.execute(
-                "WITH seed AS (SELECT mention_id FROM kg_mention WHERE tenant_id=%s AND name=%s) "
+                f"WITH seed AS (SELECT mention_id FROM kg_mention WHERE tenant_id=%s AND name=%s{seed_doc}) "
                 "SELECT DISTINCT mm.name, mm.entity_type, mm.description, mm.source_document_id "
-                "FROM kg_mention mm WHERE mm.tenant_id=%s AND (mm.mention_id IN (SELECT mention_id FROM seed) "
+                f"FROM kg_mention mm WHERE mm.tenant_id=%s{mm_doc} AND (mm.mention_id IN (SELECT mention_id FROM seed) "
                 "OR mm.mention_id IN ("
                 "  SELECT target_id FROM kg_relation WHERE tenant_id=%s AND source_id IN (SELECT mention_id FROM seed) "
                 "  UNION SELECT source_id FROM kg_relation WHERE tenant_id=%s AND target_id IN (SELECT mention_id FROM seed)))",
-                [self.tenant_id, name, self.tenant_id, self.tenant_id, self.tenant_id],
+                [self.tenant_id, name, *doc_args, self.tenant_id, *doc_args, self.tenant_id, self.tenant_id],
             )
             ncols = ("name", "entity_type", "description", "source_document_id")
             nodes = [dict(zip(ncols, r)) for r in cur.fetchall()]
@@ -374,8 +398,9 @@ class GraphStore:
                 "SELECT a.name, b.name, r.description FROM kg_relation r "
                 "JOIN kg_mention a ON a.tenant_id=r.tenant_id AND a.mention_id=r.source_id "
                 "JOIN kg_mention b ON b.tenant_id=r.tenant_id AND b.mention_id=r.target_id "
-                "WHERE r.tenant_id=%s AND (a.name=%s OR b.name=%s)",
-                [self.tenant_id, name, name],
+                "WHERE r.tenant_id=%s AND (a.name=%s OR b.name=%s)"
+                + "".join(self._doc_filter(c)[0] for c in ("a.source_document_id", "b.source_document_id")),
+                [self.tenant_id, name, name, *doc_args, *doc_args],
             )
             edges = [{"source": r[0], "target": r[1], "description": r[2]} for r in cur.fetchall()]
         return {"nodes": nodes, "edges": edges}

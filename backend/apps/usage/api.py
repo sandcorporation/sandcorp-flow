@@ -117,7 +117,11 @@ def operator_usage(request, days: int = 30):
     """전체 테넌트 토큰 사용량·비용(테넌트별·일별)."""
     from apps.tenants.models import Tenant
 
-    qs = TokenUsage.objects.filter(date__gte=_since(days))
+    from apps.tenants.try_tenant import HIDDEN_KINDS
+
+    # 체험·도서관 테넌트(#134)의 사용량은 운영 집계에서 뺀다(Try Session 비용은 다음 층이 따로 센다).
+    hidden = Tenant.objects.filter(kind__in=HIDDEN_KINDS).values("id")
+    qs = TokenUsage.objects.filter(date__gte=_since(days)).exclude(tenant_id__in=hidden)
     rows = list(qs.values("tenant_id").annotate(
         total_tokens=Sum("total_tokens"), request_count=Sum("request_count"),
     ).order_by("-total_tokens"))

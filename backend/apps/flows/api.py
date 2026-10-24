@@ -42,6 +42,7 @@ _STATUS_BY_CODE = {
     "request_not_pending": 409,
     "approval_required": 409,
     "self_approval": 403,
+    "try_restricted": 403,
     "flow_invalid": 422,
     "invalid_patch": 422,
     "invalid_name": 422,

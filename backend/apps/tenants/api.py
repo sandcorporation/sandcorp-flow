@@ -590,7 +590,10 @@ def _tenant_out(t: Tenant, active_admin_count: int) -> dict:
 @operator_router.get("/tenants/", response=List[TenantOut], auth=operator_auth)
 def list_tenants(request):
     # 활성 Admin 수는 한 쿼리로 센다(N+1 금지).
-    tenants = Tenant.objects.annotate(
+    # 체험·도서관 테넌트(#134)는 운영자 목록에 나오지 않는다.
+    from apps.tenants.try_tenant import HIDDEN_KINDS
+
+    tenants = Tenant.objects.exclude(kind__in=HIDDEN_KINDS).annotate(
         _admins=Count(
             "memberships",
             filter=Q(memberships__role=Membership.ROLE_ADMIN, memberships__is_active=True),

@@ -162,6 +162,8 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 
 **예제 흐름 셋·지식 묶음·Sandcorp 시드(#35)**: `apps/flows/example_catalog.py`의 `EXAMPLES`(`sandcorp_home`·`shop_support`·`academy_reservation`)가 `apps/flows/examples/<id>.json`과 `examples/knowledge/<id>/*.txt`를 읽는 고정 데이터입니다. HTTP 노드는 모두 가짜 API라 비밀·허용 도메인이 필요 없습니다. 지식 적재: `python manage.py seed_examples --tenant <slug|id> [--example <id>] [--force]`(멱등 — 문서 id가 테넌트·예제·이름에서 정해짐). Sandcorp 테넌트: `python manage.py seed_sandcorp [--update-flow]` — 공개 흐름 「Sandcorp 홈 상담」의 문의 접수 URL을 `SANDCORP_INQUIRY_URL`(기본 가짜 API), 키를 `SANDCORP_INQUIRY_API_KEY`(테넌트 비밀 `inquiry_api_key`로 저장, 비면 헤더 없음)로 주입합니다. 모양은 [docs/flow-json.md](./docs/flow-json.md) 「예제」.
 
+**체험 테넌트·체험 도서관(Try Session 1/2, #134, ADR-0030)**: `apps/tenants/try_tenant.py`. `create_try_tenant(예제 id)`가 숨은 체험 테넌트(`Tenant.kind=try`)와 예제 흐름 사본(초안)을 만들고, `prune_expired()`(`python manage.py prune_try_tenants [--every 초]`)가 `TRY_TENANT_TTL_HOURS`(기본 24) 지난 체험 테넌트를 테넌트째 지웁니다. 체험 테넌트는 테넌트 Provider를 무시하고 플랫폼 키로만 돌고, HTTP 도구는 가짜 API만(그 밖은 `try_restricted`), 문서 업로드·배포·실제 사람 넘김이 막히며, 운영자 목록·멤버십·운영 사용량 집계에 나오지 않습니다. 지식은 공유 「체험 도서관」에 한 번 적재(`python manage.py seed_try_library [--example <id>] [--force]`, 플랫폼 키로 임베딩)하고 체험 테넌트는 자기 예제 문서로만 좁혀 검색합니다. 공개 API·쿠키·한도는 #135.
+
 **HTTP 도구 편집기 폼(#123)**: `NodeConfigForm.tsx`가 메서드·주소·헤더·본문 틀·`save`(응답→상태 이름-경로 표)를 백엔드 node-schema에서 그리고, 갈래는 `next`·`error`(`flowGraph.ts` `outHandles`). 서버 검증 문구(`invalid_config`의 `필드: 이유`, `unknown_secret`)는 클라이언트가 규칙을 새로 짜지 않고 그대로 보입니다. 클라이언트 경고만 따로: 주소 호스트가 허용 도메인(`listAllowedDomains()`)에 없으면(서버 `AllowList`와 같은 규칙 — `lib/httpToolWarn.ts`) 설정 탭 링크와 함께, 쓰는 `{{secret.이름}}`이 `listSecrets()`에 없으면 경고합니다(창 포커스 때 다시 읽음). 「시험 대화도 이 API를 실제로 호출합니다」 안내가 폼 위에 항상 붙습니다. `admin/src/lib/__fixtures__/nodeSchema.json`은 백엔드 `NODE_CONFIG_MODELS`의 `model_json_schema()` 출력 사본이라 config 모델을 바꾸면 다시 뽑습니다(`docker compose -f docker-compose.test.yml run --rm --no-deps -v $PWD/backend:/app test python -c ...`). e2e: `e2e/tests/flow-http-tool-form.spec.js`.
 
 **Tenant Secret·허용 도메인(#33, ADR-0029)**: HTTP 도구가 쓸 테넌트 비밀과 나갈 수 있는 호스트. 로직은 `apps/tenants/tenant_secrets.py`, API는 `apps/tenants/secrets_api.py`.
@@ -210,6 +212,7 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 | `PLATFORM_OPENAI_API_KEY` | 플랫폼 OpenAI 키(체험 한도, #41·ADR-0026). 자기 LLM Provider가 없는 prod 테넌트가 남은 체험 턴 동안 쓴다. 비면 그 테넌트의 챗은 방문자에게 「상담 준비 중」으로 멈춘다 | (운영 env에만) |
 | `PLATFORM_LLM_MODEL` / `PLATFORM_EMBED_MODEL` | 체험 테넌트의 챗·추출 모델 / 임베딩(OpenAI `dimensions`로 `embed_dim`에 맞춤) | `gpt-4o-mini` / `text-embedding-3-small`(기본) |
 | `TRIAL_TURNS` | 새 조직의 체험 턴(1턴 = 방문자 메시지 하나) | `200`(기본) |
+| `TRY_TENANT_TTL_HOURS` | Try Session 체험 테넌트의 수명(지나면 `prune_try_tenants`가 삭제) | `24`(기본) |
 | `TENANT_CREATE_LIMIT_PER_USER` / `ONBOARDING_RATE_LIMIT_PER_HOUR` / `TRUSTED_PROXY_COUNT` | 온보딩 남용 방지: 계정당 조직 수 / IP당 시간당 시도 / XFF 프록시 단수 | `3` / `10` / `1`(prod `2`) |
 | `CHAT_RATE_LIMIT_PER_VISITOR` / `CHAT_RATE_LIMIT_PER_TENANT` | 공개 URL 레이트리밋(분당) | `20` / `300` |
 | `OCR_MAX_PAGES` | 스캔 PDF의 vision OCR 페이지 상한(비용 통제) | `30` |

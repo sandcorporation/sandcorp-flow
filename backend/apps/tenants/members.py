@@ -56,9 +56,12 @@ def member_user(iss: str, sub: str, identity: IdentityClaims | None = None) -> U
 
 
 def active_memberships(user: User) -> list[Membership]:
+    from apps.tenants.try_tenant import HIDDEN_KINDS
+
     return list(
         Membership.objects.select_related("tenant", "user")
         .filter(user=user, is_active=True, tenant__is_active=True)
+        .exclude(tenant__kind__in=HIDDEN_KINDS)  # 체험·도서관 테넌트는 고를 수 없다(#134)
         .order_by("created_at")
     )
 

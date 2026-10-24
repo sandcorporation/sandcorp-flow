@@ -127,6 +127,8 @@ PLATFORM_LLM_MODEL = os.environ.get("PLATFORM_LLM_MODEL", "gpt-4o-mini")
 # 차원은 OpenAI `dimensions` 인자로 테넌트 embed_dim(기본 1024)에 맞춘다 — 인덱스·재구축 규칙 그대로.
 PLATFORM_EMBED_MODEL = os.environ.get("PLATFORM_EMBED_MODEL", "text-embedding-3-small")
 TRIAL_TURNS = int(os.environ.get("TRIAL_TURNS", "200"))
+# Try Session 체험 테넌트의 수명(#134, ADR-0030). 이 시간이 지나면 prune_try_tenants가 테넌트째 지운다.
+TRY_TENANT_TTL_HOURS = int(os.environ.get("TRY_TENANT_TTL_HOURS", "24"))
 
 # 온보딩(member가 조직을 만든다, #41) 남용 방지: 사용자당 만들 수 있는 조직 수, IP당 시간당 시도 수.
 TENANT_CREATE_LIMIT_PER_USER = int(os.environ.get("TENANT_CREATE_LIMIT_PER_USER", "3"))

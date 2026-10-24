@@ -100,7 +100,7 @@ def _source_search_sync(state: dict) -> dict:
     from apps.rag.graph_store import GraphStore
     from apps.rag.ingesters import get_embeddings
 
-    gs = GraphStore(state["tenant_id"])
+    gs = GraphStore.for_search(state["tenant_id"])  # 체험 테넌트는 도서관의 자기 예제 묶음만(#134)
     existing = state.get("rag_chunks") or []
     try:
         emb = get_embeddings([state["user_message"]], provider=gs._embedding_provider())[0]
@@ -323,7 +323,14 @@ def _create_escalation_sync(state: dict) -> dict:
     from apps.events.store import record_event
     from apps.events.types import SESSION_ESCALATED
 
+    from apps.tenants import try_tenant
+
     response = state.get("assistant_response") or ""
+    if try_tenant.blocks_human_handoff(state["tenant_id"]):
+        # 체험 테넌트(#134): 실제 사람에게 넘기지 않는다 — Escalation·이벤트(웹훅·콘솔 알림)를 만들지 않고 답만 남긴다.
+        if response:
+            ChatMessage.objects.create(session_id=state["session_id"], role=ChatMessage.ROLE_ASSISTANT, content=response)
+        return {"messages": _turn_messages(state, response), **_clear_transient()}
     with transaction.atomic():
         session = ChatSession.objects.get(id=state["session_id"])
         session.is_hitl = True
@@ -347,10 +354,14 @@ def _create_escalation_sync(state: dict) -> dict:
             },
         )
 
+    return {"messages": _turn_messages(state, response), **_clear_transient()}
+
+
+def _turn_messages(state: dict, response: str) -> list[dict[str, str]]:
     messages = [{"role": "user", "content": state["user_message"]}]
     if response:
         messages.append({"role": "assistant", "content": response})
-    return {"messages": messages, **_clear_transient()}
+    return messages
 
 
 async def create_escalation_node(state: dict) -> dict:

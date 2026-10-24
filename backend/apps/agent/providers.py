@@ -66,7 +66,9 @@ def build_llm_client(provider: LLMProvider):
 def _provider_from_config(config, model: str) -> LLMProvider:
     """TenantConfig + 모델명 → LLMProvider. type이 비면 dev는 플랫폼 기본(OpenRouter)으로
     폴백하고, prod(PLATFORM_DEFAULT_PROVIDERS_ENABLED=False)는 Tenant 설정을 강제한다."""
-    if config.llm_provider_type:
+    from apps.tenants import trial
+
+    if config.llm_provider_type and not trial.ignores_tenant_provider(config):  # 체험 테넌트는 Provider 무시(#134)
         from apps.tenants.crypto import decrypt_secret
 
         return LLMProvider(
@@ -93,7 +95,8 @@ def _platform_trial_llm(config, *, require_turns: bool) -> LLMProvider | None:
 
     if not trial.uses_platform_key(config) or not trial.platform_key_ready():
         return None
-    if require_turns and trial.remaining(config) <= 0:
+    # 체험·도서관 테넌트(#134)는 Trial Quota와 무관하다 — 추출도 남은 턴을 보지 않는다(턴 한도는 Try Session 몫).
+    if require_turns and trial.remaining(config) <= 0 and not trial.ignores_tenant_provider(config):
         return None
     return trial.platform_llm()
 
@@ -149,7 +152,9 @@ def embedding_provider(config) -> EmbeddingProvider:
     prod(PLATFORM_DEFAULT_PROVIDERS_ENABLED=False)는 Tenant 설정을 강제한다."""
     from django.conf import settings
 
-    if config and config.embed_provider_type:
+    from apps.tenants import trial
+
+    if config and config.embed_provider_type and not trial.ignores_tenant_provider(config):  # 체험은 무시(#134)
         from apps.tenants.crypto import decrypt_secret
         from apps.agent.provider_models import _openai_base
 
@@ -161,8 +166,6 @@ def embedding_provider(config) -> EmbeddingProvider:
             dim=config.embed_dim,
             api_key=decrypt_secret(config.embed_api_key),
         )
-    from apps.tenants import trial
-
     if config and trial.uses_platform_key(config) and trial.platform_key_ready():
         return trial.platform_embedding(config.embed_dim)
     if getattr(settings, "PLATFORM_DEFAULT_PROVIDERS_ENABLED", False):
