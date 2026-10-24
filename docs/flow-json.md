@@ -1,0 +1,131 @@
+# 흐름 JSON(Flow JSON)
+
+Flow의 초안(Draft)과 Flow Version이 담는 JSON의 형식. 결정은 [ADR-0027](adr/0027-flow-json-interpreted-executor.md),
+HTTP 도구 보안은 [ADR-0029](adr/0029-http-tool-node-security.md). 용어는 `CONTEXT.md` 「Flow」 절.
+
+- 스키마·검증 코드: `backend/apps/flows/schema.py` (`validate_flow`, `parse_flow`, `flow_hash`, `NodeKind`)
+- 모델: `backend/apps/flows/models.py` (`Flow`, `FlowDraft`, `FlowVersion`), `ChatSession.flow_version`
+- 예제 파일: `backend/apps/flows/examples/sandcorp_home.json` (시험이 유효함을 확인한다)
+
+## 문서 모양
+
+```json
+{
+  "nodes": [
+    {"id": "start", "kind": "start", "code": "N-01", "name": "시작",
+     "position": {"x": 0, "y": 0}, "config": {}}
+  ],
+  "edges": [
+    {"from": "start", "to": "classify", "handle": "next"}
+  ]
+}
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `nodes[].id` | 흐름 안에서 유일한 노드 id(1~64자). 선과 판단 기록이 이것으로 노드를 가리킨다. |
+| `nodes[].kind` | 노드 종류(아래 표). |
+| `nodes[].code` | 편집기에 보이는 N-코드(`N-01` 꼴, 흐름 안에서 유일). |
+| `nodes[].name` | 편집기 표시 이름(선택). |
+| `nodes[].position` | 편집기 좌표 `{x, y}`. |
+| `nodes[].config` | 종류별 설정. 모르는 필드는 거부한다. |
+| `edges[].from` / `to` | 나가는 노드 id / 들어가는 노드 id. |
+| `edges[].handle` | 갈래 이름. 생략하거나 `null`이면 `next`. |
+
+## 노드 종류와 config
+
+지금은 종류마다 **자리**(최소 필드)만 있다. 세부는 각 노드 티켓이 채운다.
+
+| kind | 이름 | config | 나가는 갈래 |
+|---|---|---|---|
+| `start` | 시작 | `{}` | `next` |
+| `ai_answer` | AI 답변 | `instructions: str = ""`, `await_reply: bool = false` | `next` |
+| `condition` | 조건 | `branches: [{name, when}]`(1개 이상, 이름 유일, `else`·`next` 예약) | 각 `name` + `else` — **모두 선 필수** |
+| `handoff` | 사람 넘김 | `reason: str = ""` | 없음 |
+| `knowledge_search` | 지식 검색 | `top_k: int = 5`(1~20) | `next` |
+| `ai_classify` | AI 분류·추출 | `instructions: str = ""`, `labels: [str]`(1개 이상) | `next` |
+| `guardrail` | 가드레일 | `rules: ["banned_words" \| "pii" \| "price_promise"]`(1개 이상), `action: "block" \| "rewrite" = "rewrite"` | `next` |
+| `http_tool` | HTTP 도구 | `method`(GET·POST·PUT·PATCH·DELETE), `url`(https만, user@host 금지), `headers: {str: str}`, `body_template: str \| null` | `next` |
+
+`next` 갈래는 선이 없어도 된다 — 거기서 턴이 끝난다. `condition.branches[].when` 식의 문법은 조건 노드 티켓이 정한다.
+
+### 비밀은 참조만
+
+HTTP 도구의 인증 계열 헤더(이름에 `authorization`·`cookie`·`token`·`secret`·`api-key`·`password`가 들어감) 값에는
+`{{secret.이름}}` 참조만 넣는다. 앞에 스킴 한 단어는 된다(`Bearer {{secret.inquiry_api_key}}`). 원문 키를 넣으면
+`invalid_config`. 치환은 실행 때 서버에서만 한다(ADR-0029). url에는 비밀 참조를 넣을 수 없다.
+
+## 검증
+
+`validate_flow(data)`는 오류 목록을 돌려준다(빈 목록이면 유효). 오류마다 `node_id`(흐름 전체 오류면 `null`),
+`code`, 사람이 읽을 `message`가 있다. 편집기는 `node_id`로 노드에 표시한다.
+
+| code | 뜻 |
+|---|---|
+| `invalid_shape` | 문서 모양이 틀림(노드 목록이 없음 등). 흐름 전체 오류 하나로 나온다. |
+| `start_count` | 시작 노드가 정확히 하나가 아님. |
+| `unknown_kind` | 알 수 없는 노드 종류. |
+| `invalid_config` | 종류별 config가 틀림(필드 이름과 이유가 메시지에). |
+| `duplicate_node_id` / `duplicate_code` / `invalid_code` | 노드 id·N-코드 중복, N-코드 꼴이 틀림. |
+| `dangling_edge` | 선이 없는 노드를 가리킴. |
+| `edge_into_start` | 시작 노드로 들어오는 선. |
+| `unknown_handle` | 그 노드에 없는 갈래에서 나가는 선(사람 넘김에서 나가는 선 포함). |
+| `duplicate_handle` | 한 갈래에서 선이 둘 이상. |
+| `empty_branch` | 조건 노드의 갈래에 선이 없음. |
+| `unreachable_node` | 시작 노드에서 갈 수 없는 노드. |
+| `cycle_without_turn_boundary` | 방문자 답을 기다리는 노드를 지나지 않는 순환. |
+
+### 순환 규칙
+
+순환은 허용한다. 단, **순환마다 `await_reply: true`인 AI 답변을 하나 이상 지나야 한다.** 실행기는 그 노드에서 답을
+보낸 뒤 턴을 끝내고, 다음 턴은 그 노드의 나가는 선에서 이어 간다. 그래서 「되묻기 → 다시 분류」 같은 순환은 턴마다
+한 바퀴씩만 돈다. 실행기는 안전장치로 한 턴에 노드 `MAX_STEPS_PER_TURN`(50)개까지만 실행한다.
+
+## Flow Version과 해시
+
+- Flow Version은 바뀌지 않는다. 만들 때 검증하고(무효면 만들지 않음) 해시를 계산한다. 저장 뒤 `save()`나
+  `QuerySet.update()`로 고치려 하면 `ImmutableFlowVersionError`.
+- 해시는 정규화 JSON(키 정렬, 공백 없는 구분자, UTF-8)의 SHA-256 16진수. 키 순서·들여쓰기가 달라도 같은 흐름은 같은 해시.
+- 초안은 작업본이라 무효인 JSON도 저장된다. 배포가 초안을 새 버전으로 굳힐 때 검증된다.
+- 테넌트당 Flow 하나를 `is_public`으로 정하면 위젯이 그 Flow의 배포 중 버전으로 돈다. 새 ChatSession은 만들어질 때 그
+  버전에 고정되고(`flow_version`), 이후 배포가 바뀌어도 그대로다. 공개 흐름이나 배포 중 버전이 없으면 비어 있다.
+- 다른 테넌트의 흐름은 `Flow.objects.for_tenant(tenant_id)`·`FlowVersion.objects.for_tenant(tenant_id)`에 보이지 않고,
+  세션을 다른 테넌트의 버전에 고정하려 하면 거부된다.
+
+## 예제 ① Sandcorp 홈 상담 에이전트
+
+의도 분류 → (프로젝트 문의면) 요구사항이 다 모였나 → 모자라면 **요구사항 되묻기**(답을 기다린 뒤 다시 의도 분류로) /
+다 모였으면 사례 찾기 → 범위·기간 초안 → 가드레일 → 문의 접수(HTTP). 사람을 원하거나 의도가 불확실하면 사람 넘김.
+
+```
+N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
+  inquiry → N-04 요구사항이 다 모였나
+              complete → N-06 사례 찾기 → N-07 범위·기간 초안 → N-08 가드레일 → N-09 문의 접수(HTTP)
+              else     → N-05 요구사항 되묻기(await_reply) ──(다음 턴)──→ N-02 의도 분류
+  human   → N-10 사람 넘김
+  else    → N-11 일반 답변
+```
+
+전문은 `backend/apps/flows/examples/sandcorp_home.json`. 핵심 부분:
+
+```json
+{"id": "route", "kind": "condition", "code": "N-03", "name": "의도에 따라",
+ "config": {"branches": [{"name": "inquiry", "when": "label == 'project_inquiry'"},
+                         {"name": "human", "when": "label == 'human_request' or confidence < 0.5"}]}},
+{"id": "ask", "kind": "ai_answer", "code": "N-05", "name": "요구사항 되묻기",
+ "config": {"instructions": "빠진 요구사항(목적·규모·기한) 중 하나만 짧게 되묻는다.", "await_reply": true}},
+{"id": "submit", "kind": "http_tool", "code": "N-09", "name": "문의 접수",
+ "config": {"method": "POST", "url": "https://api.sandcorp.co.kr/inquiries",
+            "headers": {"Authorization": "Bearer {{secret.inquiry_api_key}}"}}}
+```
+
+```json
+"edges": [
+  {"from": "route", "to": "enough", "handle": "inquiry"},
+  {"from": "route", "to": "handoff", "handle": "human"},
+  {"from": "route", "to": "general", "handle": "else"},
+  {"from": "enough", "to": "cases", "handle": "complete"},
+  {"from": "enough", "to": "ask", "handle": "else"},
+  {"from": "ask", "to": "classify"}
+]
+```
