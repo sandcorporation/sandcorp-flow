@@ -1,7 +1,7 @@
 # ADR-0028: 인증을 sandcorp-auth로 통합하고 Flow 사용자는 외부 sub로 식별
 
 ## Status
-Accepted (2026-10-24, 사용자 결정). Operator 전환은 지금, 고객 쪽은 sandcorp-auth 다중 사용자화 이후.
+Accepted (2026-10-24, 사용자 결정). Operator 전환은 지금. 고객 토큰 계약은 확정(sandcorp-auth #35·PR #40), 고객 가입은 sandcorp-auth 소셜 로그인·약관·화면·탈퇴(#36~#39) 이후.
 
 ## Context
 Embed Chat은 자체 계정을 가진다: Django `Operator`, `TenantAgent`(tenant_name + username + password, ADR-0025 셀프 가입),
@@ -22,6 +22,7 @@ Embed Chat은 자체 계정을 가진다: Django `Operator`, `TenantAgent`(tenan
   대표 토큰의 `admin` 스코프가 Operator 권한이다. 이 부분은 **지금 구현한다** — 단일 대표 규칙(T11)으로 그대로 동작한다.
   검증은 sandcorp-auth 문서 3~6절을 그대로 따른다(EdDSA만, JWKS 캐시 600초, `exp` 허용 30초, 실패 응답 헤더, 보호 리소스 메타데이터).
   리소스·스코프·기밀 클라이언트 등록은 대장 세션이 sandcorp-auth에 한다.
+  **판정은 `acct`로 한다**: Operator는 `acct` 클레임이 없는 대표 토큰(아래 A1 통과)이면서 `admin` 스코프를 가진 토큰뿐이다. 일반 사용자 토큰은 스코프와 무관하게 Operator가 될 수 없다.
 - **Admin UI 로그인 세션**: 관리 화면 로그인 콜백에서 토큰을 한 번 검증한 뒤, Flow 자기 세션(ADR-0013의 Access/Refresh 구조 재사용)을
   연다. sandcorp-auth 액세스 토큰을 브라우저에 오래 들고 있지 않는다.
 - **걷어낼 대상**: Flow 자체 고객 계정(`TenantAgent`의 username/password), 공개 셀프 가입 엔드포인트, Operator 비밀번호 로그인.
@@ -38,3 +39,18 @@ Embed Chat은 자체 계정을 가진다: Django `Operator`, `TenantAgent`(tenan
 - `TENANT_KEY`(위젯·HMAC용 서버 키)는 사람 로그인이 아니므로 이 결정의 범위 밖이다. ADR-0025 D의 break-glass(TENANT_KEY로 Admin 생성)는
   고객 전환 때 「외부 sub를 Admin 멤버로 붙이기」로 다시 정한다.
 - 고객 `sub` 계약이 정해지면 이 ADR에 「고객 토큰 검증」 절을 더하고, 막혀 있던 티켓을 푼다.
+
+## 고객 토큰 검증 (2026-10-24 계약 확정, sandcorp-auth #35·PR #40)
+규칙 원문은 sandcorp-auth `docs/resource-server-token-validation.md` 10절, 참조 구현은 `backend/tests/reference_validator.py`의 `validate_account_access_token`.
+
+- **검증 순서**: T1~T10(3절) → **T11 대신 A1~A3** → S1.
+  - A1. `acct`가 없으면 대표 토큰. `sub`가 `AUTH_OWNER_SUB`와 정확히 같지 않으면 거부.
+  - A2. `acct`가 있는데 정확히 문자열 `"member"`가 아니면 거부(`"owner"`, 대소문자 차이, 빈 문자열, 배열, `null`).
+  - A3. `acct`가 `"member"`인데 `sub`가 `^m_[0-7][0-9A-HJKMNP-TV-Z]{25}$`(대소문자 구분)에 맞지 않으면 거부.
+  - 위반은 401 `invalid_token`.
+- **External Identity**: 일반 사용자는 `(iss, sub)`, `sub` = `m_` + ULID 26자이며 바뀌지 않는다. 대표도 같은 사용자 표에 `(iss, "farrar142")`로 있다. 사용자·테넌트·역할은 `sub`로 묶고 **이메일로 묶지 않는다**.
+- **스코프**: 일반 사용자는 `login`(리소스 스코프)과 `openid`·`profile`·`email`만 받는다. `admin`·`editor`는 받을 수 없다(auth가 `invalid_scope`). Flow 관리 화면 로그인 콜백은 `login`을 요구하고, Operator 기능은 A1 통과 + `admin`일 때만 연다.
+- **신원 정보**: Flow 클라이언트는 기밀 클라이언트로 `openid profile email`을 요청한다. ID 토큰·userinfo의 일반 사용자 필드는 `sub`, `acct`, `name`(있을 때), `email`·`email_verified`(이메일이 있을 때만 — Kakao는 없을 수 있다). `preferred_username`은 없다. 이메일·이름은 표시용 캐시이며, 이메일이 필요하면 Flow가 사용자에게 입력받는다.
+- **클라이언트 등록**: Flow 기밀 클라이언트는 auth 쪽 「일반 사용자 허용」(`allows_members=True`)이 켜져 있어야 한다. 꺼져 있으면 일반 사용자는 `access_denied`로 돌아온다. 등록은 서버 쪽 일이다(`docs/deployment.md` 「서버 쪽 할 일」).
+- **탈퇴**: sandcorp-auth의 `user.deleted` 서명 웹훅(#39)을 받아 해당 External Identity의 멤버십을 정리한다. 웹훅 형식이 정해지면 이 절에 더한다.
+
