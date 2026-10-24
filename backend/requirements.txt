@@ -4,7 +4,8 @@ psycopg2-binary>=2.9,<3.0
 pgvector>=0.3,<1.0
 redis>=5.0,<6.0
 celery>=5.3,<6.0
-taskiq>=0.11,<1.0
+# taskiq 0.13.0은 taskiq.compat.model_dump를 없애 taskiq-redis 1.0.9 import가 깨진다(신규 이미지 빌드 시 worker-chat 크래시 루프). 0.13 미만으로 묶는다.
+taskiq>=0.11,<0.13
 taskiq-redis>=1.0,<2.0
 python-jose[cryptography]>=3.3,<4.0
 langchain>=0.3,<1.0
