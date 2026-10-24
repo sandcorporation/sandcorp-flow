@@ -26,6 +26,7 @@ import {
   appsTenantsApiListMembers,
   appsTenantsApiChangeMemberRole,
   appsTenantsApiDeactivateMember,
+  appsTenantsApiMemberMe,
 } from './generated/endpoints/tenant-members/tenant-members'
 import {
   appsTenantsApiListInvites,
@@ -131,6 +132,12 @@ export async function agentLogout() {
 export async function agentLogoutAll() {
   await appsTenantsApiMemberLogoutAll()
   clearAccess('agent')
+}
+// sandcorp-auth 계정 관리 화면(이름·이메일·탈퇴는 거기서 한다).
+export const ACCOUNT_URL = 'https://auth.sandcorp.co.kr/account'
+
+export async function memberMe() {
+  return (await appsTenantsApiMemberMe()).data
 }
 export async function listMembers() {
   return (await appsTenantsApiListMembers()).data

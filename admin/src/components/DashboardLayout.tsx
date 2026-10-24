@@ -15,20 +15,24 @@ export default function DashboardLayout({
   brand,
   navItems,
   user,
+  accountHref,
+  onSwitch,
   onLogout,
   onLogoutAll,
 }: {
   brand: string
   navItems: NavItem[]
   user?: string | null
+  accountHref?: string  // sandcorp-auth 계정 화면(이름·이메일은 거기서 바꾼다)
+  onSwitch?: () => void  // 다른 조직으로 들어가기
   onLogout: () => void
   onLogoutAll: () => void
 }) {
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      <aside className="flex w-60 flex-shrink-0 flex-col border-r border-border bg-card">
-        <div className="px-5 py-4 text-base font-semibold">{brand}</div>
-        <nav className="flex flex-col gap-1 px-3" aria-label="주 메뉴">
+    <div className="flex min-h-screen flex-col bg-background text-foreground md:flex-row">
+      <aside className="flex flex-shrink-0 flex-col border-b border-border bg-card md:w-60 md:border-b-0 md:border-r">
+        <div className="truncate px-5 py-3 text-base font-semibold md:py-4">{brand}</div>
+        <nav className="flex gap-1 overflow-x-auto px-3 pb-2 md:flex-col md:pb-0" aria-label="주 메뉴">
           {navItems.map(item => (
             <NavLink
               key={item.to}
@@ -36,7 +40,7 @@ export default function DashboardLayout({
               end
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
+                  'flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
                   isActive && 'bg-accent font-medium text-accent-foreground',
                 )
               }
@@ -49,8 +53,18 @@ export default function DashboardLayout({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center justify-end gap-2 border-b border-border px-6">
-          {user && <span className="mr-2 text-sm text-muted-foreground">{user}</span>}
+        <header className="flex min-h-14 flex-wrap items-center justify-end gap-2 border-b border-border px-4 py-2 md:px-6">
+          {user && <span className="mr-2 truncate text-sm text-muted-foreground">{user}</span>}
+          {accountHref && (
+            <Button asChild variant="ghost" size="sm">
+              <a href={accountHref} target="_blank" rel="noreferrer">내 계정</a>
+            </Button>
+          )}
+          {onSwitch && (
+            <Button variant="ghost" size="sm" onClick={onSwitch}>
+              조직 바꾸기
+            </Button>
+          )}
           <ThemeToggle />
           <Button variant="outline" size="sm" onClick={onLogout}>
             로그아웃
@@ -59,7 +73,7 @@ export default function DashboardLayout({
             모든 기기에서 로그아웃
           </Button>
         </header>
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto p-4 md:p-6">
           <Outlet />
         </main>
       </div>
