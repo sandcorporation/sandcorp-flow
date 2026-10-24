@@ -7,7 +7,7 @@ import FlowEditorPage from './FlowEditorPage'
 import { fakeFlowsApi } from '../flowsFakeApi'
 import type { FlowGraph, FlowNodeJson, FlowError } from '../lib/flowGraph'
 
-vi.mock('../api', () => ({ currentAgentRole: vi.fn() }))
+vi.mock('../api', () => ({ currentAgentRole: vi.fn(), listAllowedDomains: vi.fn(), listSecrets: vi.fn() }))
 
 const node = (id: string, kind: string, name: string, config: Record<string, unknown>, n: number): FlowNodeJson =>
   ({ id, kind, code: `N-0${n}`, name, position: { x: n * 200, y: 0 }, config })
@@ -37,12 +37,18 @@ function renderEditor() {
     </MemoryRouter>,
   )
 }
+/** <b>·<code> 로 쪼개진 문장도 문단 전체 글로 찾는다. */
+const para = (re: RegExp) => (_: string, el: Element | null) => el?.tagName === 'P' && re.test(el.textContent ?? '')
 const lastConfig = (fake: ReturnType<typeof fakeFlowsApi>, id: string) => {
   const ops = fake.patches().flat().filter((o: any) => o.op === 'upsert_node' && o.id === id && o.config)
   return ops[ops.length - 1]?.config
 }
 
-beforeEach(() => { vi.mocked(api.currentAgentRole).mockReturnValue('admin') })
+beforeEach(() => {
+  vi.mocked(api.currentAgentRole).mockReturnValue('admin')
+  vi.mocked(api.listAllowedDomains).mockResolvedValue([])
+  vi.mocked(api.listSecrets).mockResolvedValue([])
+})
 afterEach(() => { vi.unstubAllGlobals() })
 
 describe('노드 설정 패널 — 종류별 폼', () => {
@@ -140,11 +146,84 @@ describe('노드 설정 패널 — 종류별 폼', () => {
     fireEvent.change(hv, { target: { value: 'sk-live-123' } })
     fireEvent.blur(hv)
     expect(await screen.findByText(/비밀 원문 대신 \{\{secret\.이름\}\} 참조/)).toBeInTheDocument()
-    expect(screen.getByText(/등록된 비밀이 없습니다/)).toBeInTheDocument()
+    expect(await screen.findByText(/등록된 비밀이 없습니다/)).toBeInTheDocument()
     fireEvent.change(hv, { target: { value: 'Bearer {{secret.shop_key}}' } })
     fireEvent.blur(hv)
     await waitFor(() => expect(lastConfig(fake, 'http1').headers).toEqual({ Authorization: 'Bearer {{secret.shop_key}}' }))
     expect(screen.queryByText(/비밀 원문 대신/)).toBeNull()
+  })
+
+  it('HTTP 도구: 응답→상태 표(save)에 행을 더하고 지운다', async () => {
+    const fake = fakeFlowsApi({ graph: GRAPH })
+    renderEditor()
+    await pick('주문 조회')
+    await userEvent.click(await screen.findByRole('button', { name: '저장할 값 추가' }))
+    fireEvent.change(screen.getByLabelText('상태 이름'), { target: { value: 'order_status' } })
+    const path = screen.getByLabelText('응답 경로')
+    fireEvent.change(path, { target: { value: '$.data.status' } })
+    fireEvent.blur(path)
+    await waitFor(() => expect(lastConfig(fake, 'http1').save).toEqual({ order_status: '$.data.status' }))
+    await userEvent.click(screen.getByRole('button', { name: '저장할 값 1번 삭제' }))
+    await waitFor(() => expect(lastConfig(fake, 'http1').save).toBeUndefined())
+  })
+
+  it('HTTP 도구: 시험 대화가 실제 API를 호출한다는 안내와 error 갈래 설명을 보인다', async () => {
+    fakeFlowsApi({ graph: GRAPH })
+    renderEditor()
+    await pick('주문 조회')
+    expect(await screen.findByText(/시험 대화도 이 API를 실제로 호출합니다/)).toBeInTheDocument()
+    expect(screen.getByText(/POST면 실제로 접수/)).toBeInTheDocument()
+    expect(screen.getByText(/error 갈래/)).toBeInTheDocument()
+  })
+
+  it('HTTP 도구: 주소 호스트가 허용 목록 밖이면 경고와 설정 탭 링크를 보이고, 안이면 없다', async () => {
+    vi.mocked(api.listAllowedDomains).mockResolvedValue([{ id: 'd1', pattern: '*.example.com', created_at: '' }])
+    const fake = fakeFlowsApi({ graph: GRAPH })
+    renderEditor()
+    await pick('주문 조회')
+    // https://api.example.com/o 는 *.example.com 한 단계 하위 → 허용
+    await screen.findByLabelText('주소(https)')
+    await waitFor(() => expect(api.listAllowedDomains).toHaveBeenCalled())
+    expect(screen.queryByText(para(/허용 도메인에 없습니다/))).toBeNull()
+    const url = screen.getByLabelText('주소(https)')
+    fireEvent.change(url, { target: { value: 'https://other.io/x' } })
+    fireEvent.blur(url)
+    await waitFor(() => expect(lastConfig(fake, 'http1').url).toBe('https://other.io/x'))
+    expect(await screen.findByText(para(/other\.io.*허용 도메인에 없습니다/))).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /설정에서 허용 도메인 추가/ })).toHaveAttribute('href', '/tenant/config?section=secrets')
+  })
+
+  it('HTTP 도구: 등록되지 않은 {{secret.이름}} 을 경고하고 등록된 이름은 목록으로 보인다', async () => {
+    vi.mocked(api.listSecrets).mockResolvedValue([{ name: 'shop_key', created_at: '', updated_at: '' }])
+    const g: FlowGraph = { ...GRAPH, nodes: GRAPH.nodes.map((n) => n.id === 'http1' ? { ...n, config: { ...n.config, headers: { Authorization: 'Bearer {{secret.shop_key}}', 'X-A': '{{secret.nope}}' } } } : n) }
+    fakeFlowsApi({ graph: g })
+    renderEditor()
+    await pick('주문 조회')
+    expect(await screen.findByText(para(/등록되지 않은 비밀: nope/))).toBeInTheDocument()
+    expect(screen.queryByText(para(/등록되지 않은 비밀:.*shop_key/))).toBeNull()
+    expect(screen.getByText(para(/등록된 비밀:.*shop_key/))).toBeInTheDocument()
+  })
+
+  it('HTTP 도구: 서버 검증 오류(url·save 경로)를 해당 필드 아래에, unknown_secret 은 노드 오류로 보인다', async () => {
+    const errors: FlowError[] = [
+      { node_id: 'http1', code: 'invalid_config', message: 'url: Value error, url의 호스트는 고정해야 합니다; save: Value error, save \'x\': 경로 형식 오류' },
+      { node_id: 'http1', code: 'unknown_secret', message: '등록되지 않은 비밀: nope' },
+    ]
+    fakeFlowsApi({ graph: GRAPH, errors })
+    renderEditor()
+    await pick('주문 조회')
+    expect(await screen.findByText(/호스트는 고정해야 합니다/)).toBeInTheDocument()
+    expect(screen.getByText(/경로 형식 오류/)).toBeInTheDocument()
+    expect(screen.getAllByText(/unknown_secret/).length).toBeGreaterThan(0)
+  })
+
+  it('HTTP 도구: 역할이 admin 이 아니면 읽기 전용이다', async () => {
+    vi.mocked(api.currentAgentRole).mockReturnValue('member')
+    fakeFlowsApi({ graph: GRAPH })
+    renderEditor()
+    await pick('주문 조회')
+    expect(await screen.findByLabelText('주소(https)')).toHaveAttribute('readonly')
+    expect(screen.queryByRole('button', { name: '저장할 값 추가' })).toBeNull()
   })
 
   it('검증 오류의 경로를 해당 필드 아래에 보인다', async () => {

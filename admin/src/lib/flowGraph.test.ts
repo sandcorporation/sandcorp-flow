@@ -25,6 +25,7 @@ describe('flowGraph — 편집기 순수 규칙', () => {
     expect(outHandles(n('s', 'start', 'N-01'))).toEqual(['next'])
     expect(outHandles(n('h', 'handoff', 'N-02'))).toEqual([])
     expect(outHandles(n('a', 'ai_answer', 'N-03'))).toEqual(['next', 'handoff'])
+    expect(outHandles(n('t', 'http_tool', 'N-05'))).toEqual(['next', 'error'])
     expect(outHandles(n('c', 'condition', 'N-04', { branches: [{ name: '환불', when: 'x' }, { name: '배송', when: 'y' }] })))
       .toEqual(['환불', '배송', 'else'])
   })

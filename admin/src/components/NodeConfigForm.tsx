@@ -1,15 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import type { JsonObject } from '@/lib/flowGraph'
 import { fieldsOf, withValue, type FieldSpec } from '@/lib/nodeForm'
-import { FIELD_TEXT, GUARDRAIL_WARNING, KIND_NOTE, WHEN_KEYS, headerNeedsSecretRef } from '@/lib/nodeFormLabels'
+import { FIELD_TEXT, GUARDRAIL_WARNING, HTTP_LIVE_NOTICE, KIND_NOTE, WHEN_KEYS, headerNeedsSecretRef } from '@/lib/nodeFormLabels'
+import { hostAllowed, secretNamesUsed, urlHost } from '@/lib/httpToolWarn'
+import { listAllowedDomains, listSecrets } from '../api'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Select } from './ui/select'
 import { Textarea } from './ui/textarea'
 
-type Ctx = { readOnly: boolean; kind: string; errors: Map<string, string[]> }
+type Ctx = { readOnly: boolean; kind: string; errors: Map<string, string[]>; after?: Record<string, ReactNode> }
+
+const SETTINGS_LINK = '/tenant/config?section=secrets'
 
 const textOf = (kind: string, path: string) => FIELD_TEXT[`${kind}.${path.replace(/\.\d+/g, '')}`] ?? { label: path.split('.').pop() ?? path }
 
@@ -18,18 +22,20 @@ export default function NodeConfigForm({ kind, schema, config, readOnly, errors,
   kind: string; schema: object; config: JsonObject; readOnly: boolean; errors: Map<string, string[]>; onChange: (next: JsonObject) => void
 }) {
   const fields = fieldsOf(schema)
-  const ctx: Ctx = { readOnly, kind, errors }
+  const lookups = useHttpLookups(kind === 'http_tool')
+  const ctx: Ctx = { readOnly, kind, errors, after: kind === 'http_tool' ? { url: <HostWarning url={typeof config.url === 'string' ? config.url : ''} domains={lookups.domains} /> } : undefined }
   return (
     <div className="space-y-3">
       {kind === 'guardrail' && (
         <p className="border-l-4 border-hazard bg-hazard/10 px-2 py-1.5 text-sm text-ink">{GUARDRAIL_WARNING}</p>
       )}
-      {fields.length === 0 && KIND_NOTE[kind] && <p className="text-sm text-muted-foreground">{KIND_NOTE[kind]}</p>}
+      {kind === 'http_tool' && <p className="border-l-4 border-hazard bg-hazard/10 px-2 py-1.5 text-sm text-ink">{HTTP_LIVE_NOTICE}</p>}
+      {(fields.length === 0 || kind === 'http_tool') && KIND_NOTE[kind] && <p className="text-sm text-muted-foreground">{KIND_NOTE[kind]}</p>}
       {kind === 'condition' && <WhenKeys />}
       {fields.map((f) => (
         <FieldView key={f.key} spec={f} path={f.key} value={config[f.key]} ctx={ctx} onChange={(v) => onChange(withValue(config, f.key, v))} />
       ))}
-      {kind === 'http_tool' && <SecretsPlaceholder />}
+      {kind === 'http_tool' && <SecretsStatus used={secretNamesUsed(config)} secrets={lookups.secrets} />}
     </div>
   )
 }
@@ -45,9 +51,55 @@ function WhenKeys() {
   )
 }
 
-/** 비밀 목록은 M3(#33)에서 생긴다. 그 전에는 참조 규칙만 알린다. */
-function SecretsPlaceholder() {
-  return <p className="border border-dashed border-line-soft p-2 text-xs text-muted-foreground">등록된 비밀이 없습니다. 비밀 등록은 곧 제공됩니다. 그 전에는 이름을 직접 {'{{secret.이름}}'} 꼴로 적어 두세요.</p>
+/** 허용 도메인·비밀 목록(이름만). 못 읽으면(권한·네트워크) null — 그러면 경고를 내지 않는다. 설정 탭에서 돌아오면(창 포커스) 다시 읽는다. */
+function useHttpLookups(enabled: boolean) {
+  const [domains, setDomains] = useState<string[] | null>(null)
+  const [secrets, setSecrets] = useState<string[] | null>(null)
+  const load = useCallback(() => {
+    let live = true
+    Promise.resolve().then(() => listAllowedDomains()).then((d) => live && setDomains(d.map((x) => x.pattern))).catch(() => live && setDomains(null))
+    Promise.resolve().then(() => listSecrets()).then((d) => live && setSecrets(d.map((x) => x.name))).catch(() => live && setSecrets(null))
+    return () => { live = false }
+  }, [])
+  useEffect(() => {
+    if (!enabled) return
+    let stop = load()
+    const again = () => { stop(); stop = load() }
+    window.addEventListener('focus', again)
+    return () => { stop(); window.removeEventListener('focus', again) }
+  }, [enabled, load])
+  return { domains, secrets }
+}
+
+/** 주소 호스트가 허용 도메인에 없으면 알린다(서버 AllowList 와 같은 규칙, 최종 판정은 서버). */
+function HostWarning({ url, domains }: { url: string; domains: string[] | null }) {
+  const host = urlHost(url)
+  if (domains === null || host === null || hostAllowed(host, domains)) return null
+  return (
+    <p role="status" className="border-l-4 border-hazard bg-hazard/10 px-2 py-1.5 text-xs text-ink">
+      <b className="hmi-code">{host}</b> 은(는) 허용 도메인에 없습니다 — 이대로는 호출이 막힙니다(host_not_allowed).{' '}
+      <a className="underline" href={SETTINGS_LINK} target="_blank" rel="noreferrer">설정에서 허용 도메인 추가</a>
+    </p>
+  )
+}
+
+/** 등록된 비밀 이름과, 쓰는데 등록 안 된 참조. 값은 어디서도 읽지 않는다. */
+function SecretsStatus({ used, secrets }: { used: string[]; secrets: string[] | null }) {
+  if (secrets === null) return null
+  const missing = used.filter((n) => !secrets.includes(n))
+  return (
+    <div className="space-y-1.5 border border-dashed border-line-soft p-2 text-xs text-muted-foreground">
+      {secrets.length === 0
+        ? <p>등록된 비밀이 없습니다. 헤더·본문에는 {'{{secret.이름}}'} 꼴로만 참조합니다.</p>
+        : <p>등록된 비밀: {secrets.map((n, i) => <span key={n}>{i > 0 && ', '}<code className="hmi-code text-ink">{n}</code></span>)}</p>}
+      {missing.length > 0 && (
+        <p role="status" className="border-l-4 border-hazard bg-hazard/10 px-2 py-1 text-ink">
+          등록되지 않은 비밀: {missing.map((n, i) => <span key={n}>{i > 0 && ', '}<code className="hmi-code">{n}</code></span>)} — 저장 검증에서 막힙니다(unknown_secret).
+        </p>
+      )}
+      <a className="underline" href={SETTINGS_LINK} target="_blank" rel="noreferrer">설정에서 비밀·허용 도메인 관리</a>
+    </div>
+  )
 }
 
 function FieldView({ spec, path, value, ctx, onChange }: { spec: FieldSpec; path: string; value: unknown; ctx: Ctx; onChange: (v: unknown) => void }) {
@@ -67,7 +119,7 @@ function FieldView({ spec, path, value, ctx, onChange }: { spec: FieldSpec; path
           <DraftText id={id} value={typeof value === 'string' ? value : ''} readOnly={ctx.readOnly} placeholder={text.placeholder} multiline={path.endsWith('instructions') || path.endsWith('body_template')}
             invalid={bad} describedBy={common['aria-describedby']}
             onCommit={(s) => onChange(s === '' && !spec.required ? undefined : s)} />
-          {help}{err}
+          {help}{err}{ctx.after?.[path]}
         </div>
       )
     case 'integer':
@@ -155,7 +207,7 @@ function FieldView({ spec, path, value, ctx, onChange }: { spec: FieldSpec; path
       )
     }
     case 'string_map':
-      return <HeaderRows text={text} value={(value && typeof value === 'object' ? value : {}) as Record<string, string>} ctx={ctx} err={err} help={help} onChange={onChange} />
+      return <HeaderRows path={path} text={text} value={(value && typeof value === 'object' ? value : {}) as Record<string, string>} ctx={ctx} err={err} help={help} onChange={onChange} />
   }
 }
 
@@ -174,8 +226,8 @@ function DraftText({ value, onCommit, multiline, readOnly, id, invalid, describe
 }
 
 /** 헤더 표(이름-값). 비밀 원문이 들어가면 저장 전에 참조를 쓰라고 알린다(최종 판정은 서버 검증). */
-function HeaderRows({ text, value, ctx, err, help, onChange }: {
-  text: { label: string; add?: string }; value: Record<string, string>; ctx: Ctx; err: React.ReactNode; help: React.ReactNode; onChange: (v: unknown) => void
+function HeaderRows({ path, text, value, ctx, err, help, onChange }: {
+  path: string; text: { label: string; add?: string; keyLabel?: string; valueLabel?: string; keyPlaceholder?: string; valuePlaceholder?: string }; value: Record<string, string>; ctx: Ctx; err: React.ReactNode; help: React.ReactNode; onChange: (v: unknown) => void
 }) {
   const fromProps = () => Object.entries(value)
   const [rows, setRows] = useState<[string, string][]>(fromProps)
@@ -187,6 +239,10 @@ function HeaderRows({ text, value, ctx, err, help, onChange }: {
     sent.current = JSON.stringify(obj)
     onChange(Object.keys(obj).length === 0 ? undefined : obj)
   }
+  const isHeaders = path === 'headers'
+  const keyLabel = text.keyLabel ?? '헤더 이름'
+  const valueLabel = text.valueLabel ?? '헤더 값'
+  const itemName = isHeaders ? '헤더' : text.add?.replace(/ 추가$/, '') ?? text.label
   const edit = (i: number, k: string, v: string) => setRows(rows.map((r, j): [string, string] => (j === i ? [k, v] : r)))
   return (
     <fieldset className="space-y-2">
@@ -194,13 +250,13 @@ function HeaderRows({ text, value, ctx, err, help, onChange }: {
       {help}
       {rows.map(([k, v], i) => (
         <div key={i} className="space-y-1 border border-line-soft bg-raised p-2">
-          <Label htmlFor={`hn-${i}`}>헤더 이름</Label>
-          <Input id={`hn-${i}`} aria-label="헤더 이름" value={k} readOnly={ctx.readOnly} onChange={(e) => edit(i, e.target.value, v)} onBlur={() => !ctx.readOnly && commit(rows)} />
-          <Label htmlFor={`hv-${i}`}>헤더 값</Label>
-          <Input id={`hv-${i}`} aria-label="헤더 값" value={v} readOnly={ctx.readOnly} onChange={(e) => edit(i, k, e.target.value)} onBlur={() => !ctx.readOnly && commit(rows)}
-            placeholder={headerNeedsSecretRef(k, '') ? 'Bearer {{secret.이름}}' : ''} aria-invalid={headerNeedsSecretRef(k, v) || undefined} />
-          {headerNeedsSecretRef(k, v) && <p className="text-xs text-destructive">인증 헤더에는 비밀 원문 대신 {'{{secret.이름}}'} 참조를 넣으세요. (예: Bearer {'{{secret.shop_key}}'})</p>}
-          {!ctx.readOnly && <Button type="button" size="sm" variant="outline" aria-label={`헤더 ${i + 1}번 삭제`} onClick={() => { const next = rows.filter((_, j) => j !== i); setRows(next); commit(next) }}><Trash2 className="h-4 w-4" />삭제</Button>}
+          <Label htmlFor={`${path}-k-${i}`}>{keyLabel}</Label>
+          <Input id={`${path}-k-${i}`} placeholder={text.keyPlaceholder} value={k} readOnly={ctx.readOnly} onChange={(e) => edit(i, e.target.value, v)} onBlur={() => !ctx.readOnly && commit(rows)} />
+          <Label htmlFor={`${path}-v-${i}`}>{valueLabel}</Label>
+          <Input id={`${path}-v-${i}`} value={v} readOnly={ctx.readOnly} onChange={(e) => edit(i, k, e.target.value)} onBlur={() => !ctx.readOnly && commit(rows)}
+            placeholder={isHeaders ? (headerNeedsSecretRef(k, '') ? 'Bearer {{secret.이름}}' : '') : text.valuePlaceholder} aria-invalid={(isHeaders && headerNeedsSecretRef(k, v)) || undefined} />
+          {isHeaders && headerNeedsSecretRef(k, v) && <p className="text-xs text-destructive">인증 헤더에는 비밀 원문 대신 {'{{secret.이름}}'} 참조를 넣으세요. (예: Bearer {'{{secret.shop_key}}'})</p>}
+          {!ctx.readOnly && <Button type="button" size="sm" variant="outline" aria-label={`${itemName} ${i + 1}번 삭제`} onClick={() => { const next = rows.filter((_, j) => j !== i); setRows(next); commit(next) }}><Trash2 className="h-4 w-4" />삭제</Button>}
         </div>
       ))}
       {!ctx.readOnly && <Button type="button" size="sm" variant="outline" onClick={() => setRows([...rows, ['', '']])}><Plus className="h-4 w-4" />{text.add ?? '추가'}</Button>}
