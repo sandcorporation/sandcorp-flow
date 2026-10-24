@@ -39,7 +39,10 @@ class Escalation(models.Model):
 
 class EscalationClaim(models.Model):
     escalation = models.OneToOneField(Escalation, on_delete=models.CASCADE, related_name="claim")
-    claimed_by = models.CharField(max_length=150)
+    # 맡은 멤버(#40). 멤버십이 지워져도(탈퇴 등) 상담 기록은 남긴다.
+    claimed_by = models.ForeignKey(
+        "tenants.Membership", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
     claimed_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

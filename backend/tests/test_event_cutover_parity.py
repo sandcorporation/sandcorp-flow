@@ -53,7 +53,7 @@ async def test_full_pipeline_fires_webhook_once_on_ai_escalation(
 
 @pytest.mark.django_db
 def test_takeover_records_event_and_console_delta(
-    client, tenant_with_key, tenant_agent_token, redis_subscribe, drain_events
+    client, tenant_with_key, tenant_admin_token, redis_subscribe, drain_events
 ):
     from apps.chat.models import ChatSession
     from apps.events.models import EventStore
@@ -63,7 +63,7 @@ def test_takeover_records_event_and_console_delta(
     session = ChatSession.objects.create(tenant_id=tenant.id, visitor_id="v-take2")
     pubsub = redis_subscribe(f"hitl:{tenant.id}")
 
-    client.post(f"/api/tenant/sessions/{session.id}/takeover", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
+    client.post(f"/api/tenant/sessions/{session.id}/takeover", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
 
     assert EventStore.objects.filter(aggregate_id=str(session.id), type=SESSION_TAKEN_OVER).count() == 1
     drain_events()
@@ -77,7 +77,7 @@ def test_takeover_records_event_and_console_delta(
 
 
 @pytest.mark.django_db
-def test_resolve_records_resolved_event(client, tenant_with_key, tenant_agent_token):
+def test_resolve_records_resolved_event(client, tenant_with_key, tenant_admin_token):
     from apps.chat.models import ChatSession
     from apps.escalation.models import Escalation
     from apps.events.models import EventStore
@@ -87,6 +87,6 @@ def test_resolve_records_resolved_event(client, tenant_with_key, tenant_agent_to
     session = ChatSession.objects.create(tenant_id=tenant.id, visitor_id="v-res", is_hitl=True)
     esc = Escalation.objects.create(session=session, trigger_type="ai", status="claimed", reason="r")
 
-    client.post(f"/api/tenant/escalations/{esc.id}/resolve", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
+    client.post(f"/api/tenant/escalations/{esc.id}/resolve", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
 
     assert EventStore.objects.filter(aggregate_id=str(session.id), type=ESCALATION_RESOLVED).count() == 1

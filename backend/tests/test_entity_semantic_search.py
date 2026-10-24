@@ -44,7 +44,7 @@ def test_search_entities_still_matches_lexically(tenant_with_key):
 
 @pytest.mark.django_db
 def test_ingested_entities_are_semantically_searchable(
-    client, tenant_agent_token, tenant_with_key, fake_chat_llm
+    client, tenant_admin_token, tenant_with_key, fake_chat_llm
 ):
     """업로드 → 추출 Mention이 임베딩되어, 다국어 의미 질의로 검색된다 (인제스션 배선)."""
     import io
@@ -63,7 +63,7 @@ def test_ingested_entities_are_semantically_searchable(
     client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
 
     # '밝기'(한글)는 'Brightness Control'에 어휘로는 안 맞지만 의미로는 맞아야 한다

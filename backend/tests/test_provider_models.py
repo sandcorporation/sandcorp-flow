@@ -157,13 +157,13 @@ def _patch_get(monkeypatch, payload, status=200, capture=None):
 
 
 @pytest.mark.django_db
-def test_provider_models_endpoint_returns_models(client, tenant_agent_token, monkeypatch):
+def test_provider_models_endpoint_returns_models(client, tenant_admin_token, monkeypatch):
     _patch_get(monkeypatch, {"data": [{"id": "gpt-4o"}, {"id": "gpt-4o-mini"}]})
     resp = client.post(
         "/api/tenant/providers/models",
         {"kind": "llm", "type": "openai", "base_url": "https://api.openai.com/v1", "api_key": "sk-x"},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -172,7 +172,7 @@ def test_provider_models_endpoint_returns_models(client, tenant_agent_token, mon
 
 
 @pytest.mark.django_db
-def test_provider_models_endpoint_masked_key_uses_stored(client, tenant_agent_token, tenant_with_key, monkeypatch):
+def test_provider_models_endpoint_masked_key_uses_stored(client, tenant_admin_token, tenant_with_key, monkeypatch):
     from apps.tenants.models import TenantConfig
     from apps.tenants.crypto import encrypt_secret
 
@@ -187,20 +187,20 @@ def test_provider_models_endpoint_masked_key_uses_stored(client, tenant_agent_to
         "/api/tenant/providers/models",
         {"kind": "llm", "type": "openai", "base_url": "https://x/v1", "api_key": "********"},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     assert cap["headers"]["Authorization"] == "Bearer real-stored-key"
 
 
 @pytest.mark.django_db
-def test_provider_models_endpoint_failure_is_4xx(client, tenant_agent_token, monkeypatch):
+def test_provider_models_endpoint_failure_is_4xx(client, tenant_admin_token, monkeypatch):
     _patch_get(monkeypatch, {}, status=401)
     resp = client.post(
         "/api/tenant/providers/models",
         {"kind": "llm", "type": "openai", "base_url": "https://x/v1", "api_key": "bad"},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 400
     assert "detail" in resp.json()
@@ -244,21 +244,21 @@ def _patch_config(client, token, body):
 
 
 @pytest.mark.django_db
-def test_update_config_rejects_invalid_provider(client, tenant_agent_token, monkeypatch):
+def test_update_config_rejects_invalid_provider(client, tenant_admin_token, monkeypatch):
     _patch_validate(monkeypatch, get_status=401)  # provider 연결 실패
-    resp = _patch_config(client, tenant_agent_token, {
+    resp = _patch_config(client, tenant_admin_token, {
         "llm_provider_type": "openai", "llm_base_url": "https://x/v1", "llm_api_key": "bad-key",
     })
     assert resp.status_code == 400
     # 저장되지 않아야 한다(롤백)
-    g = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}").json()
+    g = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}").json()
     assert g["llm_provider_type"] == ""
 
 
 @pytest.mark.django_db
-def test_update_config_saves_when_provider_valid(client, tenant_agent_token, monkeypatch):
+def test_update_config_saves_when_provider_valid(client, tenant_admin_token, monkeypatch):
     _patch_validate(monkeypatch, get_status=200, get_payload={"data": [{"id": "m"}]})
-    resp = _patch_config(client, tenant_agent_token, {
+    resp = _patch_config(client, tenant_admin_token, {
         "llm_provider_type": "openai", "llm_base_url": "https://x/v1", "llm_api_key": "sk-new",
     })
     assert resp.status_code == 200
@@ -266,10 +266,10 @@ def test_update_config_saves_when_provider_valid(client, tenant_agent_token, mon
 
 
 @pytest.mark.django_db
-def test_update_config_skips_validation_when_provider_unchanged(client, tenant_agent_token, monkeypatch):
+def test_update_config_skips_validation_when_provider_unchanged(client, tenant_admin_token, monkeypatch):
     counter = {"n": 0}
     _patch_validate(monkeypatch, counter=counter)
-    resp = _patch_config(client, tenant_agent_token, {"system_prompt": "새 프롬프트"})
+    resp = _patch_config(client, tenant_admin_token, {"system_prompt": "새 프롬프트"})
     assert resp.status_code == 200
     assert counter["n"] == 0  # provider 미변경 → 검증(HTTP) 미호출
     assert resp.json()["system_prompt"] == "새 프롬프트"
@@ -278,21 +278,21 @@ def test_update_config_skips_validation_when_provider_unchanged(client, tenant_a
 # ── OCR(Vision) Provider (issue 159) ──────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_provider_models_endpoint_ocr_kind(client, tenant_agent_token, monkeypatch):
+def test_provider_models_endpoint_ocr_kind(client, tenant_admin_token, monkeypatch):
     """kind="ocr" 모델 목록은 LLM-style /models로 조회된다(vision 모델 선택용)."""
     _patch_get(monkeypatch, {"data": [{"id": "gpt-4o"}, {"id": "gpt-4o-mini"}]})
     resp = client.post(
         "/api/tenant/providers/models",
         {"kind": "ocr", "type": "openai", "base_url": "https://api.openai.com/v1", "api_key": "sk-x"},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     assert resp.json()["models"] == ["gpt-4o", "gpt-4o-mini"]
 
 
 @pytest.mark.django_db
-def test_provider_models_ocr_masked_key_uses_stored_ocr_key(client, tenant_agent_token, tenant_with_key, monkeypatch):
+def test_provider_models_ocr_masked_key_uses_stored_ocr_key(client, tenant_admin_token, tenant_with_key, monkeypatch):
     """kind="ocr" + 마스크 키는 저장된 ocr_api_key를 복호화해 쓴다(llm 키 아님)."""
     from apps.tenants.models import TenantConfig
     from apps.tenants.crypto import encrypt_secret
@@ -308,17 +308,17 @@ def test_provider_models_ocr_masked_key_uses_stored_ocr_key(client, tenant_agent
         "/api/tenant/providers/models",
         {"kind": "ocr", "type": "openai", "base_url": "https://x/v1", "api_key": "********"},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     assert cap["headers"]["Authorization"] == "Bearer ocr-stored-key"
 
 
 @pytest.mark.django_db
-def test_update_config_ocr_provider_roundtrip(client, tenant_agent_token, monkeypatch):
+def test_update_config_ocr_provider_roundtrip(client, tenant_admin_token, monkeypatch):
     """OCR Provider 저장: 검증 통과 시 저장되고 GET은 키를 마스킹한다(키 미노출)."""
     _patch_validate(monkeypatch, get_status=200, get_payload={"data": [{"id": "gpt-4o"}]})
-    resp = _patch_config(client, tenant_agent_token, {
+    resp = _patch_config(client, tenant_admin_token, {
         "ocr_provider_type": "openai", "ocr_base_url": "https://x/v1",
         "ocr_model": "gpt-4o", "ocr_api_key": "sk-ocr",
     })
@@ -328,20 +328,20 @@ def test_update_config_ocr_provider_roundtrip(client, tenant_agent_token, monkey
     assert body["ocr_model"] == "gpt-4o"
     assert body["ocr_api_key"] == "********"  # 마스킹
 
-    g = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}").json()
+    g = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}").json()
     assert g["ocr_provider_type"] == "openai"
     assert "sk-ocr" not in str(g)  # 평문 키 미노출
 
 
 @pytest.mark.django_db
-def test_update_config_rejects_invalid_ocr_provider(client, tenant_agent_token, monkeypatch):
+def test_update_config_rejects_invalid_ocr_provider(client, tenant_admin_token, monkeypatch):
     """OCR Provider 연결 실패 시 400 + 미저장(롤백)."""
     _patch_validate(monkeypatch, get_status=401)
-    resp = _patch_config(client, tenant_agent_token, {
+    resp = _patch_config(client, tenant_admin_token, {
         "ocr_provider_type": "openai", "ocr_base_url": "https://x/v1", "ocr_api_key": "bad",
     })
     assert resp.status_code == 400
-    g = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}").json()
+    g = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}").json()
     assert g["ocr_provider_type"] == ""
 
 
@@ -355,10 +355,10 @@ def _quick_setup(client, token, api_key):
 
 
 @pytest.mark.django_db
-def test_quick_setup_configures_all_three_openai(client, tenant_agent_token, monkeypatch):
+def test_quick_setup_configures_all_three_openai(client, tenant_admin_token, monkeypatch):
     """유효 키 한 번으로 LLM·Embedding·OCR 3종이 openai 기본값으로 설정된다."""
     _patch_get(monkeypatch, {"data": [{"id": "gpt-4o-mini"}]})  # 키 검증(models 조회) 통과
-    resp = _quick_setup(client, tenant_agent_token, "sk-openai-123")
+    resp = _quick_setup(client, tenant_admin_token, "sk-openai-123")
     assert resp.status_code == 200
     body = resp.json()
     assert body["llm_provider_type"] == "openai" and body["model_id"] == "gpt-4o-mini"
@@ -370,17 +370,17 @@ def test_quick_setup_configures_all_three_openai(client, tenant_agent_token, mon
 
 
 @pytest.mark.django_db
-def test_quick_setup_invalid_key_400_nothing_saved(client, tenant_agent_token, monkeypatch):
+def test_quick_setup_invalid_key_400_nothing_saved(client, tenant_admin_token, monkeypatch):
     """키 검증 실패 시 400이고 config는 변경되지 않는다(원자성)."""
     _patch_get(monkeypatch, {}, status=401)
-    resp = _quick_setup(client, tenant_agent_token, "bad")
+    resp = _quick_setup(client, tenant_admin_token, "bad")
     assert resp.status_code == 400
-    g = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}").json()
+    g = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}").json()
     assert g["llm_provider_type"] == "" and g["embed_provider_type"] == "" and g["ocr_provider_type"] == ""
 
 
 @pytest.mark.django_db
-def test_quick_setup_validates_key_once(client, tenant_agent_token, monkeypatch):
+def test_quick_setup_validates_key_once(client, tenant_admin_token, monkeypatch):
     """같은 키를 3번이 아니라 1회만 검증한다."""
     from apps.agent import provider_models
     cap = {"n": 0}
@@ -388,15 +388,15 @@ def test_quick_setup_validates_key_once(client, tenant_agent_token, monkeypatch)
         cap["n"] += 1
         return _FakeResp(200, {"data": [{"id": "gpt-4o-mini"}]})
     monkeypatch.setattr(provider_models.httpx, "get", fake_get)
-    _quick_setup(client, tenant_agent_token, "sk-x")
+    _quick_setup(client, tenant_admin_token, "sk-x")
     assert cap["n"] == 1
 
 
 @pytest.mark.django_db
-def test_quick_setup_key_encrypted(client, tenant_agent_token, tenant_with_key, monkeypatch):
+def test_quick_setup_key_encrypted(client, tenant_admin_token, tenant_with_key, monkeypatch):
     """저장 키는 암호화(복호화 시 원문) — 3종 모두 같은 키."""
     _patch_get(monkeypatch, {"data": [{"id": "gpt-4o-mini"}]})
-    _quick_setup(client, tenant_agent_token, "sk-secret")
+    _quick_setup(client, tenant_admin_token, "sk-secret")
     from apps.tenants.models import TenantConfig
     from apps.tenants.crypto import decrypt_secret
     tenant, _ = tenant_with_key

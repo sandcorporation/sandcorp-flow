@@ -6,7 +6,7 @@ import pytest
 # ── Issue 62: Text Unit 임베딩 + Neo4j 벡터 검색 ──────────────────────────────
 
 @pytest.mark.django_db
-def test_vector_search_returns_relevant_text_unit(client, tenant_agent_token, tenant_with_key):
+def test_vector_search_returns_relevant_text_unit(client, tenant_admin_token, tenant_with_key):
     """업로드한 문서의 Text Unit이 임베딩되어, 의미적으로 관련된 쿼리로 검색된다."""
     from apps.rag.graph_store import GraphStore
     from apps.rag.ingesters import get_embeddings
@@ -18,7 +18,7 @@ def test_vector_search_returns_relevant_text_unit(client, tenant_agent_token, te
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
 
@@ -32,7 +32,7 @@ def test_vector_search_returns_relevant_text_unit(client, tenant_agent_token, te
 
 
 @pytest.mark.django_db
-def test_vector_search_is_tenant_isolated(client, tenant_agent_token, tenant_with_key):
+def test_vector_search_is_tenant_isolated(client, tenant_admin_token, tenant_with_key):
     """벡터 검색은 다른 Tenant의 Text Unit을 반환하지 않는다."""
     import secrets
     from apps.tenants.models import Tenant
@@ -45,7 +45,7 @@ def test_vector_search_is_tenant_isolated(client, tenant_agent_token, tenant_wit
     client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
 
     raw2 = secrets.token_urlsafe(32)
@@ -58,7 +58,7 @@ def test_vector_search_is_tenant_isolated(client, tenant_agent_token, tenant_wit
 # ── Issue 63: Local Search 라우팅 + chat end-to-end ──────────────────────────
 
 @pytest.mark.django_db(transaction=True)
-async def test_chat_answers_from_graph_local_search(client, tenant_agent_token, tenant_with_key):
+async def test_chat_answers_from_graph_local_search(client, tenant_admin_token, tenant_with_key):
     """업로드한 문서 내용을 그래프 Local Search로 끌어와 chat이 답한다 (assistant 메시지 저장)."""
     from asgiref.sync import sync_to_async
     from apps.agent.graph import run_chat_agent_async
@@ -71,7 +71,7 @@ async def test_chat_answers_from_graph_local_search(client, tenant_agent_token, 
     await adb(client.post)(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-graph-chat")
@@ -136,7 +136,7 @@ def test_graphstore_search_entities_and_neighbors(tenant_with_key):
 
 
 @pytest.mark.django_db
-def test_graph_search_endpoint_returns_subgraph(client, tenant_agent_token, tenant_with_key):
+def test_graph_search_endpoint_returns_subgraph(client, tenant_admin_token, tenant_with_key):
     """GET /rag/graph/search → 매칭 엔티티 + 이웃을 {nodes, edges}로 반환한다."""
     import io
 
@@ -146,12 +146,12 @@ def test_graph_search_endpoint_returns_subgraph(client, tenant_agent_token, tena
     client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
 
     resp = client.get(
         "/api/tenant/documents/graph/search?q=ZX900PRO",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -160,7 +160,7 @@ def test_graph_search_endpoint_returns_subgraph(client, tenant_agent_token, tena
 
 
 @pytest.mark.django_db
-def test_graph_neighbors_endpoint(client, tenant_agent_token, tenant_with_key):
+def test_graph_neighbors_endpoint(client, tenant_admin_token, tenant_with_key):
     """GET /rag/graph/neighbors → 엔티티 1홉 {nodes, edges}."""
     import uuid
     from apps.rag.graph_store import GraphStore
@@ -174,7 +174,7 @@ def test_graph_neighbors_endpoint(client, tenant_agent_token, tenant_with_key):
 
     resp = client.get(
         "/api/tenant/documents/graph/neighbors?entity=A-ENT",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -191,7 +191,7 @@ def test_graph_neighbors_endpoint(client, tenant_agent_token, tenant_with_key):
 
 
 @pytest.mark.django_db
-def test_document_entity_connected_to_extracted_entities(client, tenant_agent_token, tenant_with_key):
+def test_document_entity_connected_to_extracted_entities(client, tenant_admin_token, tenant_with_key):
     """문서(레이블) Entity는 그 문서에서 추출된 Entity와 연결되어, 문서 검색 시 내부 엔티티가 이웃으로 보인다.
 
     회귀: 예전엔 레이블 Entity가 고립돼 문서를 찾아도 내부 엔티티/관계가 안 보였다.
@@ -205,7 +205,7 @@ def test_document_entity_connected_to_extracted_entities(client, tenant_agent_to
     client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
 
     nb = GraphStore(str(tenant.id)).neighbors("HP모니터.txt")

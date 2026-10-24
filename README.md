@@ -153,7 +153,7 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 | 관계형 DB | PostgreSQL 16 (Django 모델 + LangGraph 체크포인트) |
 | 메시징 | Redis 7 (SSE pub/sub + Celery 브로커 + 레이트리밋·세션 락) |
 | 프론트 | React 18 + Vite. 그래프 시각화: `react-force-graph-2d` |
-| 인증 | Operator: sandcorp-auth Resource Token(EdDSA, PyJWT — ADR-0028) + 옛 Operator JWT(python-jose, #21에서 걷어냄). TenantAgent: JWT(python-jose). Visitor는 공개 slug URL + opt-in HMAC 신원검증. TENANT_KEY는 HMAC API·팀원 생성용 |
+| 인증 | Operator: sandcorp-auth Resource Token(EdDSA, PyJWT — ADR-0028) + 옛 Operator JWT(python-jose, #21에서 걷어냄). 고객(멤버): 같은 sandcorp-auth 로그인 → Membership으로 Flow 테넌트 세션(JWT, python-jose — #40). Visitor는 공개 slug URL + opt-in HMAC 신원검증. TENANT_KEY는 HMAC API·break-glass Admin 초대용 |
 
 > **GPU**: 필수 아님. GPU 호스트에선 Ollama(bge-m3)가 GPU를 씁니다(시험 인프라는 GPU 없이도 돈다 — 9장). Docker Desktop에서는 `runtime: nvidia` + `NVIDIA_VISIBLE_DEVICES=all`로 패스스루합니다. bge-m3가 GPU flash-attention에서 NaN 임베딩을 내는 이슈가 있어 `OLLAMA_FLASH_ATTENTION=0`을 설정합니다.
 
@@ -236,15 +236,15 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 
 ## 7. 사용 흐름
 
-### Tenant 가입·발급
-- **Self-Signup(기본)**: 어드민 로그인 화면의 **"새 조직 만들기"**에서 조직 이름·username·password로 직접 가입하면 Tenant와 그 조직의 **첫 Tenant Admin**이 생기고 즉시 로그인됩니다(Operator 불필요, ADR-0025). 조직 이름은 전역 unique한 로그인 식별자(대소문자 무시)이며, 공개 챗봇 URL용 Slug는 가입 후 설정 탭에서 따로 정합니다.
-- **Operator 프로비저닝(공존)**: Operator로 로그인 → **Tenant 추가**로도 발급 가능 → `TENANT_KEY`와 초기 Admin 임시 비밀번호가 **1회** 표시. `TENANT_KEY`는 해시만 저장(분실 시 재발급), HMAC 신원검증 API·팀원 생성에만 사용(브라우저 비노출).
+### 고객 로그인·Tenant 발급 (#40)
+- **로그인**: 고객은 sandcorp-auth 계정으로 로그인합니다(`/admin-ui/tenant` → **sandcorp 계정으로 로그인**). Flow에는 비밀번호가 없습니다. 콜백은 속한 조직(Membership)이 하나면 바로 그 조직 화면을, 여럿이면 **조직 선택**을, 없으면 「초대를 받으세요」 안내를 보여줍니다(조직 만들기 온보딩은 #41).
+- **Operator 프로비저닝**: Operator로 로그인 → **Tenant 추가** → `TENANT_KEY`와 **첫 Admin 초대 링크**가 **1회** 표시. 링크를 고객에게 직접 전달하면, 고객이 그 링크로 로그인해 Admin이 됩니다. `TENANT_KEY`는 해시만 저장(분실 시 재발급), HMAC 신원검증 API·break-glass에만 사용(브라우저 비노출).
 
 ### 권한 (Tenant Admin / Tenant Member)
-- TenantAgent는 **Admin / Member** 역할을 가집니다(권한 비트 기반, ADR-0025). **Admin은 전 권한**, **Member는 팀원 관리·`TENANT_KEY` 회전·Slug 변경만 제외한 전부**(문서·HITL·프롬프트/HITL 설정·Provider 키·조회 등 일상 운영은 다 가능).
-- **팀원 탭**: Admin이 팀원을 생성(역할 지정)·승격/강등·비활성화. **마지막 활성 Admin은 비활성화·강등 불가**(lockout 방지). Admin 전체가 사라지는 사고는 `TENANT_KEY`로 새 Admin을 만들어 복구(break-glass). Member에겐 팀원 관리·키 재발급·Slug 변경 컨트롤이 숨겨집니다.
+- 멤버(Membership)는 **Admin / Member** 역할을 가집니다(권한 비트 기반, ADR-0025). **Admin은 전 권한**, **Member는 팀원 관리·`TENANT_KEY` 회전·Slug 변경만 제외한 전부**(문서·HITL·프롬프트/HITL 설정·Provider 키·조회 등 일상 운영은 다 가능).
+- **팀원 탭**: Admin이 **초대 링크**(역할 지정·7일·1회용, 이메일 발송 없음)를 만들어 직접 전달하고, 승격/강등·비활성화합니다. **마지막 활성 Admin은 비활성화·강등 불가**(lockout 방지). Admin 전체가 사라지는 사고는 `TENANT_KEY`로 `POST /api/tenant/invites/ {"role":"admin"}` — Admin 초대 링크를 발급해 복구(break-glass). Member에겐 팀원 관리·키 재발급·Slug 변경 컨트롤이 숨겨집니다.
 
-### Tenant 운영 (TenantAgent)
+### Tenant 운영 (멤버)
 1. 어드민 UI 로그인 → **설정 탭**에서 Tenant Slug, (선택) LLM·Embedding Provider 키, HITL 토글, 브랜드 텍스트, 신원검증 등을 설정.
 2. **문서 탭**: PDF/TXT/이미지/**Excel** 업로드 또는 **웹 URL** 추가(레이블 지정 가능) → 그래프 자동 구축.
 3. **🕸️ 지식그래프 탭**: 엔티티 검색(다국어 의미 검색) → 노드-엣지 그래프로 탐색, 노드 클릭으로 이웃 확장.
@@ -259,26 +259,31 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 
 **Operator 인증**(`/api/operator/*`): `Authorization: Bearer <토큰>`으로 두 가지를 받는다. ① sandcorp-auth 액세스 토큰(Resource Token, `aud`=`AUTH_RESOURCE`) — 규칙은 sandcorp-auth `docs/resource-server-token-validation.md` 3~6·10절(T1~T10 → A1~A3 → S1, `apps/tenants/resource_token.py`). **대표 토큰(`acct` 없음, `sub`=`AUTH_OWNER_SUB`) + `admin` 스코프**일 때만 열린다. 일반 사용자 토큰(`acct=member`)은 검증을 통과해도 403. 실패는 401(토큰 없음/`invalid_token`)·403(`insufficient_scope`)에 `WWW-Authenticate` 헤더. ② Flow 세션 Access Token(30분, ADR-0013) — 관리 화면이 sandcorp-auth 로그인 콜백 뒤 `/api/operator/auth/refresh`로 받는다.
 
-**관리 화면 Operator 로그인**(#21, `apps/tenants/operator_login.py`): `GET /api/auth/authorize`가 state·PKCE(S256)·nonce를 서명된 httpOnly 쿠키(SameSite=Lax, 10분)에 맡기고 sandcorp-auth `/authorize`로 보낸다(`scope=openid profile email login`, `resource=AUTH_RESOURCE`). `GET /api/auth/callback`은 state → 코드 교환(`client_secret_basic` + `code_verifier`) → 액세스 토큰(`login` 스코프·`client_id`) → ID 토큰(EdDSA·`iss`·`aud`=client_id·`exp`·`nonce`·같은 `sub`)을 확인하고, **대표(`acct` 없음, A1) + `admin`**이면 사용자 행 `User(iss, sub)`와 이어진 Operator에 Refresh Family를 열어 `/admin-ui/operator`로 돌려보낸다. 아니면 `?login_error=member|admin|state|exchange|token|denied|config`. sandcorp-auth 토큰은 저장하지 않는다. 일반 사용자 로그인은 #40.
+**관리 화면 Operator 로그인**(#21, `apps/tenants/operator_login.py`): `GET /api/auth/authorize`가 state·PKCE(S256)·nonce를 서명된 httpOnly 쿠키(SameSite=Lax, 10분)에 맡기고 sandcorp-auth `/authorize`로 보낸다(`scope=openid profile email login`, `resource=AUTH_RESOURCE`). `GET /api/auth/callback`은 state → 코드 교환(`client_secret_basic` + `code_verifier`) → 액세스 토큰(`login` 스코프·`client_id`) → ID 토큰(EdDSA·`iss`·`aud`=client_id·`exp`·`nonce`·같은 `sub`)을 확인하고, **대표(`acct` 없음, A1) + `admin`**이면 사용자 행 `User(iss, sub)`와 이어진 Operator에 Refresh Family를 열어 `/admin-ui/operator`로 돌려보낸다. 대표가 아닌데 `admin`이 없으면 `?login_error=admin|state|exchange|token|denied|config`. sandcorp-auth 토큰은 저장하지 않는다.
+
+**고객(일반 사용자) 로그인**(#40, `apps/tenants/members.py`): 같은 콜백이 A1~A3을 통과한 `acct=member`를 받아 `User(iss, sub, acct="member")`를 갱신(이름·이메일 캐시)하고, `AUTH_MEMBER_REDIRECT`(기본 `/admin-ui/tenant`)로 돌려보낸다. 멤버십 1개 → 그 Membership의 Refresh Family(`member_refresh` 쿠키, `/api/tenant/members/auth`), 여럿 → `?select_tenant=1` + 10분 서명 표 `member_ticket`(→ `GET /api/auth/member/tenants`, `POST /api/auth/member/select`), 없음 → `?onboarding=1`(같은 표). 초대 링크(`/api/auth/authorize?invite=<토큰>`)로 시작한 로그인은 먼저 멤버십을 만들고, 실패하면 `?login_error=invite_expired|invite_used|invite_invalid`.
 
 | 엔드포인트 | 인증 | 용도 |
 |------------|------|------|
-| `GET /api/auth/authorize` · `GET /api/auth/callback` | 없음(브라우저 이동) | 관리 화면 Operator 로그인(sandcorp-auth) |
+| `GET /api/auth/authorize[?invite=]` · `GET /api/auth/callback` | 없음(브라우저 이동) | 관리 화면 로그인(sandcorp-auth) — Operator·고객 공통 |
+| `GET /api/auth/member/tenants` · `POST /api/auth/member/select` | `member_ticket` 쿠키 | 콜백 뒤 조직 목록·선택(테넌트 세션 열기) |
 | `POST /api/operator/auth/refresh` · `logout` · `logout-all` | Refresh 쿠키 / Operator | Flow 세션 회전·폐기 |
-| `POST /api/operator/tenants/` | Operator | Tenant 생성 |
+| `POST /api/operator/tenants/` | Operator | Tenant 생성(+ 첫 Admin 초대 링크) |
 | `GET /.well-known/oauth-protected-resource` | 없음 | 보호 리소스 메타데이터(RFC 9728) |
-| `POST /api/tenant/agents/auth/login` | 없음 | TenantAgent JWT |
+| `POST /api/tenant/members/auth/refresh` · `logout` · `logout-all` | Refresh 쿠키 / 멤버 | 테넌트 세션 회전·폐기 |
+| `GET /api/tenant/members/` · `PATCH …/{id}/role` · `PATCH …/{id}/deactivate` · `GET …/me` | 멤버(관리는 Admin) / TENANT_KEY | 팀원 목록·역할·비활성화(마지막 Admin 보호) |
+| `GET·POST /api/tenant/invites/` · `DELETE …/{id}` | 멤버 Admin / TENANT_KEY | 팀원 초대 링크(7일·1회용). TENANT_KEY는 break-glass Admin 초대 |
 | `POST /api/chat/identity` | TENANT_KEY | visitor_id 신원검증 HMAC 해시 발급 |
 | `GET /api/chat/stream?slug=&visitor_id=&hash=` | 없음(slug 공개) | 방문자 SSE 연결(ChatSession) |
 | `POST /api/chat/message` | 세션 | 방문자 메시지(레이트리밋, SSE로 응답) |
-| `PATCH /api/tenant/slug/` | TenantAgent JWT | Tenant Slug 설정 |
-| `PATCH /api/tenant/config/` | TenantAgent JWT | 설정(Provider·HITL·brand·신원검증 등). 임베딩 Provider 변경 시 재임베딩 트리거 |
-| `POST /api/tenant/documents/` | TenantAgent JWT | 파일 업로드(PDF·TXT·이미지·Excel) |
-| `POST /api/tenant/documents/url` | TenantAgent JWT | 웹 URL(들) 인제스션 |
-| `POST /api/tenant/documents/{id}/refetch` | TenantAgent JWT | 웹 Document 재-fetch |
-| `GET /api/tenant/documents/graph/search?q=` | TenantAgent JWT | 엔티티 하이브리드 검색 → 서브그래프 |
-| `GET /api/tenant/documents/graph/status` | TenantAgent JWT | Graph Freshness |
-| `POST /api/tenant/documents/graph/rebuild` | TenantAgent JWT | 엔티티 해소(SAME_AS) 재구축 트리거 |
+| `PATCH /api/tenant/slug/` | 멤버 세션 | Tenant Slug 설정 |
+| `PATCH /api/tenant/config/` | 멤버 세션 | 설정(Provider·HITL·brand·신원검증 등). 임베딩 Provider 변경 시 재임베딩 트리거 |
+| `POST /api/tenant/documents/` | 멤버 세션 | 파일 업로드(PDF·TXT·이미지·Excel) |
+| `POST /api/tenant/documents/url` | 멤버 세션 | 웹 URL(들) 인제스션 |
+| `POST /api/tenant/documents/{id}/refetch` | 멤버 세션 | 웹 Document 재-fetch |
+| `GET /api/tenant/documents/graph/search?q=` | 멤버 세션 | 엔티티 하이브리드 검색 → 서브그래프 |
+| `GET /api/tenant/documents/graph/status` | 멤버 세션 | Graph Freshness |
+| `POST /api/tenant/documents/graph/rebuild` | 멤버 세션 | 엔티티 해소(SAME_AS) 재구축 트리거 |
 
 ---
 

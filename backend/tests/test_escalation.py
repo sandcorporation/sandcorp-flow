@@ -29,7 +29,7 @@ def _agent_client(client, token):
 
 
 @pytest.mark.django_db
-def test_list_escalations_returns_pending_and_claimed(client, tenant_with_key, tenant_agent_token):
+def test_list_escalations_returns_pending_and_claimed(client, tenant_with_key, tenant_admin_token):
     from apps.escalation.models import Escalation, EscalationClaim
 
     tenant, _ = tenant_with_key
@@ -40,7 +40,7 @@ def test_list_escalations_returns_pending_and_claimed(client, tenant_with_key, t
     esc2.status = Escalation.STATUS_CLAIMED
     esc2.save()
 
-    _agent_client(client, tenant_agent_token)
+    _agent_client(client, tenant_admin_token)
     resp = client.get("/api/tenant/escalations/")
 
     assert resp.status_code == 200
@@ -55,7 +55,7 @@ def test_list_escalations_returns_pending_and_claimed(client, tenant_with_key, t
 
 
 @pytest.mark.django_db
-def test_list_escalations_excludes_resolved(client, tenant_with_key, tenant_agent_token):
+def test_list_escalations_excludes_resolved(client, tenant_with_key, tenant_admin_token):
     from apps.escalation.models import Escalation
 
     tenant, _ = tenant_with_key
@@ -64,7 +64,7 @@ def test_list_escalations_excludes_resolved(client, tenant_with_key, tenant_agen
     esc.status = Escalation.STATUS_RESOLVED
     esc.save()
 
-    _agent_client(client, tenant_agent_token)
+    _agent_client(client, tenant_admin_token)
     resp = client.get("/api/tenant/escalations/")
 
     assert resp.status_code == 200
@@ -73,14 +73,14 @@ def test_list_escalations_excludes_resolved(client, tenant_with_key, tenant_agen
 
 
 @pytest.mark.django_db
-def test_claim_escalation_creates_claim(client, tenant_with_key, tenant_agent_token):
+def test_claim_escalation_creates_claim(client, tenant_with_key, tenant_admin_token):
     from apps.escalation.models import Escalation, EscalationClaim
 
     tenant, _ = tenant_with_key
     session = _make_session(tenant, is_hitl=True)
     esc = _make_escalation(session)
 
-    _agent_client(client, tenant_agent_token)
+    _agent_client(client, tenant_admin_token)
     resp = client.post(f"/api/tenant/escalations/{esc.id}/claim")
 
     assert resp.status_code == 200
@@ -90,12 +90,12 @@ def test_claim_escalation_creates_claim(client, tenant_with_key, tenant_agent_to
 
 
 @pytest.mark.django_db
-def test_double_claim_returns_409(client, tenant_with_key, tenant_agent_token):
+def test_double_claim_returns_409(client, tenant_with_key, tenant_admin_token):
     tenant, _ = tenant_with_key
     session = _make_session(tenant, is_hitl=True)
     esc = _make_escalation(session)
 
-    _agent_client(client, tenant_agent_token)
+    _agent_client(client, tenant_admin_token)
     client.post(f"/api/tenant/escalations/{esc.id}/claim")
     resp = client.post(f"/api/tenant/escalations/{esc.id}/claim")
 
@@ -103,14 +103,14 @@ def test_double_claim_returns_409(client, tenant_with_key, tenant_agent_token):
 
 
 @pytest.mark.django_db
-def test_send_message_saves_human_agent_role(client, tenant_with_key, tenant_agent_token):
+def test_send_message_saves_human_agent_role(client, tenant_with_key, tenant_admin_token):
     from apps.chat.models import ChatMessage
 
     tenant, _ = tenant_with_key
     session = _make_session(tenant, is_hitl=True)
     esc = _make_escalation(session)
 
-    _agent_client(client, tenant_agent_token)
+    _agent_client(client, tenant_admin_token)
     resp = client.post(
         f"/api/tenant/escalations/{esc.id}/message",
         {"content": "안녕하세요, 상담원입니다."},
@@ -124,7 +124,7 @@ def test_send_message_saves_human_agent_role(client, tenant_with_key, tenant_age
 
 
 @pytest.mark.django_db
-def test_send_message_publishes_hitl_message_sse(client, tenant_with_key, tenant_agent_token, redis_subscribe):
+def test_send_message_publishes_hitl_message_sse(client, tenant_with_key, tenant_admin_token, redis_subscribe):
     tenant, _ = tenant_with_key
     session = _make_session(tenant, is_hitl=True)
     esc = _make_escalation(session)
@@ -132,7 +132,7 @@ def test_send_message_publishes_hitl_message_sse(client, tenant_with_key, tenant
     # Subscribe before the API call to catch the event
     pubsub = redis_subscribe(f"session:{session.id}")
 
-    _agent_client(client, tenant_agent_token)
+    _agent_client(client, tenant_admin_token)
     client.post(
         f"/api/tenant/escalations/{esc.id}/message",
         {"content": "도움이 필요하신가요?"},
@@ -148,14 +148,11 @@ def test_send_message_publishes_hitl_message_sse(client, tenant_with_key, tenant
 @pytest.mark.django_db
 def test_escalation_sse_stream_returns_event_stream(client, tenant_with_key):
     """GET /api/tenant/escalations/stream?token=<agent_jwt> → SSE 커넥션 확립."""
-    from apps.tenants.models import TenantAgent
-    from apps.tenants.auth import create_tenant_agent_token
+    from tests.utils import make_membership, member_token
 
     tenant, _ = tenant_with_key
-    agent = TenantAgent(tenant=tenant, username="stream-tester")
-    agent.set_password("pass")
-    agent.save()
-    token = create_tenant_agent_token(agent)
+    agent = make_membership(tenant, "member")
+    token = member_token(agent)
 
     resp = client.get(f"/api/tenant/escalations/stream?token={token}")
     assert resp.status_code == 200
@@ -179,19 +176,16 @@ async def test_escalation_stream_delivers_visitor_message_live(tenant_with_key):
     import json
     from django.test import AsyncClient
     from asgiref.sync import sync_to_async
-    from apps.tenants.models import TenantAgent
-    from apps.tenants.auth import create_tenant_agent_token
+    from tests.utils import make_membership, member_token
     from apps.chat.sse import publish_visitor_message
 
     tenant, _ = tenant_with_key
 
     def _agent():
-        a = TenantAgent(tenant=tenant, username="live-stream", role=TenantAgent.ROLE_ADMIN)
-        a.set_password("pass")
-        a.save()
+        a = make_membership(tenant, "admin")
         return a
     agent = await sync_to_async(_agent)()
-    token = create_tenant_agent_token(agent)
+    token = member_token(agent)
 
     resp = await AsyncClient().get(f"/api/tenant/escalations/stream?token={token}")
     assert resp.status_code == 200
@@ -219,7 +213,7 @@ async def test_escalation_stream_delivers_visitor_message_live(tenant_with_key):
 
 
 @pytest.mark.django_db
-def test_typing_indicator_publishes_sse_event(client, tenant_with_key, tenant_agent_token, redis_subscribe):
+def test_typing_indicator_publishes_sse_event(client, tenant_with_key, tenant_admin_token, redis_subscribe):
     """POST /api/tenant/escalations/{id}/typing → Redis에 typing 이벤트가 발행된다."""
     from utils import get_redis_message
     from apps.chat.models import ChatSession
@@ -241,7 +235,7 @@ def test_typing_indicator_publishes_sse_event(client, tenant_with_key, tenant_ag
 
     resp = client.post(
         f"/api/tenant/escalations/{esc.id}/typing",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
 
@@ -252,19 +246,19 @@ def test_typing_indicator_publishes_sse_event(client, tenant_with_key, tenant_ag
 
 
 @pytest.mark.django_db
-def test_typing_indicator_404_for_unknown_escalation(client, tenant_agent_token):
+def test_typing_indicator_404_for_unknown_escalation(client, tenant_admin_token):
     """존재하지 않는 escalation_id로 /typing 요청 시 404를 반환한다."""
     import uuid
     fake_id = str(uuid.uuid4())
     resp = client.post(
         f"/api/tenant/escalations/{fake_id}/typing",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 404
 
 
 @pytest.mark.django_db
-def test_get_escalation_messages_returns_conversation(client, tenant_with_key, tenant_agent_token):
+def test_get_escalation_messages_returns_conversation(client, tenant_with_key, tenant_admin_token):
     """GET /api/tenant/escalations/{id}/messages → 세션의 대화 내역을 반환한다."""
     from apps.chat.models import ChatMessage
 
@@ -275,7 +269,7 @@ def test_get_escalation_messages_returns_conversation(client, tenant_with_key, t
     ChatMessage.objects.create(session=session, role=ChatMessage.ROLE_USER, content="도움이 필요해요")
     ChatMessage.objects.create(session=session, role=ChatMessage.ROLE_ASSISTANT, content="무엇을 도와드릴까요?")
 
-    _agent_client(client, tenant_agent_token)
+    _agent_client(client, tenant_admin_token)
     resp = client.get(f"/api/tenant/escalations/{esc.id}/messages")
 
     assert resp.status_code == 200
@@ -290,10 +284,10 @@ def test_get_escalation_messages_returns_conversation(client, tenant_with_key, t
 
 
 @pytest.mark.django_db
-def test_get_escalation_messages_404_for_unknown(client, tenant_agent_token):
+def test_get_escalation_messages_404_for_unknown(client, tenant_admin_token):
     """존재하지 않는 escalation_id로 /messages 요청 시 404를 반환한다."""
     import uuid
-    _agent_client(client, tenant_agent_token)
+    _agent_client(client, tenant_admin_token)
     resp = client.get(f"/api/tenant/escalations/{uuid.uuid4()}/messages")
     assert resp.status_code == 404
 
@@ -326,7 +320,7 @@ def test_visitor_message_in_hitl_session_publishes_to_hitl_channel(client, tenan
 
 
 @pytest.mark.django_db
-def test_resolve_escalation(client, tenant_with_key, tenant_agent_token, redis_subscribe, drain_events):
+def test_resolve_escalation(client, tenant_with_key, tenant_admin_token, redis_subscribe, drain_events):
     from apps.escalation.models import Escalation
 
     tenant, _ = tenant_with_key
@@ -335,7 +329,7 @@ def test_resolve_escalation(client, tenant_with_key, tenant_agent_token, redis_s
 
     pubsub = redis_subscribe(f"session:{session.id}")
 
-    _agent_client(client, tenant_agent_token)
+    _agent_client(client, tenant_admin_token)
     resp = client.post(f"/api/tenant/escalations/{esc.id}/resolve")
 
     assert resp.status_code == 200

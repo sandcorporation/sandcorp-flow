@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
-  startOperatorLogin, tenantAgentLogin, operatorLogout, agentLogout,
+  startOperatorLogin, selectTenant, operatorLogout, agentLogout,
   claimEscalation, getSessionCheckpoint,
 } from './api'
 import { getAccess, setAccess } from './auth'
@@ -35,9 +35,10 @@ describe('로그인 토큰 부수효과', () => {
     }
   })
 
-  it('tenantAgentLogin이 access(agent)를 저장한다', async () => {
+  it('selectTenant(콜백 뒤 조직 선택, #40)가 access(agent)를 저장한다', async () => {
     globalThis.fetch = vi.fn().mockResolvedValueOnce(ok({ access_token: 'ag-acc' }))
-    await tenantAgentLogin('Acme', 'alice', 'pw')
+    await selectTenant('t-1')
+    expect(String(vi.mocked(globalThis.fetch).mock.calls[0][0])).toContain('/api/auth/member/select')
     expect(getAccess('agent')).toBe('ag-acc')
   })
 })

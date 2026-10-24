@@ -21,16 +21,21 @@ import {
   appsTenantsApiProviderQuickSetup,
 } from './generated/endpoints/tenant/tenant'
 import {
-  appsTenantsApiAgentLogin,
-  appsTenantsApiAgentSignup,
-  appsTenantsApiAgentLogout,
-  appsTenantsApiAgentLogoutAll,
-  appsTenantsApiListAgents,
-  appsTenantsApiCreateAgent,
-  appsTenantsApiChangeAgentRole,
-  appsTenantsApiDeactivateAgent,
-  appsTenantsApiChangePassword,
-} from './generated/endpoints/tenant-agents/tenant-agents'
+  appsTenantsApiMemberLogout,
+  appsTenantsApiMemberLogoutAll,
+  appsTenantsApiListMembers,
+  appsTenantsApiChangeMemberRole,
+  appsTenantsApiDeactivateMember,
+} from './generated/endpoints/tenant-members/tenant-members'
+import {
+  appsTenantsApiListInvites,
+  appsTenantsApiCreateTenantInvite,
+  appsTenantsApiRevokeTenantInvite,
+} from './generated/endpoints/tenant-invites/tenant-invites'
+import {
+  appsTenantsApiMemberTenants,
+  appsTenantsApiMemberSelectTenant,
+} from './generated/endpoints/auth/auth'
 import {
   appsUsageApiTenantUsage,
   appsUsageApiOperatorUsage,
@@ -102,39 +107,52 @@ export async function deleteTenant(id: string) {
   await appsTenantsApiDeleteTenant(id)
 }
 
-// ── TenantAgent auth + management ─────────────────────────────────────────
+// ── 멤버(고객) 로그인 + 팀원·초대 관리 (#40) ─────────────────────────────────
+// 로그인은 sandcorp-auth로 가는 브라우저 이동이다. 콜백이 멤버십 수에 따라 세션을 열거나
+// ?select_tenant=1 / ?onboarding=1 / ?login_error= 를 붙여 /admin-ui/tenant 로 돌려보낸다.
 
-export async function tenantAgentLogin(tenantName: string, username: string, password: string) {
-  const data = (await appsTenantsApiAgentLogin({ tenant_name: tenantName, username, password })).data as { access_token: string }
+export function memberLoginUrl(): string {
+  return `${import.meta.env.VITE_API_BASE || ''}/api/auth/authorize`
+}
+export async function memberTenants() {
+  return (await appsTenantsApiMemberTenants()).data as {
+    name: string | null; email: string | null; tenants: { tenant_id: string; tenant_name: string; role: string }[]
+  }
+}
+export async function selectTenant(tenantId: string) {
+  const data = (await appsTenantsApiMemberSelectTenant({ tenant_id: tenantId })).data as { access_token: string }
   setAccess('agent', data.access_token)
   return data
 }
-export async function tenantSignup(tenantName: string, username: string, password: string) {
-  const data = (await appsTenantsApiAgentSignup({ tenant_name: tenantName, username, password })).data as { access_token: string }
-  setAccess('agent', data.access_token)  // 가입 즉시 로그인
-  return data
-}
 export async function agentLogout() {
-  await appsTenantsApiAgentLogout()
+  await appsTenantsApiMemberLogout()
   clearAccess('agent')
 }
 export async function agentLogoutAll() {
-  await appsTenantsApiAgentLogoutAll()
+  await appsTenantsApiMemberLogoutAll()
   clearAccess('agent')
 }
-export async function listAgents() {
-  return (await appsTenantsApiListAgents()).data
+export async function listMembers() {
+  return (await appsTenantsApiListMembers()).data
 }
-export async function createAgent(username: string, role: 'admin' | 'member' = 'member') {
-  return (await appsTenantsApiCreateAgent({ username, role })).data
+export async function changeMemberRole(memberId: string, role: 'admin' | 'member') {
+  return (await appsTenantsApiChangeMemberRole(memberId, { role })).data
 }
-export async function changeAgentRole(agentId: string, role: 'admin' | 'member') {
-  return (await appsTenantsApiChangeAgentRole(agentId, { role })).data
+export async function deactivateMember(memberId: string) {
+  return (await appsTenantsApiDeactivateMember(memberId)).data
 }
-export async function deactivateAgent(agentId: string) {
-  return (await appsTenantsApiDeactivateAgent(agentId)).data
+export async function listInvites() {
+  return (await appsTenantsApiListInvites()).data
 }
-// 현재 로그인한 TenantAgent의 역할 — Access Token(JWT)의 role 클레임에서 읽어 UI 게이팅에 쓴다.
+export async function createInvite(role: 'admin' | 'member' = 'member') {
+  return (await appsTenantsApiCreateTenantInvite({ role })).data as {
+    id: string; role: string; expires_at: string; created_at: string; token: string; url: string
+  }
+}
+export async function revokeInvite(inviteId: string) {
+  await appsTenantsApiRevokeTenantInvite(inviteId)
+}
+// 현재 로그인한 멤버의 역할 — Access Token(JWT)의 role 클레임에서 읽어 UI 게이팅에 쓴다.
 export function currentAgentRole(): 'admin' | 'member' | null {
   const tok = getAccess('agent')
   if (!tok) return null
@@ -145,18 +163,6 @@ export function currentAgentRole(): 'admin' | 'member' | null {
     return null
   }
 }
-export async function changePassword(currentPassword: string, newPassword: string) {
-  try {
-    return (await appsTenantsApiChangePassword({ current_password: currentPassword, new_password: newPassword })).data
-  } catch (e) {
-    // 백엔드가 사유를 detail로 준다(현재 비번 오류 / 비밀번호 정책 위반 등) — 그대로 노출.
-    if (e instanceof HttpError && e.body && typeof e.body === 'object' && 'detail' in e.body) {
-      throw new Error(String((e.body as { detail: unknown }).detail))
-    }
-    throw new Error('비밀번호 변경에 실패했습니다.')
-  }
-}
-
 // ── Tenant Config ─────────────────────────────────────────────────────────
 
 export async function getTenantConfig() {

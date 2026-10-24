@@ -99,20 +99,20 @@ async def test_hitl_disabled_never_escalates_and_answers(tenant_with_key, fake_c
 
 
 @pytest.mark.django_db
-def test_hitl_enabled_toggle_settable_via_config_api(client, tenant_agent_token):
+def test_hitl_enabled_toggle_settable_via_config_api(client, tenant_admin_token):
     """Tenant가 어드민 config API로 hitl_enabled를 끄고 다시 조회할 수 있다(기본 True)."""
-    g0 = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
+    g0 = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
     assert g0.json()["hitl_enabled"] is True
 
     r = client.patch(
         "/api/tenant/config/",
         {"hitl_enabled": False},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert r.status_code == 200
 
-    g1 = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
+    g1 = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
     assert g1.json()["hitl_enabled"] is False
 
 
@@ -170,7 +170,7 @@ async def test_hitl_start_sse_published_on_escalation(tenant_with_key, redis_sub
 # ── Issue 22: Chat API HITL 모드 차단 ────────────────────────────────────
 
 @pytest.mark.django_db(transaction=True)
-async def test_ai_resumes_after_hitl_resolved(tenant_with_key, tenant_agent_token):
+async def test_ai_resumes_after_hitl_resolved(tenant_with_key, tenant_admin_token):
     """Escalation이 resolved되면 is_hitl=False로 전환되어 AI 응답이 재개된다."""
     from django.test import AsyncClient
     from apps.agent.graph import run_chat_agent_async
@@ -188,7 +188,7 @@ async def test_ai_resumes_after_hitl_resolved(tenant_with_key, tenant_agent_toke
     aclient = AsyncClient()
     resp = await aclient.post(
         f"/api/tenant/escalations/{esc.id}/resolve",
-        headers={"Authorization": f"Bearer {tenant_agent_token}"},
+        headers={"Authorization": f"Bearer {tenant_admin_token}"},
     )
     assert resp.status_code == 200
 

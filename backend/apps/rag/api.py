@@ -5,11 +5,11 @@ from ninja import Router, Schema, File, Form, UploadedFile
 from ninja.errors import HttpError
 from django.conf import settings
 from django.shortcuts import get_object_or_404
-from apps.tenants.auth import tenant_agent_auth
+from apps.tenants.auth import member_auth
 from apps.rag.models import Document
 from apps.rag.ingesters import MIME_TO_INGESTER
 
-rag_router = Router(tags=["rag"], auth=tenant_agent_auth)
+rag_router = Router(tags=["rag"], auth=member_auth)
 
 
 class DocumentOut(Schema):

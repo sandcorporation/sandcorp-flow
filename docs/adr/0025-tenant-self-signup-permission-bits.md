@@ -1,7 +1,7 @@
 # ADR-0025: Tenant Self-Signup + 권한 비트(Admin/Member) 인가 모델
 
 ## Status
-Accepted
+Accepted — 단, 공개 셀프 가입(A)과 TenantAgent 자체 계정은 ADR-0028 「고객 토큰 검증」으로 대체됨(#40). 권한 비트(C)·마지막 Admin 보호와 TENANT_KEY break-glass(D)는 Membership 위에서 그대로 유효하다.
 
 ## Context
 지금까지 Tenant 계정은 **Operator가 생성해 자격증명을 전달**했고, TenantAgent에는 **역할 구분이 전혀 없어**

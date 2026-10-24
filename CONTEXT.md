@@ -8,17 +8,14 @@ Sandcorp Flow(`flow.sandcorp.co.kr`)는 옛 Embed Chat을 넓힌 셀프 가입 S
 플랫폼 자체를 운영하는 쪽(대표). 어드민 페이지 최상위 권한 보유. Tenant 정지, 전체 현황 모니터링 담당. **sandcorp-auth에서 받은 대표 토큰의 Flow 리소스 `admin` 스코프가 곧 Operator 권한**이다(ADR-0028). Flow 안에 Operator 비밀번호는 두지 않는다 — 관리 화면 로그인은 sandcorp-auth 기밀 클라이언트 콜백뿐이고, 대표(A1) + `admin`일 때만 Flow 세션(Access + Refresh Family)을 연다(#21). Flow 쪽 Operator 행은 **사용자**(`User`, External Identity `(iss, sub)`)에 1:1로 이어진다.
 
 **Tenant**
-챗봇을 자기 사이트에 embed해서 쓰는 B2B 계약 고객사. 자기 RAG Knowledge Base, Visitor Memory를 어드민 페이지에서 직접 관리. `Tenant.name`은 표시명이자 **전역 unique한 조직 로그인 식별자**(어드민 로그인 시 `name + username`으로 조직을 특정한다 — 대소문자·공백 무관 충돌 처리). 공개 챗봇 URL용 Slug와는 별개다(name=로그인, slug=공개 URL).
-
-**TenantAgent** _(자체 계정 부분은 걷어낼 대상 — ADR-0028)_
-Tenant 조직 소속의 개별 상담원 계정. 고유한 username/password를 갖고, Tenant 어드민 UI에 개인 자격으로 로그인한다. HITL `EscalationClaim.claimed_by` 식별자로 사용되어 누가 어떤 세션을 담당하는지 추적한다. TENANT_KEY(서버사이드 시크릿)와 구분되며, TenantAgent는 조직 내 여러 명이 존재할 수 있다. 각 TenantAgent는 하나의 **Role**(Tenant Admin / Tenant Member)을 가진다.
+챗봇을 자기 사이트에 embed해서 쓰는 B2B 계약 고객사. 자기 RAG Knowledge Base, Visitor Memory를 어드민 페이지에서 직접 관리. `Tenant.name`은 표시명이며 전역 unique다(대소문자·공백 무관 충돌 처리). 로그인에는 쓰지 않는다 — 고객은 sandcorp-auth로 로그인하고 Membership으로 조직에 들어온다. 공개 챗봇 URL용 Slug와는 별개다.
 
 **Tenant Admin / Tenant Member**
-TenantAgent의 권한 등급. **Tenant Admin**은 조직 내 모든 권한을 가진다(팀원 관리·TENANT_KEY 회전·Slug 변경 포함). **Tenant Member**는 일상 운영 권한 전체를 가지되 *조직 단위·되돌리기 어려운* 행위는 제외한다 — 팀원 관리, TENANT_KEY 회전, Slug 변경. 권한 검사는 역할이 아니라 **Permission** 단위로 이뤄지며, 역할은 그 권한 집합의 프리셋이다(추후 세분화 여지). 한 조직은 항상 최소 1명의 활성 Tenant Admin을 유지한다(마지막 Admin은 비활성화·강등 불가 — lockout 방지).
+Membership의 권한 등급. **Tenant Admin**은 조직 내 모든 권한을 가진다(팀원 관리·TENANT_KEY 회전·Slug 변경 포함). **Tenant Member**는 일상 운영 권한 전체를 가지되 *조직 단위·되돌리기 어려운* 행위는 제외한다 — 팀원 관리, TENANT_KEY 회전, Slug 변경. 권한 검사는 역할이 아니라 **Permission** 단위로 이뤄지며, 역할은 그 권한 집합의 프리셋이다(추후 세분화 여지). 한 조직은 항상 최소 1명의 활성 Tenant Admin을 유지한다(마지막 Admin은 비활성화·강등 불가 — lockout 방지).
 _Avoid_: Operator(플랫폼 운영자 — Tenant 외부); "관리자"만으로 Operator/Tenant Admin 혼용 금지
 
 **Permission**
-authz의 최소 단위(권한 비트). 엔드포인트는 역할이 아니라 필요한 Permission으로 가드된다(예: 팀원 관리=`agents.manage`, 키 회전=`tenant_key.rotate`, Slug 변경=`slug.change`). Role은 Permission 묶음의 프리셋이라, 나중에 per-agent 세분화를 도입해도 가드 지점은 불변이다.
+authz의 최소 단위(권한 비트). 엔드포인트는 역할이 아니라 필요한 Permission으로 가드된다(예: 팀원 관리=`agents.manage`, 키 회전=`tenant_key.rotate`, Slug 변경=`slug.change`). Role은 Permission 묶음의 프리셋이라, 나중에 per-member 세분화를 도입해도 가드 지점은 불변이다.
 
 **Visitor**
 Tenant 사이트에서 챗봇을 실제로 사용하는 최종 사용자. Tenant 시스템의 회원 ID일 수도 있고, 익명 사용자일 수도 있음.
@@ -38,13 +35,14 @@ _Avoid_: session_id(이건 정체성이지 연결 단위 세션이 아니다)
 _Avoid_: EmbedToken(per-session 단기 토큰 — 폐지됨); 토큰(해시는 무상태·무기한)
 
 **TENANT_KEY**
-Tenant를 식별하는 서버사이드 전용 시크릿. 절대 브라우저에 노출되지 않음. 두 가지 용도로만 사용: (1) Tenant 서버가 Identity Verification HMAC API를 호출할 때, (2) TenantAgent 계정을 API로 생성할 때. 어드민 UI 로그인에는 사용하지 않음.
+Tenant를 식별하는 서버사이드 전용 시크릿. 절대 브라우저에 노출되지 않음. 두 가지 용도로만 사용: (1) Tenant 서버가 Identity Verification HMAC API를 호출할 때, (2) **break-glass** — Admin 등가 주체로 팀원·초대 API를 부를 때(마지막 Admin을 잃은 조직이 TENANT_KEY로 **Admin 초대 링크**를 발급해 복구한다, ADR-0025 D). 어드민 UI 로그인에는 사용하지 않음.
 
-**TenantAgent 자격증명** _(걷어낼 대상 — ADR-0028. 새로 만들거나 넓히지 않는다. 고객 로그인은 sandcorp-auth 다중 사용자화 뒤 External Identity로 바뀐다)_
-TenantAgent가 어드민 UI에 로그인할 때 사용하는 `tenant_name + username + password`. Tenant는 **공개 Self-Signup**으로 직접 가입한다 — 조직 이름(unique)·username·password를 입력하면 Tenant와 그 조직의 **첫 Tenant Admin** TenantAgent가 생성된다(Operator 개입 없음). 이후 팀원(Tenant Member 등) 계정은 Tenant Admin이 어드민 UI "팀원" 탭에서, 또는 TENANT_KEY로 인증된 API로 생성한다(username + 임시 password). 로그인 성공 시 Access Token + Refresh Token을 발급받는다. (Operator가 Tenant를 직접 프로비저닝하는 경로도 공존한다.)
+**초대 링크** (Invite)
+Tenant Admin(또는 TENANT_KEY)이 만드는 팀원 초대. 추측 불가 토큰(256비트, 해시만 저장)·만료 7일·1회용·역할 지정이다. 받은 사람이 링크(`/api/auth/authorize?invite=…`)로 sandcorp-auth에 로그인하면 그 Tenant의 Membership이 생긴다. 이메일은 보내지 않는다 — Admin이 직접 전달한다. Operator가 Tenant를 만들 때도 첫 Admin 초대 링크가 나온다.
+_Avoid_: 임시 비밀번호(폐지 — Flow는 비밀번호를 만들어 주지 않는다), 공개 셀프 가입(폐지 — 테넌트 만들기는 온보딩)
 
 **Access Token**
-어드민 UI(Operator·TenantAgent)가 API 호출에 쓰는 단수명 Bearer 자격증명. 탈취 시 피해를 줄이려 짧게(30분) 유지하며 브라우저 sessionStorage에만 둔다. 만료되면 Refresh Token으로 무중단 재발급한다.
+어드민 UI(Operator·멤버)가 API 호출에 쓰는 단수명 Bearer 자격증명. 탈취 시 피해를 줄이려 짧게(30분) 유지하며 브라우저 sessionStorage에만 둔다. 만료되면 Refresh Token으로 무중단 재발급한다.
 _Avoid_: Refresh Token(장수명·재발급 전용); 24시간 JWT 단일토큰(구 방식 — 폐지)
 
 **Refresh Token**
@@ -52,7 +50,7 @@ Access Token을 재발급받기 위한 장수명 자격증명. httpOnly 쿠키�
 _Avoid_: Access Token(단수명·API 호출용); TENANT_KEY(위젯용 서버사이드 키 — 사람 로그인 세션 아님)
 
 **Session Family**
-한 번의 로그인에서 시작되는, 한 기기(브라우저)의 Refresh Token 회전 체인. "로그인 1회 = Family 1개"이며 한 주체(Operator/TenantAgent)는 여러 기기에서 동시에 여러 Family를 가질 수 있다. 회전·재사용 감지·강제 폐기가 모두 Family 단위라 한 기기의 토큰 도난이 다른 기기 세션으로 번지지 않는다. 최초 로그인 시점 +14일 **절대 만료 상한**을 가지며 회전해도 연장되지 않는다(탈취자가 무한 갱신으로 세션을 영속화하는 것을 막는다). 비밀번호 변경 시 해당 주체의 전 Family가 일괄 폐기된다.
+한 번의 로그인에서 시작되는, 한 기기(브라우저)의 Refresh Token 회전 체인. "로그인 1회 = Family 1개"이며 한 주체(Operator/Membership)는 여러 기기에서 동시에 여러 Family를 가질 수 있다. 회전·재사용 감지·강제 폐기가 모두 Family 단위라 한 기기의 토큰 도난이 다른 기기 세션으로 번지지 않는다. 최초 로그인 시점 +14일 **절대 만료 상한**을 가지며 회전해도 연장되지 않는다(탈취자가 무한 갱신으로 세션을 영속화하는 것을 막는다). 「모든 기기에서 로그아웃」이나 멤버 비활성화 시 해당 주체의 전 Family가 일괄 폐기된다. 멤버 세션의 주체는 사용자가 아니라 Membership이다 — 조직마다 세션이 따로다.
 _Avoid_: 슬라이딩 세션(절대 상한이라 회전이 만료를 밀지 않음); 단일 세션(주체당 여러 기기 Family 공존)
 
 **EmbedToken** _(폐지 예정 — A1)_
@@ -171,7 +169,7 @@ Flow 사용자의 신원. sandcorp-auth가 발급한 액세스 토큰의 `(iss, 
 _Avoid_: username·tenant_name을 신원으로 쓰기, 「계정」(Flow에는 자체 계정이 없다)
 
 **Membership**
-External Identity와 Tenant의 연결과 그 역할(Tenant Admin / Tenant Member). 테넌트 역할은 sandcorp-auth 스코프가 아니라 Flow 안의 이 행으로 관리하며, 권한 비트 가드와 「마지막 Admin 보호」를 그대로 따른다.
+External Identity(사용자)와 Tenant의 연결과 그 역할(Tenant Admin / Tenant Member)·활성 여부. 옛 TenantAgent(조직마다 따로 둔 username/password 계정)를 대신한다. 테넌트 역할은 sandcorp-auth 스코프가 아니라 Flow 안의 이 행으로 관리하며, 권한 비트 가드와 「마지막 Admin 보호」를 그대로 따른다. HITL `EscalationClaim.claimed_by`도 Membership을 가리킨다(멤버십이 지워지면 비운다). 로그인 콜백은 멤버십이 하나면 그 조직 세션을, 여럿이면 조직 선택을, 없으면 「온보딩 필요」를 돌려준다. 사용자가 sandcorp-auth에서 탈퇴하면 `forget_user(iss, sub)`가 사용자·멤버십·세션을 지운다.
 _Avoid_: 스코프로 역할 표현
 
 **Resource Token**

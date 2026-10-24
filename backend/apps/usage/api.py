@@ -7,10 +7,10 @@ from datetime import date, timedelta
 from django.db.models import Sum
 from ninja import Router, Schema
 
-from apps.tenants.auth import operator_auth, tenant_agent_auth
+from apps.tenants.auth import operator_auth, member_auth
 from .models import TokenUsage
 
-tenant_usage_router = Router(tags=["usage"], auth=tenant_agent_auth)
+tenant_usage_router = Router(tags=["usage"], auth=member_auth)
 operator_usage_router = Router(tags=["usage"], auth=operator_auth)
 
 

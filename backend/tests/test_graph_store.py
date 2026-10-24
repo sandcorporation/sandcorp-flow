@@ -48,7 +48,7 @@ def test_graphstore_isolates_mentions_by_tenant(tenant_ids):
 # ── Issue 61/79: GraphIngester — 업로드 → 그래프 Mention/관계 (Fake 추출) ──────
 
 @pytest.mark.django_db
-def test_upload_builds_graph_mentions_with_provenance(client, tenant_agent_token, tenant_with_key):
+def test_upload_builds_graph_mentions_with_provenance(client, tenant_admin_token, tenant_with_key):
     """문서 업로드 → 추출된 Mention/관계가 그래프에 생기고 출처 Document가 기록된다."""
     from apps.rag.graph_store import GraphStore
 
@@ -59,7 +59,7 @@ def test_upload_builds_graph_mentions_with_provenance(client, tenant_agent_token
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -81,7 +81,7 @@ def test_upload_builds_graph_mentions_with_provenance(client, tenant_agent_token
 
 
 @pytest.mark.django_db
-def test_upload_graph_is_tenant_isolated(client, tenant_agent_token, tenant_with_key):
+def test_upload_graph_is_tenant_isolated(client, tenant_admin_token, tenant_with_key):
     """업로드로 만들어진 그래프가 다른 Tenant에게 보이지 않는다."""
     import secrets
     from apps.tenants.models import Tenant
@@ -93,7 +93,7 @@ def test_upload_graph_is_tenant_isolated(client, tenant_agent_token, tenant_with
     client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
 
     raw2 = secrets.token_urlsafe(32)

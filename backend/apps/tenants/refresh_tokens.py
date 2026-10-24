@@ -13,7 +13,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from apps.tenants.models import Operator, TenantAgent, RefreshToken
+from apps.tenants.models import Membership, Operator, RefreshToken
 
 REFRESH_ABSOLUTE_LIFETIME = timedelta(days=14)
 
@@ -29,8 +29,8 @@ def _hash(raw: str) -> str:
 def _subject_kwargs(subject):
     if isinstance(subject, Operator):
         return {"operator": subject}
-    if isinstance(subject, TenantAgent):
-        return {"tenant_agent": subject}
+    if isinstance(subject, Membership):
+        return {"membership": subject}
     raise TypeError(f"지원하지 않는 subject 타입: {type(subject)!r}")
 
 
@@ -66,8 +66,8 @@ def rotate(raw: str):
         raise RefreshRejected()
     row.used = True
     row.save(update_fields=["used"])
-    subject = row.operator or row.tenant_agent
-    subject_kwargs = {"operator": row.operator} if row.operator_id else {"tenant_agent": row.tenant_agent}
+    subject = row.operator or row.membership
+    subject_kwargs = {"operator": row.operator} if row.operator_id else {"membership": row.membership}
     new_raw = _issue_in_family(subject_kwargs, row.family_id, row.family_expires_at)
     return subject, new_raw
 

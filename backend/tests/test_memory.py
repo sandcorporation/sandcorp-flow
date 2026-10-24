@@ -38,7 +38,7 @@ def test_memory_tenant_isolation(tenant_with_key):
 
 
 @pytest.mark.django_db
-def test_list_memories_api(client, tenant_agent_token, tenant_with_key):
+def test_list_memories_api(client, tenant_admin_token, tenant_with_key):
     from apps.memory.manager import upsert_memory
 
     tenant, _ = tenant_with_key
@@ -46,14 +46,14 @@ def test_list_memories_api(client, tenant_agent_token, tenant_with_key):
 
     response = client.get(
         "/api/tenant/visitors/v-api/memory/",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert response.status_code == 200
     assert len(response.json()) >= 1
 
 
 @pytest.mark.django_db
-def test_delete_memory_api(client, tenant_agent_token, tenant_with_key):
+def test_delete_memory_api(client, tenant_admin_token, tenant_with_key):
     from apps.memory.manager import upsert_memory
 
     tenant, _ = tenant_with_key
@@ -61,18 +61,18 @@ def test_delete_memory_api(client, tenant_agent_token, tenant_with_key):
 
     response = client.delete(
         f"/api/tenant/visitors/v-del/memory/{mem.id}",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert response.status_code == 204
 
 
 @pytest.mark.django_db
-def test_tenant_config_update(client, tenant_agent_token):
+def test_tenant_config_update(client, tenant_admin_token):
     response = client.patch(
         "/api/tenant/config/",
         {"model_id": "openai/gpt-4o", "system_prompt": "You are a sales assistant."},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert response.status_code == 200
     data = response.json()
@@ -81,7 +81,7 @@ def test_tenant_config_update(client, tenant_agent_token):
 
 
 @pytest.mark.django_db
-def test_update_memory_api(client, tenant_agent_token, tenant_with_key):
+def test_update_memory_api(client, tenant_admin_token, tenant_with_key):
     """PATCH /api/tenant/visitors/{visitor_id}/memory/{memory_id} → key/value 업데이트."""
     from apps.memory.manager import upsert_memory
     from apps.memory.models import VisitorMemory
@@ -93,7 +93,7 @@ def test_update_memory_api(client, tenant_agent_token, tenant_with_key):
         f"/api/tenant/visitors/v-update/memory/{mem.id}",
         {"key": "color", "value": "red"},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert response.status_code == 200
     data = response.json()
@@ -105,7 +105,7 @@ def test_update_memory_api(client, tenant_agent_token, tenant_with_key):
 
 
 @pytest.mark.django_db
-def test_memory_api_visitor_isolation(client, tenant_agent_token, tenant_with_key):
+def test_memory_api_visitor_isolation(client, tenant_admin_token, tenant_with_key):
     """다른 visitor_id의 메모리는 수정·삭제할 수 없다."""
     from apps.memory.manager import upsert_memory
 
@@ -117,19 +117,19 @@ def test_memory_api_visitor_isolation(client, tenant_agent_token, tenant_with_ke
         f"/api/tenant/visitors/v-bob/memory/{mem.id}",
         {"key": "name", "value": "Hacked"},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert response.status_code == 404
 
 
 @pytest.mark.django_db
-def test_delete_memory_api_returns_404_for_unknown_id(client, tenant_agent_token):
+def test_delete_memory_api_returns_404_for_unknown_id(client, tenant_admin_token):
     """존재하지 않는 memory_id로 DELETE 요청 시 404를 반환한다."""
     import uuid
     fake_id = str(uuid.uuid4())
     response = client.delete(
         f"/api/tenant/visitors/v-nobody/memory/{fake_id}",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert response.status_code == 404
 

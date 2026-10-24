@@ -4,7 +4,7 @@ import pytest
 # ── Issue 84: Tenant Slug — 공개 URL용 고유·URL-safe 식별자 ────────────────────
 
 @pytest.mark.django_db
-def test_tenant_sets_slug_via_api(client, tenant_with_key, tenant_agent_token):
+def test_tenant_sets_slug_via_api(client, tenant_with_key, tenant_admin_token):
     """Tenant가 어드민에서 유효한 slug를 설정하면 저장된다 (표시명과 독립)."""
     tenant, _ = tenant_with_key
 
@@ -12,7 +12,7 @@ def test_tenant_sets_slug_via_api(client, tenant_with_key, tenant_agent_token):
         "/api/tenant/slug/",
         {"slug": "abc-shop"},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
 
@@ -22,7 +22,7 @@ def test_tenant_sets_slug_via_api(client, tenant_with_key, tenant_agent_token):
 
 
 @pytest.mark.django_db
-def test_invalid_slug_format_rejected(client, tenant_with_key, tenant_agent_token):
+def test_invalid_slug_format_rejected(client, tenant_with_key, tenant_admin_token):
     """형식 위반(공백·특수문자·선후행/연속 하이픈·자모·한자·이모지)은 거부되고 저장되지 않는다.
 
     (대문자는 이제 허용 — issue 187. 한글 관련 거부는 아래 한글 슬러그 테스트가 함께 검증.)"""
@@ -33,7 +33,7 @@ def test_invalid_slug_format_rejected(client, tenant_with_key, tenant_agent_toke
             "/api/tenant/slug/",
             {"slug": bad},
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
         )
         assert resp.status_code == 400, f"{bad!r} 는 거부되어야 한다 (got {resp.status_code})"
 
@@ -42,7 +42,7 @@ def test_invalid_slug_format_rejected(client, tenant_with_key, tenant_agent_toke
 
 
 @pytest.mark.django_db
-def test_reserved_slug_rejected(client, tenant_with_key, tenant_agent_token):
+def test_reserved_slug_rejected(client, tenant_with_key, tenant_admin_token):
     """예약어(admin·api·chatbot 등)는 라우트 충돌 방지를 위해 거부된다."""
     tenant, _ = tenant_with_key
 
@@ -51,7 +51,7 @@ def test_reserved_slug_rejected(client, tenant_with_key, tenant_agent_token):
             "/api/tenant/slug/",
             {"slug": reserved},
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
         )
         assert resp.status_code == 400, f"{reserved!r} 예약어는 거부되어야 한다"
 
@@ -60,27 +60,25 @@ def test_reserved_slug_rejected(client, tenant_with_key, tenant_agent_token):
 
 
 def _second_tenant_token():
-    """별도 Tenant + 그 TenantAgent 토큰을 만든다 (전역 unique 테스트용)."""
+    """별도 Tenant + 그 Admin 멤버 토큰을 만든다 (전역 unique 테스트용)."""
     import secrets
-    from apps.tenants.models import Tenant, TenantAgent
-    from apps.tenants.auth import create_tenant_agent_token
+    from apps.tenants.models import Tenant
+    from tests.utils import make_membership, member_token
 
     t2 = Tenant.objects.create_with_key(name="Other Co", raw_key=secrets.token_urlsafe(32))
-    agent = TenantAgent(tenant=t2, username="agent2", role=TenantAgent.ROLE_ADMIN)  # slug 변경은 Admin
-    agent.set_password("pass")
-    agent.save()
-    return t2, create_tenant_agent_token(agent)
+    agent = make_membership(t2, "admin")  # slug 변경은 Admin
+    return t2, member_token(agent)
 
 
 @pytest.mark.django_db
-def test_duplicate_slug_rejected_globally(client, tenant_with_key, tenant_agent_token):
+def test_duplicate_slug_rejected_globally(client, tenant_with_key, tenant_admin_token):
     """이미 다른 Tenant가 쓰는 slug는 전역 고유성으로 거부된다."""
     tenant1, _ = tenant_with_key
     resp1 = client.patch(
         "/api/tenant/slug/",
         {"slug": "shared-name"},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp1.status_code == 200
 
@@ -98,7 +96,7 @@ def test_duplicate_slug_rejected_globally(client, tenant_with_key, tenant_agent_
 
 
 @pytest.mark.django_db
-def test_slug_resolves_to_active_tenant(client, tenant_with_key, tenant_agent_token):
+def test_slug_resolves_to_active_tenant(client, tenant_with_key, tenant_admin_token):
     """slug로 활성 Tenant를 조회한다. 미존재·정지된 Tenant는 None (85 연결 경로가 사용)."""
     from apps.tenants.models import Tenant
 
@@ -107,7 +105,7 @@ def test_slug_resolves_to_active_tenant(client, tenant_with_key, tenant_agent_to
         "/api/tenant/slug/",
         {"slug": "abc-shop"},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
 
     resolved = Tenant.resolve_slug("abc-shop")
@@ -168,13 +166,13 @@ def test_slug_too_long_rejected():
 
 
 @pytest.mark.django_db
-def test_korean_slug_via_api(client, tenant_with_key, tenant_agent_token):
+def test_korean_slug_via_api(client, tenant_with_key, tenant_admin_token):
     """한글 슬러그를 등록하고 그 한글로 조회된다."""
     from apps.tenants.models import Tenant
     tenant, _ = tenant_with_key
     resp = client.patch(
         "/api/tenant/slug/", {"slug": "우리가게"},
-        content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     tenant.refresh_from_db()
@@ -183,13 +181,13 @@ def test_korean_slug_via_api(client, tenant_with_key, tenant_agent_token):
 
 
 @pytest.mark.django_db
-def test_slug_resolve_and_duplicate_are_case_insensitive(client, tenant_with_key, tenant_agent_token):
+def test_slug_resolve_and_duplicate_are_case_insensitive(client, tenant_with_key, tenant_admin_token):
     """원형은 보존하되 조회·중복은 대소문자 무시다."""
     from apps.tenants.models import Tenant
     tenant, _ = tenant_with_key
     resp = client.patch(
         "/api/tenant/slug/", {"slug": "MyStore"},
-        content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     tenant.refresh_from_db()
@@ -207,7 +205,7 @@ def test_slug_resolve_and_duplicate_are_case_insensitive(client, tenant_with_key
 
 
 @pytest.mark.django_db
-def test_nfd_slug_saved_as_nfc(client, tenant_with_key, tenant_agent_token):
+def test_nfd_slug_saved_as_nfc(client, tenant_with_key, tenant_admin_token):
     """자모 분리(NFD) 입력은 완성형(NFC)으로 저장된다."""
     import unicodedata
     from apps.tenants.models import Tenant
@@ -215,7 +213,7 @@ def test_nfd_slug_saved_as_nfc(client, tenant_with_key, tenant_agent_token):
     nfd = unicodedata.normalize("NFD", "강남점")
     resp = client.patch(
         "/api/tenant/slug/", {"slug": nfd},
-        content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     tenant.refresh_from_db()
@@ -224,19 +222,19 @@ def test_nfd_slug_saved_as_nfc(client, tenant_with_key, tenant_agent_token):
 
 
 @pytest.mark.django_db
-def test_get_config_includes_slug(client, tenant_with_key, tenant_agent_token):
+def test_get_config_includes_slug(client, tenant_with_key, tenant_admin_token):
     """config 조회 응답에 현재 slug가 포함된다(새로고침 시 입력 복원용)."""
     tenant, _ = tenant_with_key
     client.patch("/api/tenant/slug/", {"slug": "우리가게"}, content_type="application/json",
-                 HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
-    resp = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
+                 HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
+    resp = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
     assert resp.status_code == 200
     assert resp.json()["slug"] == "우리가게"
 
 
 @pytest.mark.django_db
-def test_get_config_slug_empty_when_unset(client, tenant_with_key, tenant_agent_token):
+def test_get_config_slug_empty_when_unset(client, tenant_with_key, tenant_admin_token):
     """slug 미설정이면 빈 문자열(None 아님)."""
-    resp = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
+    resp = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
     assert resp.status_code == 200
     assert resp.json()["slug"] == ""

@@ -6,23 +6,29 @@ from django.conf import settings
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from apps.tenants.auth import (
-    create_operator_access_token, create_tenant_agent_token,
-    operator_auth, tenant_key_auth, tenant_agent_auth,
+    create_operator_access_token, create_member_access_token,
+    operator_auth, tenant_key_auth, member_auth, member_or_tenant_key_auth,
 )
 from apps.tenants.auth_cookies import (
-    set_refresh_cookie, clear_refresh_cookie, cookie_name, OPERATOR, TENANT_AGENT,
+    set_refresh_cookie, clear_refresh_cookie, cookie_name, OPERATOR, MEMBER,
 )
+from apps.tenants.members import (
+    InviteRejected, accept_invite, active_memberships, create_invite, issue_member_ticket,
+    pending_invites, read_member_ticket,
+)
+from apps.tenants.permissions import AGENTS_MANAGE, require_permission
 from apps.tenants.refresh_tokens import (
     issue_session, rotate, revoke_all, revoke_session, RefreshRejected,
 )
-from apps.tenants.models import Operator, Tenant, TenantConfig, TenantAgent
+from apps.tenants.models import Membership, Operator, Tenant, TenantConfig, TenantInvite
 from apps.tenants.operator_login import (
-    ATTEMPT_MAX_AGE_SECONDS, LoginAttempt, LoginRejected, complete_login, start_login,
+    ATTEMPT_MAX_AGE_SECONDS, LoginAttempt, LoginRejected, MemberLogin, complete_login, start_login,
 )
 
 operator_router = Router(tags=["operator"])
-tenant_router = Router(tags=["tenant"], auth=tenant_agent_auth)
-agent_router = Router(tags=["tenant-agents"])
+tenant_router = Router(tags=["tenant"], auth=member_auth)
+member_router = Router(tags=["tenant-members"])
+invite_router = Router(tags=["tenant-invites"])
 # sandcorp-auth 로그인(/api/auth/*). Operator 전용이 아니다 — 일반 사용자(#40)도 같은 콜백을 쓴다.
 auth_router = Router(tags=["auth"])
 
@@ -47,8 +53,9 @@ class TenantCreatedOut(Schema):
     name: str
     is_active: bool
     tenant_key: str
-    agent_username: str
-    agent_temp_password: str
+    # 첫 Admin 초대 링크(7일·1회용). 비밀번호를 만들어 주지 않는다(#40).
+    admin_invite_url: str
+    admin_invite_expires_at: str
 
 
 class TenantConfigOut(Schema):
@@ -127,249 +134,251 @@ class ResetKeyOut(Schema):
     new_tenant_key: str
 
 
-class AgentLoginIn(Schema):
+class MemberOut(Schema):
+    id: str
+    user_id: str
+    name: str | None
+    email: str | None
+    is_active: bool
+    role: str
+
+
+class MeOut(Schema):
+    id: str
+    tenant_id: str
     tenant_name: str
-    username: str
-    password: str
+    role: str
+    name: str | None
+    email: str | None
 
 
-class AgentLoginOut(Schema):
-    access_token: str
+class MemberRoleIn(Schema):
+    role: str
 
 
-class AgentOut(Schema):
+class InviteIn(Schema):
+    role: str = Membership.ROLE_MEMBER
+
+
+class InviteOut(Schema):
     id: str
-    username: str
-    is_active: bool
     role: str
+    expires_at: str
+    created_at: str
 
 
-class AgentCreateIn(Schema):
-    username: str
-    role: str | None = None  # 미지정 시 Member(ADR-0025)
+class InviteCreatedOut(InviteOut):
+    # 원문 토큰과 그것으로 로그인을 시작하는 주소. 이 응답에서 한 번만 나온다(저장은 해시만).
+    token: str
+    url: str
 
 
-class AgentRoleIn(Schema):
-    role: str
+def _member_out(m: Membership) -> dict:
+    return {
+        "id": str(m.id), "user_id": str(m.user_id), "name": m.user.name, "email": m.user.email,
+        "is_active": m.is_active, "role": m.role,
+    }
 
 
-class AgentCreatedOut(Schema):
-    id: str
-    username: str
-    is_active: bool
-    role: str
-    temp_password: str
+def _invite_out(invite: TenantInvite) -> dict:
+    return {
+        "id": str(invite.id), "role": invite.role,
+        "expires_at": invite.expires_at.isoformat(), "created_at": invite.created_at.isoformat(),
+    }
 
 
-class ChangePasswordIn(Schema):
-    current_password: str
-    new_password: str
+def _invite_url(request, raw: str) -> str:
+    return request.build_absolute_uri(f"/api/auth/authorize?{urlencode({'invite': raw})}")
 
 
-def _make_agent_auth():
-    """Returns auth that accepts EITHER TenantAgentAuth OR TenantKeyAuth."""
-    from ninja.security import HttpBearer
-    from apps.tenants.auth import verify_tenant_agent_token
-
-    class DualAuth(HttpBearer):
-        def authenticate(self, request, token: str):
-            payload = verify_tenant_agent_token(token)
-            if payload:
-                try:
-                    return TenantAgent.objects.select_related("tenant").get(
-                        id=payload["sub"], is_active=True
-                    )
-                except TenantAgent.DoesNotExist:
-                    pass
-            tenant = Tenant.verify_key(token)
-            if tenant:
-                return tenant
-            return None
-
-    return DualAuth()
+def _invite_created(request, invite: TenantInvite, raw: str) -> dict:
+    return {**_invite_out(invite), "token": raw, "url": _invite_url(request, raw)}
 
 
-_dual_auth = _make_agent_auth()
-
-
-@agent_router.post("/auth/login", response={200: AgentLoginOut, 401: dict}, auth=None)
-def agent_login(request, body: AgentLoginIn, response: HttpResponse):
-    try:
-        # 조직 이름은 전역 unique·대소문자 무시 로그인 식별자(ADR-0025)
-        agent = TenantAgent.objects.select_related("tenant").get(
-            tenant__name__iexact=body.tenant_name.strip(), username=body.username, is_active=True
-        )
-    except TenantAgent.DoesNotExist:
-        return 401, {"detail": "Invalid credentials"}
-    except TenantAgent.MultipleObjectsReturned:
-        return 401, {"detail": "Invalid credentials"}
-    if not agent.check_password(body.password):
-        return 401, {"detail": "Invalid credentials"}
-    set_refresh_cookie(response, agent, issue_session(agent))
-    return 200, {"access_token": create_tenant_agent_token(agent)}
-
-
-@agent_router.post("/auth/signup", response={201: AgentLoginOut, 400: dict, 409: dict, 429: dict}, auth=None)
-def agent_signup(request, body: AgentLoginIn, response: HttpResponse):
-    """공개 가입(ADR-0025) — 조직 이름·username·password로 Tenant + 첫 Tenant Admin 생성 후 즉시 로그인.
-
-    남용 방지: IP당 1시간 1회(성공 가입만 슬롯 소비 — 실패는 안 막음).
-    """
-    from apps.tenants.registration import register_tenant, DuplicateOrgName, InvalidSignup
-    from apps.tenants.signup_rate_limit import client_ip, signup_allowed, mark_signup
-    ip = client_ip(request)
-    if not signup_allowed(ip):
-        return 429, {"detail": "가입은 IP당 1시간에 1회만 가능합니다. 잠시 후 다시 시도해 주세요."}
-    try:
-        _tenant, agent = register_tenant(body.tenant_name, body.username, body.password)
-    except DuplicateOrgName:
-        return 409, {"detail": "이미 사용 중인 조직 이름입니다."}
-    except InvalidSignup as e:
-        return 400, {"detail": str(e)}
-    mark_signup(ip)  # 성공 시에만 기록
-    set_refresh_cookie(response, agent, issue_session(agent))
-    return 201, {"access_token": create_tenant_agent_token(agent)}
-
-
-@agent_router.post("/auth/refresh", response={200: AgentLoginOut, 401: dict}, auth=None)
-def agent_refresh(request, response: HttpResponse):
-    raw = request.COOKIES.get(cookie_name(TENANT_AGENT))
+@member_router.post("/auth/refresh", response={200: LoginOut, 401: dict}, auth=None)
+def member_refresh(request, response: HttpResponse):
+    raw = request.COOKIES.get(cookie_name(MEMBER))
     if not raw:
         return 401, {"detail": "No refresh token"}
     try:
         subject, new_raw = rotate(raw)
     except RefreshRejected:
         return 401, {"detail": "Invalid refresh token"}
-    if not isinstance(subject, TenantAgent) or not subject.is_active:
+    if not isinstance(subject, Membership) or not subject.is_active or not subject.tenant.is_active:
         return 401, {"detail": "Invalid refresh token"}
     set_refresh_cookie(response, subject, new_raw)
-    return 200, {"access_token": create_tenant_agent_token(subject)}
+    return 200, {"access_token": create_member_access_token(subject)}
 
 
-@agent_router.post("/auth/logout", response={200: dict}, auth=None)
-def agent_logout(request, response: HttpResponse):
-    raw = request.COOKIES.get(cookie_name(TENANT_AGENT))
+@member_router.post("/auth/logout", response={200: dict}, auth=None)
+def member_logout(request, response: HttpResponse):
+    raw = request.COOKIES.get(cookie_name(MEMBER))
     if raw:
         revoke_session(raw)  # 이 기기 Family만 폐기
-    clear_refresh_cookie(response, TENANT_AGENT)
+    clear_refresh_cookie(response, MEMBER)
     return 200, {"detail": "logged out"}
 
 
-@agent_router.post("/auth/logout-all", response={200: dict}, auth=tenant_agent_auth)
-def agent_logout_all(request, response: HttpResponse):
-    revoke_all(request.auth)  # 주체의 전 기기 Family 폐기
-    clear_refresh_cookie(response, TENANT_AGENT)
+@member_router.post("/auth/logout-all", response={200: dict}, auth=member_auth)
+def member_logout_all(request, response: HttpResponse):
+    revoke_all(request.auth)  # 이 멤버십의 전 기기 Family 폐기
+    clear_refresh_cookie(response, MEMBER)
     return 200, {"detail": "logged out everywhere"}
 
 
-def _get_tenant_from_auth(auth_obj):
-    if isinstance(auth_obj, TenantAgent):
+@member_router.get("/me", response=MeOut, auth=member_auth)
+def member_me(request):
+    m = request.auth
+    return {
+        "id": str(m.id), "tenant_id": str(m.tenant_id), "tenant_name": m.tenant.name,
+        "role": m.role, "name": m.user.name, "email": m.user.email,
+    }
+
+
+def _get_tenant_from_auth(auth_obj) -> Tenant:
+    if isinstance(auth_obj, Membership):
         return auth_obj.tenant
     return auth_obj
 
 
-def _is_last_active_admin(agent) -> bool:
-    """이 agent가 조직의 마지막 활성 Admin인지 — 비활성화·강등 차단용(lockout 방지, issue 210)."""
-    if agent.role != TenantAgent.ROLE_ADMIN or not agent.is_active:
+def _is_last_active_admin(member: Membership) -> bool:
+    """이 멤버가 조직의 마지막 활성 Admin인지 — 비활성화·강등 차단용(lockout 방지, ADR-0025 D)."""
+    if member.role != Membership.ROLE_ADMIN or not member.is_active:
         return False
-    return not TenantAgent.objects.filter(
-        tenant_id=agent.tenant_id, role=TenantAgent.ROLE_ADMIN, is_active=True
-    ).exclude(id=agent.id).exists()
+    return not Membership.objects.filter(
+        tenant_id=member.tenant_id, role=Membership.ROLE_ADMIN, is_active=True
+    ).exclude(id=member.id).exists()
 
 
-@agent_router.get("/", response=list[AgentOut], auth=_dual_auth)
-def list_agents(request):
+@member_router.get("/", response=list[MemberOut], auth=member_or_tenant_key_auth)
+def list_members(request):
     tenant = _get_tenant_from_auth(request.auth)
     return [
-        {"id": str(a.id), "username": a.username, "is_active": a.is_active, "role": a.role}
-        for a in TenantAgent.objects.filter(tenant=tenant)
+        _member_out(m)
+        for m in Membership.objects.select_related("user").filter(tenant=tenant).order_by("created_at")
     ]
 
 
-@agent_router.post("/", response={201: AgentCreatedOut}, auth=_dual_auth)
-def create_agent(request, body: AgentCreateIn):
-    from apps.tenants.permissions import require_permission, AGENTS_MANAGE
+@member_router.patch("/{member_id}/deactivate", response={200: MemberOut, 409: dict}, auth=member_or_tenant_key_auth)
+def deactivate_member(request, member_id: str):
     require_permission(request.auth, AGENTS_MANAGE)
     tenant = _get_tenant_from_auth(request.auth)
-    role = body.role if body.role in (TenantAgent.ROLE_ADMIN, TenantAgent.ROLE_MEMBER) else TenantAgent.ROLE_MEMBER
-    temp_password = secrets.token_urlsafe(16)
-    agent = TenantAgent(tenant=tenant, username=body.username, role=role)
-    agent.set_password(temp_password)
-    agent.save()
-    return 201, {
-        "id": str(agent.id),
-        "username": agent.username,
-        "is_active": agent.is_active,
-        "role": agent.role,
-        "temp_password": temp_password,
-    }
-
-
-@agent_router.patch("/{agent_id}/deactivate", response={200: AgentOut, 409: dict}, auth=_dual_auth)
-def deactivate_agent(request, agent_id: str):
-    from django.shortcuts import get_object_or_404
-    from apps.tenants.permissions import require_permission, AGENTS_MANAGE
-    require_permission(request.auth, AGENTS_MANAGE)
-    tenant = _get_tenant_from_auth(request.auth)
-    agent = get_object_or_404(TenantAgent, id=agent_id, tenant=tenant)
-    if _is_last_active_admin(agent):
+    member = get_object_or_404(Membership.objects.select_related("user"), id=member_id, tenant=tenant)
+    if _is_last_active_admin(member):
         return 409, {"detail": "마지막 Admin은 비활성화할 수 없습니다."}
-    agent.is_active = False
-    agent.save()
-    return 200, {"id": str(agent.id), "username": agent.username, "is_active": agent.is_active, "role": agent.role}
+    member.is_active = False
+    member.save(update_fields=["is_active"])
+    revoke_all(member)  # 열린 테넌트 세션도 닫는다
+    return 200, _member_out(member)
 
 
-@agent_router.patch("/{agent_id}/role", response={200: AgentOut, 400: dict, 409: dict}, auth=_dual_auth)
-def change_agent_role(request, agent_id: str, body: AgentRoleIn):
-    from django.shortcuts import get_object_or_404
-    from apps.tenants.permissions import require_permission, AGENTS_MANAGE
+@member_router.patch("/{member_id}/role", response={200: MemberOut, 400: dict, 409: dict}, auth=member_or_tenant_key_auth)
+def change_member_role(request, member_id: str, body: MemberRoleIn):
     require_permission(request.auth, AGENTS_MANAGE)
     tenant = _get_tenant_from_auth(request.auth)
-    agent = get_object_or_404(TenantAgent, id=agent_id, tenant=tenant)
-    if body.role not in (TenantAgent.ROLE_ADMIN, TenantAgent.ROLE_MEMBER):
+    member = get_object_or_404(Membership.objects.select_related("user"), id=member_id, tenant=tenant)
+    if body.role not in (Membership.ROLE_ADMIN, Membership.ROLE_MEMBER):
         return 400, {"detail": "유효하지 않은 역할입니다."}
-    if body.role == TenantAgent.ROLE_MEMBER and _is_last_active_admin(agent):
+    if body.role == Membership.ROLE_MEMBER and _is_last_active_admin(member):
         return 409, {"detail": "마지막 Admin은 강등할 수 없습니다."}
-    agent.role = body.role
-    agent.save(update_fields=["role"])
-    return 200, {"id": str(agent.id), "username": agent.username, "is_active": agent.is_active, "role": agent.role}
+    member.role = body.role
+    member.save(update_fields=["role"])
+    return 200, _member_out(member)
 
 
-@agent_router.post("/me/change-password", response={200: dict, 400: dict}, auth=tenant_agent_auth)
-def change_password(request, body: ChangePasswordIn):
-    from apps.tenants.password_policy import password_policy_error
-    agent = request.auth
-    if not agent.check_password(body.current_password):
-        return 400, {"detail": "현재 비밀번호가 올바르지 않습니다."}
-    pw_err = password_policy_error(body.new_password)
-    if pw_err:
-        return 400, {"detail": pw_err}
-    agent.set_password(body.new_password)
-    agent.save()
-    revoke_all(agent)  # 비번 변경 시 기존 모든 세션의 refresh 폐기(침해 대응)
-    return 200, {"detail": "비밀번호가 변경되었습니다."}
+# ── 팀원 초대 링크(#40). TENANT_KEY로도 발급된다 — Admin 초대가 break-glass 복구 채널(ADR-0025 D) ──
 
 
-# ── 로그인: sandcorp-auth 기밀 클라이언트(ADR-0028, #21). 지금은 대표(Operator)만 세션을 받는다 ──
-# 브라우저 이동(302)이라 생성 클라이언트에 넣지 않는다. 시도(state·PKCE·nonce)는 서명된 httpOnly
+@invite_router.get("/", response=list[InviteOut], auth=member_or_tenant_key_auth)
+def list_invites(request):
+    require_permission(request.auth, AGENTS_MANAGE)
+    return [_invite_out(i) for i in pending_invites(_get_tenant_from_auth(request.auth))]
+
+
+@invite_router.post("/", response={201: InviteCreatedOut, 400: dict}, auth=member_or_tenant_key_auth)
+def create_tenant_invite(request, body: InviteIn):
+    require_permission(request.auth, AGENTS_MANAGE)
+    if body.role not in (Membership.ROLE_ADMIN, Membership.ROLE_MEMBER):
+        return 400, {"detail": "유효하지 않은 역할입니다."}
+    by = request.auth if isinstance(request.auth, Membership) else None
+    invite, raw = create_invite(_get_tenant_from_auth(request.auth), body.role, created_by=by)
+    return 201, _invite_created(request, invite, raw)
+
+
+@invite_router.delete("/{invite_id}", response={204: None}, auth=member_or_tenant_key_auth)
+def revoke_tenant_invite(request, invite_id: str):
+    require_permission(request.auth, AGENTS_MANAGE)
+    invite = get_object_or_404(TenantInvite, id=invite_id, tenant=_get_tenant_from_auth(request.auth))
+    invite.revoked = True
+    invite.save(update_fields=["revoked"])
+    return 204, None
+
+
+# ── 로그인: sandcorp-auth 기밀 클라이언트(ADR-0028, #21 대표·#40 고객) ──
+# 브라우저 이동(302)이라 생성 클라이언트에 넣지 않는다. 시도(state·PKCE·nonce·초대)는 서명된 httpOnly
 # 쿠키에 맡긴다 — 인가 서버에서 돌아오는 교차 사이트 GET에도 실려야 하므로 SameSite=Lax.
 LOGIN_ATTEMPT_COOKIE = "op_login"
 LOGIN_ATTEMPT_COOKIE_PATH = "/api/auth/callback"
+# 콜백 뒤 「테넌트 선택」·「온보딩(#41)」을 잇는 서명 표(10분). /api/auth/member/* 에만 실린다.
+MEMBER_TICKET_COOKIE = "member_ticket"
+MEMBER_TICKET_COOKIE_PATH = "/api/auth/member"
 
 
-def _login_redirect(reason: str | None = None) -> HttpResponseRedirect:
-    target = settings.AUTH_LOGIN_REDIRECT
-    if reason:
-        target = f"{target}?{urlencode({'login_error': reason})}"
+def _redirect(target: str, **params: str) -> HttpResponseRedirect:
+    if params:
+        target = f"{target}?{urlencode(params)}"
     response = HttpResponseRedirect(target)
     response.delete_cookie(LOGIN_ATTEMPT_COOKIE, path=LOGIN_ATTEMPT_COOKIE_PATH)
     return response
 
 
+def _login_redirect(reason: str | None = None) -> HttpResponseRedirect:
+    if reason:
+        return _redirect(settings.AUTH_LOGIN_REDIRECT, login_error=reason)
+    return _redirect(settings.AUTH_LOGIN_REDIRECT)
+
+
+def _set_member_ticket(response: HttpResponse, user) -> None:
+    from apps.tenants.members import TICKET_MAX_AGE_SECONDS
+
+    response.set_cookie(
+        MEMBER_TICKET_COOKIE,
+        issue_member_ticket(user),
+        max_age=TICKET_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="Lax",
+        path=MEMBER_TICKET_COOKIE_PATH,
+    )
+
+
+def _member_landing(login: MemberLogin) -> HttpResponseRedirect:
+    """일반 사용자 콜백 끝. 초대가 있으면 먼저 멤버십을 만들고, 멤버십 수에 따라
+    1개 → 테넌트 세션, 여럿 → 선택(`?select_tenant=1`), 없음 → 「온보딩 필요」(`?onboarding=1`)."""
+    target = settings.AUTH_MEMBER_REDIRECT
+    if login.invite:
+        try:
+            joined = accept_invite(login.user, login.invite)
+        except InviteRejected as exc:
+            return _redirect(target, login_error=exc.reason)
+        if joined.is_active and joined.tenant.is_active:
+            response = _redirect(target)
+            set_refresh_cookie(response, joined, issue_session(joined))
+            return response
+    memberships = active_memberships(login.user)
+    if len(memberships) == 1:
+        response = _redirect(target)
+        set_refresh_cookie(response, memberships[0], issue_session(memberships[0]))
+        return response
+    response = _redirect(target, **({"select_tenant": "1"} if memberships else {"onboarding": "1"}))
+    _set_member_ticket(response, login.user)
+    return response
+
+
 @auth_router.get("/authorize", auth=None, include_in_schema=False)
-def operator_authorize(request):
+def login_authorize(request, invite: str | None = None):
     try:
-        url, attempt = start_login()
+        url, attempt = start_login(invite=invite)
     except LoginRejected as exc:
         return _login_redirect(exc.reason)
     response = HttpResponseRedirect(url)
@@ -386,16 +395,64 @@ def operator_authorize(request):
 
 
 @auth_router.get("/callback", auth=None, include_in_schema=False)
-def operator_callback(request):
+def login_callback(request):
     attempt = LoginAttempt.loads(request.COOKIES.get(LOGIN_ATTEMPT_COOKIE))
     try:
-        operator = complete_login(request.GET.dict(), attempt)
+        outcome = complete_login(request.GET.dict(), attempt)
     except LoginRejected as exc:
         return _login_redirect(exc.reason)
+    if isinstance(outcome, MemberLogin):
+        return _member_landing(outcome)
     response = _login_redirect()
     # Refresh 쿠키 경로는 /api/operator/auth(refresh·logout만 받는다). 콜백 응답에서 심어도 된다.
-    set_refresh_cookie(response, operator, issue_session(operator))
+    set_refresh_cookie(response, outcome, issue_session(outcome))
     return response
+
+
+class MemberTenantOut(Schema):
+    tenant_id: str
+    tenant_name: str
+    role: str
+
+
+class SelectTenantIn(Schema):
+    tenant_id: str
+
+
+class MemberTicketOut(Schema):
+    name: str | None
+    email: str | None
+    tenants: list[MemberTenantOut]
+
+
+@auth_router.get("/member/tenants", response={200: MemberTicketOut, 401: dict}, auth=None)
+def member_tenants(request):
+    """콜백 뒤 표(`member_ticket` 쿠키)로 고를 수 있는 테넌트 목록. 비어 있으면 온보딩 대상(#41)."""
+    user = read_member_ticket(request.COOKIES.get(MEMBER_TICKET_COOKIE))
+    if user is None:
+        return 401, {"detail": "로그인이 필요합니다."}
+    return 200, {
+        "name": user.name,
+        "email": user.email,
+        "tenants": [
+            {"tenant_id": str(m.tenant_id), "tenant_name": m.tenant.name, "role": m.role}
+            for m in active_memberships(user)
+        ],
+    }
+
+
+@auth_router.post("/member/select", response={200: LoginOut, 401: dict, 403: dict}, auth=None)
+def member_select_tenant(request, body: SelectTenantIn, response: HttpResponse):
+    """고른 테넌트의 세션을 연다(Refresh 쿠키 + Access Token). 멤버가 아닌 테넌트는 403."""
+    user = read_member_ticket(request.COOKIES.get(MEMBER_TICKET_COOKIE))
+    if user is None:
+        return 401, {"detail": "로그인이 필요합니다."}
+    membership = next((m for m in active_memberships(user) if str(m.tenant_id) == body.tenant_id), None)
+    if membership is None:
+        return 403, {"detail": "이 테넌트의 멤버가 아닙니다."}
+    set_refresh_cookie(response, membership, issue_session(membership))
+    response.delete_cookie(MEMBER_TICKET_COOKIE, path=MEMBER_TICKET_COOKIE_PATH)
+    return 200, {"access_token": create_member_access_token(membership)}
 
 
 @operator_router.post("/auth/refresh", response={200: LoginOut, 401: dict}, auth=None)
@@ -433,17 +490,14 @@ def operator_logout_all(request, response: HttpResponse):
 def create_tenant(request, body: TenantIn):
     raw_key = secrets.token_urlsafe(32)
     tenant = Tenant.objects.create_with_key(name=body.name, raw_key=raw_key)
-    temp_password = secrets.token_urlsafe(16)
-    agent = TenantAgent(tenant=tenant, username="admin", role=TenantAgent.ROLE_ADMIN)
-    agent.set_password(temp_password)
-    agent.save()
+    invite, raw_invite = create_invite(tenant, Membership.ROLE_ADMIN)
     return 201, {
         "id": str(tenant.id),
         "name": tenant.name,
         "is_active": tenant.is_active,
         "tenant_key": raw_key,
-        "agent_username": "admin",
-        "agent_temp_password": temp_password,
+        "admin_invite_url": _invite_url(request, raw_invite),
+        "admin_invite_expires_at": invite.expires_at.isoformat(),
     }
 
 

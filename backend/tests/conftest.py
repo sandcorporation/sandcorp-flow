@@ -12,21 +12,6 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.dev")
 os.environ.setdefault("TASKIQ_INMEMORY", "1")  # taskiq chat 태스크를 인라인 실행(issue 190)
 
 
-@pytest.fixture(autouse=True)
-def _clear_signup_rate_limit():
-    """공유 Redis의 가입 IP 레이트리밋 키를 테스트마다 정리 — 테스트 독립성 보장(issue 211)."""
-    try:
-        from apps.chat.sse import get_redis_client
-        r = get_redis_client()
-        for k in r.scan_iter("signup:rl:*"):
-            r.delete(k)
-    except Exception:
-        pass
-    yield
-
-
-
-
 # ── Celery eager execution ────────────────────────────────────────────────────
 
 @pytest.fixture(autouse=True)
@@ -326,29 +311,21 @@ def vision_ocr(tenant_with_key, monkeypatch) -> FakeVisionOCR:
 
 
 @pytest.fixture
-def tenant_agent_token(tenant_with_key):
-    from apps.tenants.models import TenantAgent
-    from apps.tenants.auth import create_tenant_agent_token
+def tenant_admin_token(tenant_with_key):
+    """Tenant Admin 멤버 세션 토큰(#40 — 기본 픽스처는 Admin)."""
+    from tests.utils import make_membership, member_token
 
     tenant, _ = tenant_with_key
-    # 역할 도입 전 전권 agent에 대응 — 기본 픽스처는 Admin(마이그레이션 백필과 동일).
-    agent = TenantAgent(tenant=tenant, username="agent", role=TenantAgent.ROLE_ADMIN)
-    agent.set_password("agentpass")
-    agent.save()
-    return create_tenant_agent_token(agent)
+    return member_token(make_membership(tenant, "admin", name="상담원A"))
 
 
 @pytest.fixture
 def tenant_member_token(tenant_with_key):
-    """Tenant Member 자격 토큰 — Admin 전용 가드 검증용."""
-    from apps.tenants.models import TenantAgent
-    from apps.tenants.auth import create_tenant_agent_token
+    """Tenant Member 멤버 세션 토큰 — Admin 전용 가드 검증용."""
+    from tests.utils import make_membership, member_token
 
     tenant, _ = tenant_with_key
-    agent = TenantAgent(tenant=tenant, username="member", role=TenantAgent.ROLE_MEMBER)
-    agent.set_password("memberpass")
-    agent.save()
-    return create_tenant_agent_token(agent)
+    return member_token(make_membership(tenant, "member", name="상담원B"))
 
 
 @pytest.fixture

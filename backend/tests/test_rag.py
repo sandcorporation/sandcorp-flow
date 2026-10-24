@@ -23,7 +23,7 @@ def _has_graph_text_units(tenant_id, doc_id):
 # ── Issue 51: Document Chunk Inspector ───────────────────────────────────────
 
 @pytest.mark.django_db
-def test_list_chunks_returns_chunks_for_ingested_document(client, tenant_agent_token, tenant_with_key):
+def test_list_chunks_returns_chunks_for_ingested_document(client, tenant_admin_token, tenant_with_key):
     """인제스션된 문서의 /chunks 엔드포인트가 청크 목록을 반환한다."""
     content = b"The FCB1010 has ten footswitches and two expression pedals for live performance."
     f = io.BytesIO(content)
@@ -31,14 +31,14 @@ def test_list_chunks_returns_chunks_for_ingested_document(client, tenant_agent_t
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
 
     chunk_resp = client.get(
         f"/api/tenant/documents/{doc_id}/chunks",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert chunk_resp.status_code == 200
     chunks = chunk_resp.json()
@@ -50,25 +50,23 @@ def test_list_chunks_returns_chunks_for_ingested_document(client, tenant_agent_t
 
 
 @pytest.mark.django_db
-def test_list_chunks_other_tenant_returns_404(client, tenant_agent_token, db):
+def test_list_chunks_other_tenant_returns_404(client, tenant_admin_token, db):
     """다른 Tenant의 문서 청크를 조회하면 404를 반환한다."""
     import secrets
-    from apps.tenants.models import Tenant, TenantAgent
-    from apps.tenants.auth import create_tenant_agent_token
+    from apps.tenants.models import Tenant
+    from tests.utils import make_membership, member_token
 
     raw_key2 = secrets.token_urlsafe(32)
     tenant2 = Tenant.objects.create_with_key(name="Other Corp Chunks", raw_key=raw_key2)
-    agent2 = TenantAgent(tenant=tenant2, username="chunkagent2")
-    agent2.set_password("pass")
-    agent2.save()
-    token2 = create_tenant_agent_token(agent2)
+    agent2 = make_membership(tenant2, "member")
+    token2 = member_token(agent2)
 
     f = io.BytesIO(b"secret content of tenant2")
     f.name = "secret.txt"
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     doc_id = resp.json()["id"]
 
@@ -80,7 +78,7 @@ def test_list_chunks_other_tenant_returns_404(client, tenant_agent_token, db):
 
 
 @pytest.mark.django_db
-def test_list_chunks_empty_document_returns_empty_list(client, tenant_agent_token):
+def test_list_chunks_empty_document_returns_empty_list(client, tenant_admin_token):
     """청크가 없는 문서(빈 PDF)의 /chunks는 빈 배열을 반환한다."""
     import fitz
     from apps.rag.models import Document
@@ -94,21 +92,21 @@ def test_list_chunks_empty_document_returns_empty_list(client, tenant_agent_toke
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
 
     chunk_resp = client.get(
         f"/api/tenant/documents/{doc_id}/chunks",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert chunk_resp.status_code == 200
     assert chunk_resp.json() == []
 
 
 @pytest.mark.django_db
-def test_upload_txt_document(client, tenant_agent_token):
+def test_upload_txt_document(client, tenant_admin_token):
     content = b"This is a test document about return policy."
     f = io.BytesIO(content)
     f.name = "policy.txt"
@@ -116,7 +114,7 @@ def test_upload_txt_document(client, tenant_agent_token):
     response = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert response.status_code == 201
     data = response.json()
@@ -125,24 +123,24 @@ def test_upload_txt_document(client, tenant_agent_token):
 
 
 @pytest.mark.django_db
-def test_list_documents(client, tenant_agent_token):
+def test_list_documents(client, tenant_admin_token):
     f = io.BytesIO(b"doc content")
     f.name = "test.txt"
     client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     response = client.get(
         "/api/tenant/documents/",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert response.status_code == 200
     assert len(response.json()) >= 1
 
 
 @pytest.mark.django_db
-def test_delete_document(client, tenant_agent_token):
+def test_delete_document(client, tenant_admin_token):
     from apps.rag.models import Document
 
     f = io.BytesIO(b"deletable content")
@@ -150,37 +148,35 @@ def test_delete_document(client, tenant_agent_token):
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     doc_id = resp.json()["id"]
 
     delete_resp = client.delete(
         f"/api/tenant/documents/{doc_id}",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert delete_resp.status_code == 204
     assert not Document.objects.filter(id=doc_id).exists()
 
 
 @pytest.mark.django_db
-def test_other_tenant_cannot_access_document(client, tenant_agent_token, db):
+def test_other_tenant_cannot_access_document(client, tenant_admin_token, db):
     import secrets
-    from apps.tenants.models import Tenant, TenantAgent
-    from apps.tenants.auth import create_tenant_agent_token
+    from apps.tenants.models import Tenant
+    from tests.utils import make_membership, member_token
 
     raw_key2 = secrets.token_urlsafe(32)
     tenant2 = Tenant.objects.create_with_key(name="Other Corp", raw_key=raw_key2)
-    agent2 = TenantAgent(tenant=tenant2, username="agent2")
-    agent2.set_password("pass")
-    agent2.save()
-    token2 = create_tenant_agent_token(agent2)
+    agent2 = make_membership(tenant2, "member")
+    token2 = member_token(agent2)
 
     f = io.BytesIO(b"private content")
     f.name = "private.txt"
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     doc_id = resp.json()["id"]
 
@@ -192,7 +188,7 @@ def test_other_tenant_cannot_access_document(client, tenant_agent_token, db):
 
 
 @pytest.mark.django_db
-def test_document_ingestion_sets_status_ready(client, tenant_agent_token, tenant_with_key):
+def test_document_ingestion_sets_status_ready(client, tenant_admin_token, tenant_with_key):
     """문서 업로드 후 Celery EAGER 실행으로 그래프 인제스션 완료 → status=ready, Text Unit 생성."""
     from apps.rag.models import Document
 
@@ -204,7 +200,7 @@ def test_document_ingestion_sets_status_ready(client, tenant_agent_token, tenant
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -215,7 +211,7 @@ def test_document_ingestion_sets_status_ready(client, tenant_agent_token, tenant
 
 
 @pytest.mark.django_db
-def test_graph_search_returns_units_for_uploaded_content(client, tenant_agent_token, tenant_with_key):
+def test_graph_search_returns_units_for_uploaded_content(client, tenant_admin_token, tenant_with_key):
     """인제스션된 문서 내용이 그래프 벡터 검색으로 반환된다."""
     from apps.rag.graph_store import GraphStore
     from apps.rag.ingesters import get_embeddings
@@ -228,7 +224,7 @@ def test_graph_search_returns_units_for_uploaded_content(client, tenant_agent_to
     client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
 
     emb = get_embeddings(["support hours"])[0]
@@ -238,7 +234,7 @@ def test_graph_search_returns_units_for_uploaded_content(client, tenant_agent_to
 
 
 @pytest.mark.django_db
-def test_delete_document_removes_graph_text_units(client, tenant_agent_token, tenant_with_key):
+def test_delete_document_removes_graph_text_units(client, tenant_admin_token, tenant_with_key):
     """문서 삭제 시 그래프 Text Unit도 함께 제거된다."""
     tenant, _ = tenant_with_key
     content = b"This document should be deleted including all its units."
@@ -248,20 +244,20 @@ def test_delete_document_removes_graph_text_units(client, tenant_agent_token, te
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     doc_id = resp.json()["id"]
     assert _has_graph_text_units(tenant.id, doc_id)
 
     client.delete(
         f"/api/tenant/documents/{doc_id}",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert not _has_graph_text_units(tenant.id, doc_id)
 
 
 @pytest.mark.django_db
-def test_ingest_strips_nul_bytes(client, tenant_agent_token, tenant_with_key):
+def test_ingest_strips_nul_bytes(client, tenant_admin_token, tenant_with_key):
     """NUL 바이트(\x00)가 포함된 파일을 업로드해도 PostgreSQL DataError 없이 인제스션된다."""
     from apps.rag.models import Document
 
@@ -273,7 +269,7 @@ def test_ingest_strips_nul_bytes(client, tenant_agent_token, tenant_with_key):
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -288,7 +284,7 @@ def test_ingest_strips_nul_bytes(client, tenant_agent_token, tenant_with_key):
 
 
 @pytest.mark.django_db
-def test_ingest_strips_esc_bytes(client, tenant_agent_token, tenant_with_key):
+def test_ingest_strips_esc_bytes(client, tenant_admin_token, tenant_with_key):
     """ESC(0x1B) 바이트가 포함된 파일을 업로드해도 Text Unit에 ESC가 남지 않는다."""
     from apps.rag.models import Document
 
@@ -300,7 +296,7 @@ def test_ingest_strips_esc_bytes(client, tenant_agent_token, tenant_with_key):
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -315,7 +311,7 @@ def test_ingest_strips_esc_bytes(client, tenant_agent_token, tenant_with_key):
 
 
 @pytest.mark.django_db
-def test_ingest_strips_control_chars_but_keeps_whitespace(client, tenant_agent_token, tenant_with_key):
+def test_ingest_strips_control_chars_but_keeps_whitespace(client, tenant_admin_token, tenant_with_key):
     """0x01~0x1F 제어 문자는 제거되고, \\t \\n \\r 공백은 보존된다."""
     from apps.rag.models import Document
 
@@ -332,7 +328,7 @@ def test_ingest_strips_control_chars_but_keeps_whitespace(client, tenant_agent_t
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -363,7 +359,7 @@ def _make_pdf(*page_texts):
 
 
 @pytest.mark.django_db
-def test_ingest_multipage_pdf_includes_text_from_all_pages(client, tenant_agent_token, tenant_with_key):
+def test_ingest_multipage_pdf_includes_text_from_all_pages(client, tenant_admin_token, tenant_with_key):
     """멀티페이지 PDF를 업로드하면 모든 페이지의 텍스트가 Text Unit에 포함된다.
 
     단어 수가 OCR 폴백 문턱보다 적지만 OCR Provider 미설정이라, 정상 텍스트 레이어를 그대로 쓴다.
@@ -381,7 +377,7 @@ def test_ingest_multipage_pdf_includes_text_from_all_pages(client, tenant_agent_
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -396,7 +392,7 @@ def test_ingest_multipage_pdf_includes_text_from_all_pages(client, tenant_agent_
 
 
 @pytest.mark.django_db
-def test_scanned_pdf_without_ocr_provider_fails_with_clear_error(client, tenant_agent_token, tenant_with_key):
+def test_scanned_pdf_without_ocr_provider_fails_with_clear_error(client, tenant_admin_token, tenant_with_key):
     """OCR Provider 미설정 테넌트의 스캔 PDF(텍스트 레이어 없음)는 status=failed와 설정 안내 오류가 남는다."""
     from django.core.files.uploadedfile import SimpleUploadedFile
     from apps.rag.models import Document
@@ -407,7 +403,7 @@ def test_scanned_pdf_without_ocr_provider_fails_with_clear_error(client, tenant_
     resp = client.post(
         "/api/tenant/documents/",
         {"file": uploaded},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
 
@@ -417,7 +413,7 @@ def test_scanned_pdf_without_ocr_provider_fails_with_clear_error(client, tenant_
 
 
 @pytest.mark.django_db
-def test_ingest_empty_pdf_results_in_no_chunks(client, tenant_agent_token, tenant_with_key, vision_ocr):
+def test_ingest_empty_pdf_results_in_no_chunks(client, tenant_admin_token, tenant_with_key, vision_ocr):
     """텍스트가 없는 빈 PDF를 업로드하면(OCR도 빈 결과) status=ready이고 Text Unit이 생성되지 않는다."""
     import fitz
     from apps.rag.models import Document
@@ -433,7 +429,7 @@ def test_ingest_empty_pdf_results_in_no_chunks(client, tenant_agent_token, tenan
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -446,7 +442,7 @@ def test_ingest_empty_pdf_results_in_no_chunks(client, tenant_agent_token, tenan
 
 
 @pytest.mark.django_db
-def test_ingest_pdf_strips_control_chars(client, tenant_agent_token, tenant_with_key):
+def test_ingest_pdf_strips_control_chars(client, tenant_admin_token, tenant_with_key):
     """PDF 추출 텍스트에 제어 문자가 포함돼도 Text Unit에는 남지 않는다."""
     import fitz
     from apps.rag.models import Document
@@ -463,7 +459,7 @@ def test_ingest_pdf_strips_control_chars(client, tenant_agent_token, tenant_with
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -479,7 +475,7 @@ def test_ingest_pdf_strips_control_chars(client, tenant_agent_token, tenant_with
 
 
 @pytest.mark.django_db
-def test_ingest_txt_with_unicode_content(client, tenant_agent_token, tenant_with_key):
+def test_ingest_txt_with_unicode_content(client, tenant_admin_token, tenant_with_key):
     """한글·특수문자·이모지가 포함된 TXT 파일도 올바르게 인제스션된다."""
     from apps.rag.models import Document
 
@@ -491,7 +487,7 @@ def test_ingest_txt_with_unicode_content(client, tenant_agent_token, tenant_with
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -528,7 +524,7 @@ def _make_jpg_with_text(text: str) -> bytes:
 
 
 @pytest.mark.django_db
-def test_ingest_png_creates_chunks(client, tenant_agent_token, tenant_with_key, vision_ocr):
+def test_ingest_png_creates_chunks(client, tenant_admin_token, tenant_with_key, vision_ocr):
     """PNG 이미지 업로드 시 OCR(Vision)로 텍스트가 전사되어 status=ready, Text Unit이 생성된다."""
     from django.core.files.uploadedfile import SimpleUploadedFile
     from apps.rag.models import Document
@@ -541,7 +537,7 @@ def test_ingest_png_creates_chunks(client, tenant_agent_token, tenant_with_key, 
     resp = client.post(
         "/api/tenant/documents/",
         {"file": uploaded},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -555,7 +551,7 @@ def test_ingest_png_creates_chunks(client, tenant_agent_token, tenant_with_key, 
 
 
 @pytest.mark.django_db
-def test_ingest_jpg_creates_chunks(client, tenant_agent_token, tenant_with_key, vision_ocr):
+def test_ingest_jpg_creates_chunks(client, tenant_admin_token, tenant_with_key, vision_ocr):
     """JPG 이미지 업로드 시 OCR(Vision)로 텍스트가 전사되어 status=ready, Text Unit이 생성된다."""
     from django.core.files.uploadedfile import SimpleUploadedFile
     from apps.rag.models import Document
@@ -568,7 +564,7 @@ def test_ingest_jpg_creates_chunks(client, tenant_agent_token, tenant_with_key, 
     resp = client.post(
         "/api/tenant/documents/",
         {"file": uploaded},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -582,7 +578,7 @@ def test_ingest_jpg_creates_chunks(client, tenant_agent_token, tenant_with_key, 
 
 
 @pytest.mark.django_db
-def test_ingest_image_without_ocr_provider_fails_with_clear_error(client, tenant_agent_token, tenant_with_key):
+def test_ingest_image_without_ocr_provider_fails_with_clear_error(client, tenant_admin_token, tenant_with_key):
     """OCR Provider 미설정 테넌트가 이미지를 올리면 status=failed와 설정 안내 오류가 남는다(폴백 OCR 없음)."""
     from django.core.files.uploadedfile import SimpleUploadedFile
     from apps.rag.models import Document
@@ -591,7 +587,7 @@ def test_ingest_image_without_ocr_provider_fails_with_clear_error(client, tenant
     resp = client.post(
         "/api/tenant/documents/",
         {"file": uploaded},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
 
@@ -601,7 +597,7 @@ def test_ingest_image_without_ocr_provider_fails_with_clear_error(client, tenant
 
 
 @pytest.mark.django_db
-def test_upload_unsupported_mime_returns_400(client, tenant_agent_token):
+def test_upload_unsupported_mime_returns_400(client, tenant_admin_token):
     """지원하지 않는 MIME 타입(image/gif)은 400 에러를 반환한다."""
     from django.core.files.uploadedfile import SimpleUploadedFile
 
@@ -611,7 +607,7 @@ def test_upload_unsupported_mime_returns_400(client, tenant_agent_token):
     resp = client.post(
         "/api/tenant/documents/",
         {"file": uploaded},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 400
 
@@ -639,7 +635,7 @@ def _make_image_only_pdf(text: str) -> bytes:
 
 
 @pytest.mark.django_db
-def test_pdf_ocr_fallback_used_when_text_too_sparse(client, tenant_agent_token, tenant_with_key, vision_ocr):
+def test_pdf_ocr_fallback_used_when_text_too_sparse(client, tenant_admin_token, tenant_with_key, vision_ocr):
     """텍스트 레이어가 없는 스캔 PDF는 OCR fallback을 통해 status=ready이고 Text Unit이 생성된다."""
     from django.core.files.uploadedfile import SimpleUploadedFile
     from apps.rag.models import Document
@@ -658,7 +654,7 @@ def test_pdf_ocr_fallback_used_when_text_too_sparse(client, tenant_agent_token, 
     resp = client.post(
         "/api/tenant/documents/",
         {"file": uploaded},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -672,7 +668,7 @@ def test_pdf_ocr_fallback_used_when_text_too_sparse(client, tenant_agent_token, 
 
 
 @pytest.mark.django_db
-def test_pdf_normal_text_skips_ocr(client, tenant_agent_token, tenant_with_key, vision_ocr):
+def test_pdf_normal_text_skips_ocr(client, tenant_admin_token, tenant_with_key, vision_ocr):
     """단어 수 >= 50인 정상 PDF는 OCR fallback 없이 처리된다."""
     from apps.rag.models import Document
 
@@ -685,7 +681,7 @@ def test_pdf_normal_text_skips_ocr(client, tenant_agent_token, tenant_with_key, 
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -729,7 +725,7 @@ def _make_garbled_text_layer_pdf(visible_text: str, garbled_layer: str) -> bytes
 
 
 @pytest.mark.django_db
-def test_pdf_garbled_text_layer_triggers_ocr_recovery(client, tenant_agent_token, tenant_with_key, vision_ocr):
+def test_pdf_garbled_text_layer_triggers_ocr_recovery(client, tenant_admin_token, tenant_with_key, vision_ocr):
     """텍스트 레이어가 mojibake인 PDF는 깨짐 감지로 OCR 재추출되어, 깨진 텍스트가 Text Unit에 남지 않는다."""
     from django.core.files.uploadedfile import SimpleUploadedFile
     from apps.rag.models import Document
@@ -751,7 +747,7 @@ def test_pdf_garbled_text_layer_triggers_ocr_recovery(client, tenant_agent_token
     resp = client.post(
         "/api/tenant/documents/",
         {"file": uploaded},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -768,7 +764,7 @@ def test_pdf_garbled_text_layer_triggers_ocr_recovery(client, tenant_agent_token
 
 
 @pytest.mark.django_db
-def test_garbled_chunks_dropped_from_text_units(client, tenant_agent_token, tenant_with_key):
+def test_garbled_chunks_dropped_from_text_units(client, tenant_admin_token, tenant_with_key):
     """추출 후에도 남은 깨진 청크는 Text Unit으로 저장되지 않고, 정상 청크만 남는다.
 
     chunk 드롭은 mime 무관하게 동일한 ingest_to_graph 경로를 타므로 TXT로 격리 검증한다.
@@ -790,7 +786,7 @@ def test_garbled_chunks_dropped_from_text_units(client, tenant_agent_token, tena
     resp = client.post(
         "/api/tenant/documents/",
         {"file": uploaded},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     doc_id = resp.json()["id"]
@@ -814,7 +810,7 @@ def test_garbled_chunks_dropped_from_text_units(client, tenant_agent_token, tena
 #  레이블 기반 검색 가능성은 test_graph_store/test_graph_search가 커버한다.)
 
 @pytest.mark.django_db
-def test_document_label_becomes_graph_entity(client, tenant_agent_token, tenant_with_key):
+def test_document_label_becomes_graph_entity(client, tenant_admin_token, tenant_with_key):
     """본문에 제품명이 없어도 Document Label이 그래프 대표 Entity로 잡힌다."""
     from apps.rag.graph_store import GraphStore
 
@@ -825,7 +821,7 @@ def test_document_label_becomes_graph_entity(client, tenant_agent_token, tenant_
     client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
 
     names = [e["name"] for e in GraphStore(str(tenant.id)).query_mentions()]
@@ -859,7 +855,7 @@ def test_ingest_to_graph_is_idempotent_on_rerun(tenant_with_key):
 # ── Issue 53/66: Document Label 수정 (rename + Entity 재시드, 재임베딩 없음) ────
 
 @pytest.mark.django_db
-def test_patch_document_name_reseeds_graph_entity(client, tenant_agent_token, tenant_with_key):
+def test_patch_document_name_reseeds_graph_entity(client, tenant_admin_token, tenant_with_key):
     """PATCH로 name을 바꾸면 새 레이블이 그래프 대표 Entity로 시드되고 그래프가 stale이 된다 (재임베딩 없음)."""
     from apps.rag.graph_store import GraphStore
 
@@ -869,7 +865,7 @@ def test_patch_document_name_reseeds_graph_entity(client, tenant_agent_token, te
     resp = client.post(
         "/api/tenant/documents/",
         {"file": target},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     doc_id = resp.json()["id"]
 
@@ -877,7 +873,7 @@ def test_patch_document_name_reseeds_graph_entity(client, tenant_agent_token, te
         f"/api/tenant/documents/{doc_id}",
         {"name": "ZX900PRO.txt"},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert patch_resp.status_code == 200
     assert patch_resp.json()["name"] == "ZX900PRO.txt"
@@ -889,7 +885,7 @@ def test_patch_document_name_reseeds_graph_entity(client, tenant_agent_token, te
 
 
 @pytest.mark.django_db
-def test_upload_with_explicit_name_uses_it_as_label(client, tenant_agent_token):
+def test_upload_with_explicit_name_uses_it_as_label(client, tenant_admin_token):
     """업로드 시 name 폼 필드를 주면 파일명 대신 그 값이 Document.name(레이블)이 된다."""
     from django.core.files.uploadedfile import SimpleUploadedFile
 
@@ -899,35 +895,35 @@ def test_upload_with_explicit_name_uses_it_as_label(client, tenant_agent_token):
     resp = client.post(
         "/api/tenant/documents/",
         {"file": uploaded, "name": "FCB1010 매뉴얼"},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     assert resp.json()["name"] == "FCB1010 매뉴얼"
 
 
 @pytest.mark.django_db
-def test_upload_without_name_falls_back_to_filename(client, tenant_agent_token):
+def test_upload_without_name_falls_back_to_filename(client, tenant_admin_token):
     """name 폼 필드가 없으면 파일명을 레이블로 사용한다 (기존 동작 유지)."""
     f = io.BytesIO(b"Fallback content.")
     f.name = "fallback.txt"
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
     assert resp.json()["name"] == "fallback.txt"
 
 
 @pytest.mark.django_db
-def test_patch_document_empty_name_returns_400(client, tenant_agent_token):
+def test_patch_document_empty_name_returns_400(client, tenant_admin_token):
     """빈 name으로 PATCH하면 400을 반환한다."""
     f = io.BytesIO(b"Some document content for label test.")
     f.name = "label.txt"
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     doc_id = resp.json()["id"]
 
@@ -935,31 +931,29 @@ def test_patch_document_empty_name_returns_400(client, tenant_agent_token):
         f"/api/tenant/documents/{doc_id}",
         {"name": "   "},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert patch_resp.status_code == 400
 
 
 @pytest.mark.django_db
-def test_patch_document_other_tenant_returns_404(client, tenant_agent_token, db):
+def test_patch_document_other_tenant_returns_404(client, tenant_admin_token, db):
     """다른 Tenant의 문서를 PATCH하면 404를 반환한다."""
     import secrets
-    from apps.tenants.models import Tenant, TenantAgent
-    from apps.tenants.auth import create_tenant_agent_token
+    from apps.tenants.models import Tenant
+    from tests.utils import make_membership, member_token
 
     raw_key2 = secrets.token_urlsafe(32)
     tenant2 = Tenant.objects.create_with_key(name="Other Corp Patch", raw_key=raw_key2)
-    agent2 = TenantAgent(tenant=tenant2, username="patchagent2")
-    agent2.set_password("pass")
-    agent2.save()
-    token2 = create_tenant_agent_token(agent2)
+    agent2 = make_membership(tenant2, "member")
+    token2 = member_token(agent2)
 
     f = io.BytesIO(b"Tenant1 private document.")
     f.name = "private.txt"
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     doc_id = resp.json()["id"]
 
@@ -973,7 +967,7 @@ def test_patch_document_other_tenant_returns_404(client, tenant_agent_token, db)
 
 
 @pytest.mark.django_db
-def test_patch_rename_without_file_access(client, tenant_agent_token):
+def test_patch_rename_without_file_access(client, tenant_admin_token):
     """원본 파일이 삭제돼도 PATCH 레이블 변경은 동작한다 (재추출/재임베딩 없이 rename + Entity 재시드)."""
     import os
     from django.conf import settings as dj_settings
@@ -984,7 +978,7 @@ def test_patch_rename_without_file_access(client, tenant_agent_token):
     resp = client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     doc_id = resp.json()["id"]
 
@@ -997,7 +991,7 @@ def test_patch_rename_without_file_access(client, tenant_agent_token):
         f"/api/tenant/documents/{doc_id}",
         {"name": "FCB1010-manual.txt"},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert patch_resp.status_code == 200
 

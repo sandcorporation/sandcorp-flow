@@ -9,7 +9,7 @@ def _make_session(tenant, visitor_id):
 
 
 @pytest.mark.django_db
-def test_list_visitors_returns_distinct_visitor_ids(client, tenant_with_key, tenant_agent_token):
+def test_list_visitors_returns_distinct_visitor_ids(client, tenant_with_key, tenant_admin_token):
     """GET /api/tenant/visitors/ → 세션이 있는 distinct visitor_id 목록을 반환한다."""
     tenant, _ = tenant_with_key
     _make_session(tenant, "v-alice")
@@ -18,7 +18,7 @@ def test_list_visitors_returns_distinct_visitor_ids(client, tenant_with_key, ten
 
     resp = client.get(
         "/api/tenant/visitors/",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -29,7 +29,7 @@ def test_list_visitors_returns_distinct_visitor_ids(client, tenant_with_key, ten
 
 
 @pytest.mark.django_db
-def test_list_visitors_search_by_visitor_id(client, tenant_with_key, tenant_agent_token):
+def test_list_visitors_search_by_visitor_id(client, tenant_with_key, tenant_admin_token):
     """GET /api/tenant/visitors/?search=alice → visitor_id에 alice 포함된 것만 반환한다."""
     tenant, _ = tenant_with_key
     _make_session(tenant, "v-alice")
@@ -37,7 +37,7 @@ def test_list_visitors_search_by_visitor_id(client, tenant_with_key, tenant_agen
 
     resp = client.get(
         "/api/tenant/visitors/?search=alice",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -47,7 +47,7 @@ def test_list_visitors_search_by_visitor_id(client, tenant_with_key, tenant_agen
 
 
 @pytest.mark.django_db
-def test_list_visitor_sessions(client, tenant_with_key, tenant_agent_token):
+def test_list_visitor_sessions(client, tenant_with_key, tenant_admin_token):
     """GET /api/tenant/visitors/{visitor_id}/sessions/ → visitor의 세션 목록을 반환한다."""
     from apps.chat.models import ChatSession
 
@@ -57,7 +57,7 @@ def test_list_visitor_sessions(client, tenant_with_key, tenant_agent_token):
 
     resp = client.get(
         "/api/tenant/visitors/v-carol/sessions/",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -70,7 +70,7 @@ def test_list_visitor_sessions(client, tenant_with_key, tenant_agent_token):
 
 
 @pytest.mark.django_db
-def test_get_session_messages(client, tenant_with_key, tenant_agent_token):
+def test_get_session_messages(client, tenant_with_key, tenant_admin_token):
     """GET /api/tenant/sessions/{session_id}/messages/ → 세션의 메시지 목록을 반환한다."""
     from apps.chat.models import ChatSession, ChatMessage
 
@@ -81,7 +81,7 @@ def test_get_session_messages(client, tenant_with_key, tenant_agent_token):
 
     resp = client.get(
         f"/api/tenant/sessions/{session.id}/messages/",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -91,7 +91,7 @@ def test_get_session_messages(client, tenant_with_key, tenant_agent_token):
 
 
 @pytest.mark.django_db
-def test_get_session_messages_404_for_other_tenant(client, tenant_agent_token):
+def test_get_session_messages_404_for_other_tenant(client, tenant_admin_token):
     """다른 테넌트의 session_id로 메시지 조회 시 404를 반환한다."""
     import secrets, uuid
     from apps.tenants.models import Tenant
@@ -104,13 +104,13 @@ def test_get_session_messages_404_for_other_tenant(client, tenant_agent_token):
 
     resp = client.get(
         f"/api/tenant/sessions/{other_session.id}/messages/",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 404
 
 
 @pytest.mark.django_db
-def test_visitor_detail_shows_sessions_and_memories(client, tenant_with_key, tenant_agent_token):
+def test_visitor_detail_shows_sessions_and_memories(client, tenant_with_key, tenant_admin_token):
     """visitor detail: 세션 목록 + 메모리 목록을 별도 API로 각각 조회할 수 있다."""
     from apps.memory.manager import upsert_memory
 
@@ -120,21 +120,21 @@ def test_visitor_detail_shows_sessions_and_memories(client, tenant_with_key, ten
 
     sessions_resp = client.get(
         "/api/tenant/visitors/v-eve/sessions/",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert sessions_resp.status_code == 200
     assert len(sessions_resp.json()) == 1
 
     memories_resp = client.get(
         "/api/tenant/visitors/v-eve/memory/",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert memories_resp.status_code == 200
     assert any(m["key"] == "language" for m in memories_resp.json())
 
 
 @pytest.mark.django_db
-def test_list_visitors_tenant_isolation(client, tenant_agent_token, tenant_with_key):
+def test_list_visitors_tenant_isolation(client, tenant_admin_token, tenant_with_key):
     """다른 테넌트의 visitor는 조회되지 않는다."""
     import secrets
     from apps.tenants.models import Tenant
@@ -148,7 +148,7 @@ def test_list_visitors_tenant_isolation(client, tenant_agent_token, tenant_with_
 
     resp = client.get(
         "/api/tenant/visitors/",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     data = resp.json()
     visitor_ids = [v["visitor_id"] for v in data]

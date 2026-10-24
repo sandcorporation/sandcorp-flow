@@ -2,7 +2,6 @@ import hashlib
 import secrets
 import uuid
 from typing import TYPE_CHECKING
-from django.contrib.auth.hashers import make_password, check_password as django_check_password
 from django.db import models
 from django.db.models.functions import Lower
 from django.contrib.auth.models import AbstractUser
@@ -105,35 +104,73 @@ class Tenant(models.Model):
         self.save(update_fields=["tenant_key_hash"])
         return new_key
 
-class TenantAgent(models.Model):
+class Membership(models.Model):
+    """사용자(`User`)가 한 Tenant에 속한 자리 — 역할(Admin/Member)과 활성 여부를 담는다(#40).
+
+    옛 TenantAgent(테넌트마다 따로 둔 username/password 계정)를 대신한다. 로그인은 sandcorp-auth이고,
+    Flow는 External Identity `(iss, sub)`로 사용자를 알아본 뒤 멤버십으로 테넌트 세션을 연다.
+    권한 비트(ADR-0025 C)는 role에서 나온다.
+    """
+
     ROLE_ADMIN = "admin"
     ROLE_MEMBER = "member"
     ROLE_CHOICES = [(ROLE_ADMIN, "Admin"), (ROLE_MEMBER, "Member")]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="agents")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="memberships")
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="memberships")
     if TYPE_CHECKING:
-        tenant_id: uuid.UUID  # FK _id 접근자 — django-types가 추론 못 함
-    username = models.CharField(max_length=150)
-    password_hash = models.CharField(max_length=255)
-    # 권한 등급(ADR-0025). 신규 agent는 기본 Member, self-signup·기존 백필은 Admin.
+        user_id: uuid.UUID  # FK _id 접근자 — django-types가 추론 못 함
+        tenant_id: uuid.UUID
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_MEMBER)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = "tenant_agents"
-        unique_together = [("tenant", "username")]
+        db_table = "memberships"
+        constraints = [
+            models.UniqueConstraint(fields=["user", "tenant"], name="memberships_unique_user_tenant"),
+        ]
 
-    def set_password(self, raw_password: str) -> None:
-        self.password_hash = make_password(raw_password)
+    @property
+    def display_name(self) -> str:
+        """상담 화면·방문자에게 보일 이름. ID 토큰 캐시(이름→이메일)가 없으면 고정 문구."""
+        return self.user.name or self.user.email or "멤버"
 
-    def check_password(self, raw_password: str) -> bool:
-        return django_check_password(raw_password, self.password_hash)
+
+class TenantInvite(models.Model):
+    """팀원 초대 링크(#40). 원문 토큰은 만들 때 한 번만 돌려주고 해시만 저장한다.
+
+    만료 7일·1회용·역할 지정. 받은 사람이 sandcorp-auth로 로그인하면 이 Tenant의 멤버십이 생긴다.
+    이메일은 보내지 않는다 — 링크를 Admin이 직접 전달한다.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="invites")
+    if TYPE_CHECKING:
+        tenant_id: uuid.UUID
+        created_by_id: uuid.UUID | None
+        used_by_id: uuid.UUID | None
+    role = models.CharField(max_length=10, choices=Membership.ROLE_CHOICES)
+    token_hash = models.CharField(max_length=64, unique=True)
+    # 만든 사람. TENANT_KEY(break-glass)·Operator가 만들면 비어 있다.
+    created_by = models.ForeignKey(
+        Membership, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    used_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    revoked = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "tenant_invites"
 
 
 class RefreshToken(models.Model):
-    """어드민(Operator/TenantAgent) 로그인 세션의 stateful Refresh Token (ADR-0013).
+    """어드민(Operator/Membership) 로그인 세션의 stateful Refresh Token (ADR-0013).
 
     로그인 1회 = Session Family 1개. 회전 시 같은 family_id로 새 row를 발급하고
     옛 row를 used 처리한다. family_expires_at은 최초 로그인 +14일 절대 상한이며
@@ -143,12 +180,12 @@ class RefreshToken(models.Model):
     operator = models.ForeignKey(
         Operator, on_delete=models.CASCADE, null=True, blank=True, related_name="refresh_tokens"
     )
-    tenant_agent = models.ForeignKey(
-        TenantAgent, on_delete=models.CASCADE, null=True, blank=True, related_name="refresh_tokens"
+    membership = models.ForeignKey(
+        Membership, on_delete=models.CASCADE, null=True, blank=True, related_name="refresh_tokens"
     )
     if TYPE_CHECKING:
         operator_id: int | None      # FK _id 접근자 — django-types가 추론 못 함
-        tenant_agent_id: uuid.UUID | None
+        membership_id: uuid.UUID | None
     family_id = models.UUIDField(db_index=True)
     token_hash = models.CharField(max_length=64, unique=True)
     family_expires_at = models.DateTimeField()
@@ -161,8 +198,8 @@ class RefreshToken(models.Model):
         constraints = [
             models.CheckConstraint(
                 condition=(
-                    models.Q(operator__isnull=False, tenant_agent__isnull=True)
-                    | models.Q(operator__isnull=True, tenant_agent__isnull=False)
+                    models.Q(operator__isnull=False, membership__isnull=True)
+                    | models.Q(operator__isnull=True, membership__isnull=False)
                 ),
                 name="refresh_exactly_one_subject",
             ),

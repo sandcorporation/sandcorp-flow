@@ -247,9 +247,9 @@ async def test_custom_refusal_message_end_to_end(tenant_with_key, fake_chat_llm)
 # ── admin config API + 검증 (issue 199) ──────────────────────────────────────
 
 @pytest.mark.django_db
-def test_config_api_exposes_and_sets_scope_fields(client, tenant_agent_token):
+def test_config_api_exposes_and_sets_scope_fields(client, tenant_admin_token):
     """config GET/PATCH로 3개 주제범위 필드 왕복."""
-    h = f"Bearer {tenant_agent_token}"
+    h = f"Bearer {tenant_admin_token}"
     client.patch(
         "/api/tenant/config/",
         {"topic_scope_enabled": True, "scope_description": "주문·배송 문의",
@@ -263,9 +263,9 @@ def test_config_api_exposes_and_sets_scope_fields(client, tenant_agent_token):
 
 
 @pytest.mark.django_db
-def test_enabling_scope_requires_description(client, tenant_agent_token):
+def test_enabling_scope_requires_description(client, tenant_admin_token):
     """토글 ON + 빈 scope_description 저장 시 400(검증)."""
-    h = f"Bearer {tenant_agent_token}"
+    h = f"Bearer {tenant_admin_token}"
     r = client.patch(
         "/api/tenant/config/",
         {"topic_scope_enabled": True, "scope_description": "   "},
@@ -275,9 +275,9 @@ def test_enabling_scope_requires_description(client, tenant_agent_token):
 
 
 @pytest.mark.django_db
-def test_enabling_scope_ok_when_description_already_set(client, tenant_agent_token):
+def test_enabling_scope_ok_when_description_already_set(client, tenant_admin_token):
     """범위 설명을 같은 요청에 담아 켜는 건 통과."""
-    h = f"Bearer {tenant_agent_token}"
+    h = f"Bearer {tenant_admin_token}"
     r = client.patch(
         "/api/tenant/config/",
         {"topic_scope_enabled": True, "scope_description": "주문 문의"},
