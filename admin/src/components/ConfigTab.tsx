@@ -11,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import PricingSection from './PricingSection'
+import SecretsSection from './SecretsSection'
 
 type DaySchedule = { enabled?: boolean; start?: string; end?: string }
 const WEEKDAYS: [string, string][] = [
@@ -34,6 +35,7 @@ const SECTIONS = [
   { id: 'handoff', label: '상담 전환', intro: 'AI가 답하기 어려울 때 사람 상담원에게 넘기는 방식을 정합니다.' },
   { id: 'deploy', label: '배포', intro: '흐름을 방문자 대화에 내보내는 절차를 정합니다.' },
   { id: 'security', label: '공개 URL·보안', intro: '챗봇 공개 주소와 접근 보안을 관리합니다.' },
+  { id: 'secrets', label: '비밀·허용 도메인', intro: 'HTTP 도구가 쓰는 비밀 값과, 호출해도 되는 외부 도메인을 관리합니다.' },
   { id: 'billing', label: '요금', intro: '요금제와 이 조직의 체험 상태를 봅니다.' },
 ]
 
@@ -530,6 +532,7 @@ export default function ConfigTab() {
       )}
 
       {/* ── 공개 URL·보안 ─────────────────────────────────── */}
+      {section === 'secrets' && <SecretsSection isAdmin={isAdmin} />}
       {section === 'billing' && <PricingSection />}
 
       {/* ── 배포 절차(ADR-0027) ───────────────────────────── */}
@@ -618,7 +621,7 @@ export default function ConfigTab() {
       )}
 
       {/* 항상 보이는 atomic 저장 (Slug 저장·키 재발급은 별도) */}
-      {section !== 'billing' && (
+      {section !== 'billing' && section !== 'secrets' && (
         <div className="mt-8 space-y-2 border-t border-border pt-6">
           {saveError && <p className={errorCls}>{saveError}</p>}
           <Button onClick={handleSave}>{saved ? '✓ 저장됨' : '저장'}</Button>
