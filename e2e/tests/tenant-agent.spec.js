@@ -1,4 +1,5 @@
 const { test, expect, request } = require('@playwright/test')
+const { operatorToken } = require('./operatorToken')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const API_URL = process.env.API_URL || 'http://localhost:8000'
@@ -10,13 +11,7 @@ async function createTestTenantAndAgent() {
   const apiContext = await request.newContext({ baseURL: API_URL })
 
   // Operator 로그인
-  const loginRes = await apiContext.post('/api/operator/auth/login', {
-    data: {
-      username: process.env.E2E_OPERATOR_USERNAME || 'admin',
-      password: process.env.E2E_OPERATOR_PASSWORD || 'admin123',
-    },
-  })
-  const { access_token: opToken } = await loginRes.json()
+  const opToken = operatorToken()
 
   // 테넌트 생성 (에이전트 계정 포함 반환)
   const tenantRes = await apiContext.post('/api/operator/tenants/', {

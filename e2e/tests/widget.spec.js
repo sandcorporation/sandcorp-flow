@@ -1,4 +1,5 @@
 const { test, expect, request } = require('@playwright/test')
+const { operatorToken } = require('./operatorToken')
 
 const WIDGET_URL = process.env.WIDGET_URL || 'http://localhost:5173'
 const API_URL = process.env.API_URL || 'http://localhost:8000'
@@ -7,13 +8,7 @@ const API_URL = process.env.API_URL || 'http://localhost:8000'
 async function setupWidgetTenant() {
   const apiContext = await request.newContext({ baseURL: API_URL })
 
-  const opRes = await apiContext.post('/api/operator/auth/login', {
-    data: {
-      username: process.env.E2E_OPERATOR_USERNAME || 'admin',
-      password: process.env.E2E_OPERATOR_PASSWORD || 'admin123',
-    },
-  })
-  const { access_token: opToken } = await opRes.json()
+  const opToken = operatorToken()
 
   const tenantRes = await apiContext.post('/api/operator/tenants/', {
     headers: { Authorization: `Bearer ${opToken}` },

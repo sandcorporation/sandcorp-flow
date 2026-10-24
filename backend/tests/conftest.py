@@ -265,13 +265,11 @@ def client():
 
 @pytest.fixture
 def operator_token(client, db):
-    from apps.tenants.models import Operator
-    from apps.tenants.auth import create_operator_token
+    # sandcorp-auth 로그인 콜백(#21)이 연 Flow 세션의 Access Token과 같다.
+    from apps.tenants.auth import create_operator_access_token
+    from apps.tenants.operator_login import owner_operator
 
-    op = Operator.objects.create(username="admin", email="admin@example.com")
-    op.set_password("password123")
-    op.save()
-    return create_operator_token(op)
+    return create_operator_access_token(owner_operator("https://auth.sandcorp.co.kr", "admin"))
 
 
 @pytest.fixture

@@ -182,6 +182,11 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 | `AUTH_JWKS_URL` | 공개 키 JWKS(600초 캐시) | `https://auth.sandcorp.co.kr/.well-known/jwks.json`(기본) |
 | `AUTH_RESOURCE` | 이 서비스의 리소스(`aud` 정확히 일치). 원점이 401 `resource_metadata` 주소가 된다 | `https://flow.sandcorp.co.kr/api`(기본) |
 | `AUTH_OWNER_SUB` | 대표 계정 username(A1). **비우면 대표 토큰이 모두 거부**된다 | `farrar142` |
+| `AUTH_CLIENT_ID` / `AUTH_CLIENT_SECRET` | 관리 화면 로그인용 sandcorp-auth 기밀 클라이언트(#21). 비우면 로그인 버튼이 「설정되지 않음」 거절 화면 | (sandcorp-auth에서 발급) |
+| `AUTH_REDIRECT_URI` | 로그인 콜백 주소. sandcorp-auth 등록값과 문자 하나까지 일치 | `https://flow.sandcorp.co.kr/api/auth/callback`(기본) |
+| `AUTH_AUTHORIZE_URL` / `AUTH_TOKEN_URL` | sandcorp-auth 인가·토큰 엔드포인트 | `<AUTH_ISSUER>/authorize`·`<AUTH_ISSUER>/token`(기본) |
+| `AUTH_WEBHOOK_SECRET` | 탈퇴 웹훅(`/api/auth/webhook`) 서명 비밀. 수신부는 별도 티켓 — 지금은 이름만 | (sandcorp-auth `clients webhook`으로 발급) |
+| `AUTH_LOGIN_REDIRECT` | 콜백 뒤 돌아갈 관리 화면(거절이면 `?login_error=<사유>`) | `/admin-ui/operator`(기본) |
 
 ---
 
@@ -196,10 +201,11 @@ cp .env.example .env
 #    api(uvicorn), worker(Celery 배치), worker-chat(taskiq chat), widget, admin)
 docker compose -f docker-compose.dev.yml up --build
 
-# 3. 최초 1회: 마이그레이션 + Operator 계정
+# 3. 최초 1회: 마이그레이션
 docker compose exec api python manage.py migrate
-docker compose exec api python manage.py createsuperuser
 ```
+
+Operator 비밀번호 로그인은 없다(#21). 관리 화면 Operator 로그인은 sandcorp-auth 대표 계정으로 한다 — dev용 기밀 클라이언트를 등록하고 `.env`에 `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`·`AUTH_REDIRECT_URI`(admin dev 서버 주소의 `/api/auth/callback`)·`AUTH_OWNER_SUB`를 채운다. sandcorp-auth 없이 화면만 볼 때는 `docker compose exec api python manage.py seed_e2e_operator --token-file /tmp/op_token`으로 대표 Operator와 세션 토큰을 만들고, 그 값을 브라우저 sessionStorage `op_access`에 넣는다(e2e가 쓰는 방식).
 
 접근 경로:
 
@@ -251,11 +257,14 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 
 ## 8. API 개요 (`GET /api/docs`에 전체)
 
-**Operator 인증**(`/api/operator/*`): `Authorization: Bearer <토큰>`으로 두 가지를 받는다. ① sandcorp-auth 액세스 토큰(Resource Token, `aud`=`AUTH_RESOURCE`) — 규칙은 sandcorp-auth `docs/resource-server-token-validation.md` 3~6·10절(T1~T10 → A1~A3 → S1, `apps/tenants/resource_token.py`). **대표 토큰(`acct` 없음, `sub`=`AUTH_OWNER_SUB`) + `admin` 스코프**일 때만 열린다. 일반 사용자 토큰(`acct=member`)은 검증을 통과해도 403. 실패는 401(토큰 없음/`invalid_token`)·403(`insufficient_scope`)에 `WWW-Authenticate` 헤더. ② 옛 Operator JWT(비밀번호 로그인) — #21에서 걷어낸다.
+**Operator 인증**(`/api/operator/*`): `Authorization: Bearer <토큰>`으로 두 가지를 받는다. ① sandcorp-auth 액세스 토큰(Resource Token, `aud`=`AUTH_RESOURCE`) — 규칙은 sandcorp-auth `docs/resource-server-token-validation.md` 3~6·10절(T1~T10 → A1~A3 → S1, `apps/tenants/resource_token.py`). **대표 토큰(`acct` 없음, `sub`=`AUTH_OWNER_SUB`) + `admin` 스코프**일 때만 열린다. 일반 사용자 토큰(`acct=member`)은 검증을 통과해도 403. 실패는 401(토큰 없음/`invalid_token`)·403(`insufficient_scope`)에 `WWW-Authenticate` 헤더. ② Flow 세션 Access Token(30분, ADR-0013) — 관리 화면이 sandcorp-auth 로그인 콜백 뒤 `/api/operator/auth/refresh`로 받는다.
+
+**관리 화면 Operator 로그인**(#21, `apps/tenants/operator_login.py`): `GET /api/auth/authorize`가 state·PKCE(S256)·nonce를 서명된 httpOnly 쿠키(SameSite=Lax, 10분)에 맡기고 sandcorp-auth `/authorize`로 보낸다(`scope=openid profile email login`, `resource=AUTH_RESOURCE`). `GET /api/auth/callback`은 state → 코드 교환(`client_secret_basic` + `code_verifier`) → 액세스 토큰(`login` 스코프·`client_id`) → ID 토큰(EdDSA·`iss`·`aud`=client_id·`exp`·`nonce`·같은 `sub`)을 확인하고, **대표(`acct` 없음, A1) + `admin`**이면 사용자 행 `User(iss, sub)`와 이어진 Operator에 Refresh Family를 열어 `/admin-ui/operator`로 돌려보낸다. 아니면 `?login_error=member|admin|state|exchange|token|denied|config`. sandcorp-auth 토큰은 저장하지 않는다. 일반 사용자 로그인은 #40.
 
 | 엔드포인트 | 인증 | 용도 |
 |------------|------|------|
-| `POST /api/operator/auth/login` | 없음 | Operator JWT(옛 경로, #21에서 걷어냄) |
+| `GET /api/auth/authorize` · `GET /api/auth/callback` | 없음(브라우저 이동) | 관리 화면 Operator 로그인(sandcorp-auth) |
+| `POST /api/operator/auth/refresh` · `logout` · `logout-all` | Refresh 쿠키 / Operator | Flow 세션 회전·폐기 |
 | `POST /api/operator/tenants/` | Operator | Tenant 생성 |
 | `GET /.well-known/oauth-protected-resource` | 없음 | 보호 리소스 메타데이터(RFC 9728) |
 | `POST /api/tenant/agents/auth/login` | 없음 | TenantAgent JWT |

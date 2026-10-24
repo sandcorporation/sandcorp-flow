@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
-  operatorLogin, tenantAgentLogin, operatorLogout, agentLogout,
+  startOperatorLogin, tenantAgentLogin, operatorLogout, agentLogout,
   claimEscalation, getSessionCheckpoint,
 } from './api'
 import { getAccess, setAccess } from './auth'
@@ -20,10 +20,19 @@ beforeEach(() => {
 })
 
 describe('로그인 토큰 부수효과', () => {
-  it('operatorLogin이 access(operator)를 저장한다', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValueOnce(ok({ access_token: 'op-acc' }))
-    await operatorLogin('admin', 'pw')
-    expect(getAccess('operator')).toBe('op-acc')
+  it('startOperatorLogin은 비밀번호 없이 백엔드 /authorize(sandcorp-auth)로 이동한다', () => {
+    const assign = vi.fn()
+    const original = window.location
+    Object.defineProperty(window, 'location', { configurable: true, value: { ...original, assign } })
+    try {
+      globalThis.fetch = vi.fn()
+      startOperatorLogin()
+      expect(assign).toHaveBeenCalledWith('/api/auth/authorize')
+      expect(globalThis.fetch).not.toHaveBeenCalled()
+      expect(getAccess('operator')).toBeNull()
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: original })
+    }
   })
 
   it('tenantAgentLogin이 access(agent)를 저장한다', async () => {

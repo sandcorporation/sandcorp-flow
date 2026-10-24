@@ -1,11 +1,12 @@
 import secrets
 from typing import List
 from ninja import Router, Schema
-from django.contrib.auth import authenticate
-from django.http import HttpResponse
+from urllib.parse import urlencode
+from django.conf import settings
+from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from apps.tenants.auth import (
-    create_operator_token, create_tenant_agent_token,
+    create_operator_access_token, create_tenant_agent_token,
     operator_auth, tenant_key_auth, tenant_agent_auth,
 )
 from apps.tenants.auth_cookies import (
@@ -15,15 +16,15 @@ from apps.tenants.refresh_tokens import (
     issue_session, rotate, revoke_all, revoke_session, RefreshRejected,
 )
 from apps.tenants.models import Operator, Tenant, TenantConfig, TenantAgent
+from apps.tenants.operator_login import (
+    ATTEMPT_MAX_AGE_SECONDS, LoginAttempt, LoginRejected, complete_login, start_login,
+)
 
 operator_router = Router(tags=["operator"])
 tenant_router = Router(tags=["tenant"], auth=tenant_agent_auth)
 agent_router = Router(tags=["tenant-agents"])
-
-
-class LoginIn(Schema):
-    username: str
-    password: str
+# sandcorp-auth 로그인(/api/auth/*). Operator 전용이 아니다 — 일반 사용자(#40)도 같은 콜백을 쓴다.
+auth_router = Router(tags=["auth"])
 
 
 class LoginOut(Schema):
@@ -349,13 +350,52 @@ def change_password(request, body: ChangePasswordIn):
     return 200, {"detail": "비밀번호가 변경되었습니다."}
 
 
-@operator_router.post("/auth/login", response={200: LoginOut, 401: dict}, auth=None)
-def login(request, body: LoginIn, response: HttpResponse):
-    user = authenticate(username=body.username, password=body.password)
-    if not user:
-        return 401, {"detail": "Invalid credentials"}
-    set_refresh_cookie(response, user, issue_session(user))
-    return 200, {"access_token": create_operator_token(user)}
+# ── 로그인: sandcorp-auth 기밀 클라이언트(ADR-0028, #21). 지금은 대표(Operator)만 세션을 받는다 ──
+# 브라우저 이동(302)이라 생성 클라이언트에 넣지 않는다. 시도(state·PKCE·nonce)는 서명된 httpOnly
+# 쿠키에 맡긴다 — 인가 서버에서 돌아오는 교차 사이트 GET에도 실려야 하므로 SameSite=Lax.
+LOGIN_ATTEMPT_COOKIE = "op_login"
+LOGIN_ATTEMPT_COOKIE_PATH = "/api/auth/callback"
+
+
+def _login_redirect(reason: str | None = None) -> HttpResponseRedirect:
+    target = settings.AUTH_LOGIN_REDIRECT
+    if reason:
+        target = f"{target}?{urlencode({'login_error': reason})}"
+    response = HttpResponseRedirect(target)
+    response.delete_cookie(LOGIN_ATTEMPT_COOKIE, path=LOGIN_ATTEMPT_COOKIE_PATH)
+    return response
+
+
+@auth_router.get("/authorize", auth=None, include_in_schema=False)
+def operator_authorize(request):
+    try:
+        url, attempt = start_login()
+    except LoginRejected as exc:
+        return _login_redirect(exc.reason)
+    response = HttpResponseRedirect(url)
+    response.set_cookie(
+        LOGIN_ATTEMPT_COOKIE,
+        attempt.dumps(),
+        max_age=ATTEMPT_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="Lax",
+        path=LOGIN_ATTEMPT_COOKIE_PATH,
+    )
+    return response
+
+
+@auth_router.get("/callback", auth=None, include_in_schema=False)
+def operator_callback(request):
+    attempt = LoginAttempt.loads(request.COOKIES.get(LOGIN_ATTEMPT_COOKIE))
+    try:
+        operator = complete_login(request.GET.dict(), attempt)
+    except LoginRejected as exc:
+        return _login_redirect(exc.reason)
+    response = _login_redirect()
+    # Refresh 쿠키 경로는 /api/operator/auth(refresh·logout만 받는다). 콜백 응답에서 심어도 된다.
+    set_refresh_cookie(response, operator, issue_session(operator))
+    return response
 
 
 @operator_router.post("/auth/refresh", response={200: LoginOut, 401: dict}, auth=None)
@@ -367,10 +407,10 @@ def operator_refresh(request, response: HttpResponse):
         subject, new_raw = rotate(raw)
     except RefreshRejected:
         return 401, {"detail": "Invalid refresh token"}
-    if not isinstance(subject, Operator):
+    if not isinstance(subject, Operator) or subject.user_id is None:
         return 401, {"detail": "Invalid refresh token"}
     set_refresh_cookie(response, subject, new_raw)
-    return 200, {"access_token": create_operator_token(subject)}
+    return 200, {"access_token": create_operator_access_token(subject)}
 
 
 @operator_router.post("/auth/logout", response={200: dict}, auth=None)

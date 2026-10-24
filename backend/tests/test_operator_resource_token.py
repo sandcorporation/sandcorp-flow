@@ -1,7 +1,7 @@
 """Operator API를 sandcorp-auth Resource Token으로 여는 시나리오(ADR-0028, #20).
 
 Operator = A1 통과(`acct` 없음, sub == AUTH_OWNER_SUB) + `admin` 스코프. 일반 사용자 토큰은
-검증을 통과해도 403. 옛 Operator JWT 경로는 그대로 열린다(#21에서 걷어낸다).
+검증을 통과해도 403. 옛 Operator JWT 경로는 그대로 열린다(#21에서 걷어냈다).
 JWKS·시계만 결정적 대역이고, 나머지(검증기·Ninja·DB)는 진짜다.
 """
 

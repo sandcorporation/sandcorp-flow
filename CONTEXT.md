@@ -5,7 +5,7 @@ Sandcorp Flow(`flow.sandcorp.co.kr`)는 옛 Embed Chat을 넓힌 셀프 가입 S
 ## Actors
 
 **Operator**
-플랫폼 자체를 운영하는 쪽(대표). 어드민 페이지 최상위 권한 보유. Tenant 정지, 전체 현황 모니터링 담당. **sandcorp-auth에서 받은 대표 토큰의 Flow 리소스 `admin` 스코프가 곧 Operator 권한**이다(ADR-0028). Flow 안에 Operator 비밀번호는 두지 않는다(기존 Django `Operator` 비밀번호 로그인은 걷어낼 대상).
+플랫폼 자체를 운영하는 쪽(대표). 어드민 페이지 최상위 권한 보유. Tenant 정지, 전체 현황 모니터링 담당. **sandcorp-auth에서 받은 대표 토큰의 Flow 리소스 `admin` 스코프가 곧 Operator 권한**이다(ADR-0028). Flow 안에 Operator 비밀번호는 두지 않는다 — 관리 화면 로그인은 sandcorp-auth 기밀 클라이언트 콜백뿐이고, 대표(A1) + `admin`일 때만 Flow 세션(Access + Refresh Family)을 연다(#21). Flow 쪽 Operator 행은 **사용자**(`User`, External Identity `(iss, sub)`)에 1:1로 이어진다.
 
 **Tenant**
 챗봇을 자기 사이트에 embed해서 쓰는 B2B 계약 고객사. 자기 RAG Knowledge Base, Visitor Memory를 어드민 페이지에서 직접 관리. `Tenant.name`은 표시명이자 **전역 unique한 조직 로그인 식별자**(어드민 로그인 시 `name + username`으로 조직을 특정한다 — 대소문자·공백 무관 충돌 처리). 공개 챗봇 URL용 Slug와는 별개다(name=로그인, slug=공개 URL).

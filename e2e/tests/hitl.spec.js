@@ -1,4 +1,5 @@
 const { test, expect, request } = require('@playwright/test')
+const { operatorToken } = require('./operatorToken')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const WIDGET_URL = process.env.WIDGET_URL || 'http://localhost:5173'
@@ -12,13 +13,7 @@ const HITL_SYSTEM_PROMPT =
 async function setupHitlTest() {
   const api = await request.newContext({ baseURL: API_URL })
 
-  const opRes = await api.post('/api/operator/auth/login', {
-    data: {
-      username: process.env.E2E_OPERATOR_USERNAME || 'admin',
-      password: process.env.E2E_OPERATOR_PASSWORD || 'admin123',
-    },
-  })
-  const { access_token: opToken } = await opRes.json()
+  const opToken = operatorToken()
 
   const tenantRes = await api.post('/api/operator/tenants/', {
     headers: { Authorization: `Bearer ${opToken}` },

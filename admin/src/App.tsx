@@ -43,14 +43,14 @@ export default function App() {
   const [agentUsername, setAgentUsername] = useState(() => localStorage.getItem('agent_username'))
 
   useEffect(() => {
-    // 새로고침으로 sessionStorage access가 사라져도 refresh 쿠키로 무중단 복구
+    // 새로고침으로 sessionStorage access가 사라져도 refresh 쿠키로 무중단 복구.
+    // sandcorp-auth 로그인 콜백(#21)이 심은 Operator refresh 쿠키도 여기서 access로 바뀐다.
     Promise.all([
       bootSilentRefresh('operator').then((ok) => setOperatorAuthed(ok)).finally(() => setOperatorBooting(false)),
       bootSilentRefresh('agent').then((ok) => setAgentAuthed(ok)).finally(() => setAgentBooting(false)),
     ])
   }, [])
 
-  const handleOperatorLogin = () => setOperatorAuthed(true)
   const handleOperatorLogout = async () => {
     await operatorLogout()
     setOperatorAuthed(false)
@@ -80,11 +80,13 @@ export default function App() {
   }
 
   // 인증 게이트: booting이면 null, 미인증이면 로그인(셸 없음), 인증되면 셸(Outlet으로 섹션 렌더).
+  // 부팅 중에도 null이 아닌 요소를 둔다 — null이면 라우터가 Outlet을 그려 index의 Navigate가
+  // 먼저 돌고, 콜백이 붙여 보낸 ?login_error가 사라진다(#21).
   const operatorEl = operatorBooting
-    ? null
+    ? <div aria-busy="true" />
     : operatorAuthed
       ? <DashboardLayout brand="Operator" navItems={operatorNav} onLogout={handleOperatorLogout} onLogoutAll={handleOperatorLogoutAll} />
-      : <OperatorLogin onLogin={handleOperatorLogin} />
+      : <OperatorLogin />
 
   const tenantEl = agentBooting
     ? null

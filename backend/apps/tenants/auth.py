@@ -16,20 +16,25 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
-def create_operator_token(operator) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+OPERATOR_SESSION_TYPE = "operator_session"
+
+
+def create_operator_access_token(operator, minutes: int = ACCESS_TOKEN_EXPIRE_MINUTES) -> str:
+    """Flow 자기 세션의 Operator Access Token(ADR-0013). sandcorp-auth 로그인 콜백 뒤 refresh가 발급한다.
+    `minutes`를 바꾸는 곳은 e2e 시드(`seed_e2e_operator`)뿐이다."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=minutes)
     payload = {
         "sub": str(operator.id),
-        "type": "operator",
+        "type": OPERATOR_SESSION_TYPE,
         "exp": expire,
     }
     return jwt.encode(payload, settings.JWT_SIGNING_KEY, algorithm=ALGORITHM)
 
 
-def verify_operator_token(token: str) -> Optional[dict]:
+def verify_operator_access_token(token: str) -> Optional[dict]:
     try:
         payload = jwt.decode(token, settings.JWT_SIGNING_KEY, algorithms=[ALGORITHM])
-        if payload.get("type") != "operator":
+        if payload.get("type") != OPERATOR_SESSION_TYPE:
             return None
         return payload
     except JWTError:
@@ -51,7 +56,8 @@ OPERATOR_SCOPE = "admin"
 class OperatorAuth(HttpBearer):
     """Operator API 가드. 두 경로를 받는다.
 
-    1. 옛 Operator JWT(비밀번호 로그인, HS256) — #21에서 걷어낸다.
+    1. Flow 세션 Access Token(HS256, ADR-0013) — sandcorp-auth 로그인 콜백(#21)이 연 세션.
+       대표 `User`에 이어진 Operator만 통과한다. 비밀번호 로그인 시절 토큰(`type=operator`)은 받지 않는다.
     2. sandcorp-auth Resource Token(ADR-0028): A1을 통과한 대표 토큰(`acct` 없음,
        sub == AUTH_OWNER_SUB) + `admin` 스코프일 때만 연다. 일반 사용자 토큰(`acct=member`)은
        검증을 통과해도 403이다 — 스코프로 대표 여부를 판단하지 않는다.
@@ -70,18 +76,20 @@ class OperatorAuth(HttpBearer):
         return self.authenticate(request, " ".join(parts[1:]))
 
     def authenticate(self, request, token: str):
-        from apps.tenants.models import Operator
+        from apps.tenants.models import Operator, User
+        from apps.tenants.operator_login import owner_operator
+        from apps.tenants.resource_token import get_validator, site_origin, www_authenticate
 
-        payload = verify_operator_token(token)
+        payload = verify_operator_access_token(token)
         if payload:
-            return Operator.objects.filter(id=payload["sub"]).first()
+            operator = Operator.objects.filter(id=payload["sub"], user__acct=User.Acct.OWNER).first()
+            if operator is None:
+                origin = site_origin(get_validator().audience)
+                raise ResourceAuthFailed(401, www_authenticate(origin, error="invalid_token"))
+            return operator
 
         verified = _verify_operator_resource_token(token)
-        operator, created = Operator.objects.get_or_create(username=verified.sub)
-        if created:
-            operator.set_unusable_password()
-            operator.save(update_fields=["password"])
-        return operator
+        return owner_operator(get_validator().issuer, verified.sub)
 
 
 def _verify_operator_resource_token(token: str) -> "AccessToken":

@@ -6,39 +6,6 @@ adb = sync_to_async
 
 
 @pytest.mark.django_db
-def test_operator_login_returns_token(client):
-    from apps.tenants.models import Operator
-
-    op = Operator.objects.create(username="admin", email="admin@example.com")
-    op.set_password("password123")
-    op.save()
-
-    response = client.post(
-        "/api/operator/auth/login",
-        {"username": "admin", "password": "password123"},
-        content_type="application/json",
-    )
-    assert response.status_code == 200
-    assert "access_token" in response.json()
-
-
-@pytest.mark.django_db
-def test_operator_login_wrong_password(client):
-    from apps.tenants.models import Operator
-
-    op = Operator.objects.create(username="admin2", email="admin2@example.com")
-    op.set_password("correct")
-    op.save()
-
-    response = client.post(
-        "/api/operator/auth/login",
-        {"username": "admin2", "password": "wrong"},
-        content_type="application/json",
-    )
-    assert response.status_code == 401
-
-
-@pytest.mark.django_db
 def test_create_tenant_returns_key(client, operator_token):
     client.defaults["HTTP_AUTHORIZATION"] = f"Bearer {operator_token}"
     response = client.post(
