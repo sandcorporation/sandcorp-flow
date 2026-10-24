@@ -475,7 +475,7 @@ def test_seed_e2e_member_accepts_invite_dropped_in_file(tenant_with_key, tmp_pat
     call_command(
         "seed_e2e_member", "--sub", "m_E2EINVITEE0000000000000001",
         "--accept-invite-from", str(invite_file), "--token-file", str(token_file),
-        "--wait-seconds", "10",
+        "--wait-seconds", "10", "--once",
     )
 
     me = Client().get("/api/tenant/members/me", **_hdr(token_file.read_text()))

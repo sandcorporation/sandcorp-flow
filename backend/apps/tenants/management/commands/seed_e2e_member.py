@@ -31,7 +31,8 @@ class Command(BaseCommand):
         parser.add_argument("--role", default=Membership.ROLE_ADMIN)
         parser.add_argument("--token-file", required=True)
         parser.add_argument("--accept-invite-from", default="")
-        parser.add_argument("--wait-seconds", type=int, default=1800)
+        parser.add_argument("--wait-seconds", type=int, default=86400)
+        parser.add_argument("--once", action="store_true", help="한 번 수락하면 끝낸다(기본은 계속 기다린다)")
 
     def handle(self, *args: object, **options: object) -> None:
         token_file = Path(str(options["token_file"]))
@@ -42,7 +43,10 @@ class Command(BaseCommand):
 
         invite_file = str(options["accept_invite_from"])
         if invite_file:
-            membership = self._wait_and_accept(user, Path(invite_file), int(str(options["wait_seconds"])))
+            self._serve_invites(
+                user, Path(invite_file), token_file, int(str(options["wait_seconds"])), bool(options["once"])
+            )
+            return
         else:
             tenant = Tenant.objects.filter(name=str(options["tenant_name"])).first() or (
                 Tenant.objects.create_with_key(
@@ -55,17 +59,21 @@ class Command(BaseCommand):
         token_file.write_text(create_member_access_token(membership))
         self.stdout.write(self.style.SUCCESS(f"Seeded member {user.sub} → {token_file}"))
 
-    @staticmethod
-    def _wait_and_accept(user: User, invite_file: Path, wait_seconds: int) -> Membership:
+    def _serve_invites(self, user: User, invite_file: Path, token_file: Path, wait_seconds: int, once: bool) -> None:
+        """파일에 떨어진 초대 원문을 수락하는 대역. 다시 수락해도(내보낸 뒤 재초대) 같은 사람으로 돌아온다."""
         invite_file.unlink(missing_ok=True)  # 지난 실행이 남긴 원문은 쓰지 않는다
         deadline = time.monotonic() + wait_seconds
         while time.monotonic() < deadline:
             raw = invite_file.read_text().strip() if invite_file.exists() else ""
-            if raw:
-                invite_file.unlink(missing_ok=True)
-                try:
-                    return accept_invite(user, raw)
-                except InviteRejected:
-                    continue
-            time.sleep(0.5)
-        raise SystemExit("초대 원문이 오지 않았다")
+            if not raw:
+                time.sleep(0.5)
+                continue
+            invite_file.unlink(missing_ok=True)
+            try:
+                membership = accept_invite(user, raw)
+            except InviteRejected:
+                continue
+            token_file.write_text(create_member_access_token(membership))
+            self.stdout.write(self.style.SUCCESS(f"Accepted invite as {user.sub} → {token_file}"))
+            if once:
+                return
