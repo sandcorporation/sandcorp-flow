@@ -9,6 +9,8 @@ import type { DailyPoint } from './dailyPoint';
 
 export interface OperatorUsageOut {
   by_tenant: TenantRow[];
+  cost_usd: string;
   daily: DailyPoint[];
   total_tokens: number;
+  unknown_cost_models: string[];
 }

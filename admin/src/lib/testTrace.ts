@@ -108,3 +108,15 @@ export function notRunMessage(errors: FlowError[], note: string, trial: string |
   if (trial === 'unavailable') return '이 서버에는 플랫폼 키가 없어 체험으로는 시험할 수 없습니다. 설정에서 내 LLM 키를 넣어 주세요.'
   return note || '시험을 돌리지 못했습니다.'
 }
+
+
+/** 저장된 판단 기록(GET /sessions/{id}/decision-traces)을 화면의 턴으로 되돌린다. 방문자 말·답은 시작·답변 노드 기록에서 읽는다. */
+export function restoredTurns(stored: { turn: number; entries: unknown[] }[]): TestTurn[] {
+  const text = (v: unknown) => (typeof v === 'string' ? v : '')
+  return stored.map((t) => {
+    const entries = t.entries as TraceEntry[]
+    const message = text(entries.map((e) => e.record?.input).find((v) => typeof v === 'string' && v))
+    const reply = text(entries.filter((e) => e.kind === 'ai_answer').map((e) => e.record?.output).filter(Boolean).pop())
+    return { n: t.turn, message, reply, entries, ran: true, handoff: entries.some((e) => e.kind === 'handoff'), note: '', errors: [], failure: '', pending: false }
+  })
+}

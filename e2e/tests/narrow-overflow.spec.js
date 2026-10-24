@@ -44,14 +44,14 @@ const FIXTURES = [
     { id: 't3', name: '보통 고객사', is_active: true, created_at: T0, active_admin_count: 2 },
   ]],
   [/\/api\/operator\/usage\/$/, {
-    total_tokens: 123456789,
-    by_tenant: [{ tenant_id: 't1', tenant_name: LONG, total_tokens: 98765432, request_count: 12345 }],
-    daily: [{ date: '2026-10-01', total_tokens: 1000 }],
+    total_tokens: 123456789, cost_usd: '12345.678901', unknown_cost_models: [LONG, 'another-unknown-model'],
+    by_tenant: [{ tenant_id: 't1', tenant_name: LONG, total_tokens: 98765432, request_count: 12345, cost_usd: '12345.678901', unknown_cost_models: [LONG] }],
+    daily: [{ date: '2026-10-01', total_tokens: 1000, cost_usd: '1234.567890', has_unknown_cost: true }, { date: '2026-10-02', total_tokens: 2000, cost_usd: '0.000000', has_unknown_cost: false }],
   }],
   [/\/api\/tenant\/usage\/$/, {
-    total_tokens: 123456789,
-    by_call_type: [{ call_type: 'chat_completion_with_a_very_long_call_type_name', input_tokens: 12345678, output_tokens: 87654321, total_tokens: 99999999, request_count: 123456 }],
-    daily: [{ date: '2026-10-01', total_tokens: 1000 }],
+    total_tokens: 123456789, cost_usd: '12345.678901', unknown_cost_models: [LONG],
+    by_call_type: [{ call_type: 'chat_completion_with_a_very_long_call_type_name', input_tokens: 12345678, output_tokens: 87654321, total_tokens: 99999999, request_count: 123456, cost_usd: '12345.678901', unknown_cost_models: [LONG] }],
+    daily: [{ date: '2026-10-01', total_tokens: 1000, cost_usd: '1234.567890', has_unknown_cost: true }, { date: '2026-10-02', total_tokens: 2000, cost_usd: '0.000000', has_unknown_cost: false }],
   }],
   [/\/api\/tenant\/documents\/$/, [
     { id: 'd1', name: LONG + '.pdf', status: 'ready', error_message: '' },

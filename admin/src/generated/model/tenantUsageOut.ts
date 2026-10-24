@@ -9,6 +9,8 @@ import type { DailyPoint } from './dailyPoint';
 
 export interface TenantUsageOut {
   by_call_type: UsageBucket[];
+  cost_usd: string;
   daily: DailyPoint[];
   total_tokens: number;
+  unknown_cost_models: string[];
 }

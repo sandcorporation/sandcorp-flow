@@ -14,6 +14,13 @@ adb = sync_to_async
 # ── 모델 단가 표 ──────────────────────────────────────────────────────────────
 
 
+def _embedding_of(row) -> tuple[int, bool]:
+    """지식 검색 노드의 질의 임베딩(실제 임베딩 서버 응답) 토큰 수와 단가를 모르는지 — 턴 합계에 더해진다(#85)."""
+    search = next((e for e in row.entries if e["kind"] == "knowledge_search"), None)
+    tokens = search["input_tokens"] if search else 0
+    return tokens, bool(search and tokens and search["cost_usd"] is None)
+
+
 def test_price_table_prices_platform_models():
     """플랫폼 LLM·임베딩 모델 단가가 표에 있다 — /try 상한과 체험 한도가 이 단가로 계산된다."""
     from django.conf import settings
@@ -64,8 +71,9 @@ async def test_production_turn_records_nodes_tokens_cost(tenant_with_key, fake_c
     assert answer["input_tokens"] == 1000 and answer["output_tokens"] == 200
     assert Decimal(answer["cost_usd"]) == Decimal("0.00027")  # 1000*0.15/1M + 200*0.60/1M
     assert answer["duration_ms"] >= 0
-    assert row.input_tokens == 1000 and row.output_tokens == 200
-    assert row.cost_usd == Decimal("0.00027")
+    embed, embed_unknown = _embedding_of(row)
+    assert row.input_tokens == 1000 + embed and row.output_tokens == 200
+    assert row.cost_usd == (None if embed_unknown else Decimal("0.00027"))
     assert row.duration_ms >= 0
 
 
@@ -83,7 +91,7 @@ async def test_unknown_model_leaves_cost_null_but_keeps_tokens(tenant_with_key, 
     row = await adb(DecisionTrace.objects.get)(session=session)
     answer = next(e for e in row.entries if e["kind"] == "ai_answer")
     assert answer["cost_usd"] is None and answer["input_tokens"] == 500
-    assert row.cost_usd is None and row.input_tokens == 500
+    assert row.cost_usd is None and row.input_tokens == 500 + _embedding_of(row)[0]
 
 
 @pytest.mark.django_db(transaction=True)
@@ -154,7 +162,7 @@ async def test_test_turn_records_same_shape_as_production(tenant_with_key, fake_
 
     assert result.ran
     row = await adb(DecisionTrace.objects.get)(session_id=result.session_id)
-    assert row.is_test is True and row.cost_usd == Decimal("0.00027")
+    assert row.is_test is True and row.cost_usd == (None if _embedding_of(row)[1] else Decimal("0.00027"))
     answer = next(t for t in result.trace if t["kind"] == "ai_answer")
     assert answer["input_tokens"] == 1000 and answer["cost_usd"] == "0.00027" and "duration_ms" in answer
     assert answer["record"]["output"]

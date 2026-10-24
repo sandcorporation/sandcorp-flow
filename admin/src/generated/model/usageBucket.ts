@@ -7,8 +7,10 @@
 
 export interface UsageBucket {
   call_type: string;
+  cost_usd: string;
   input_tokens: number;
   output_tokens: number;
   request_count: number;
   total_tokens: number;
+  unknown_cost_models: string[];
 }

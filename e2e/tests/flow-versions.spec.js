@@ -68,11 +68,13 @@ test.describe('흐름 버전·배포 — 실제 스택', () => {
     await expect(page.locator('.react-flow__node')).toHaveCount(2)
     await expect(versions).toBeVisible()
     await expect(versions.locator('li[data-version="1"]')).toContainText('배포 중') // 기본 흐름 v1
+    await expect(versions.locator('li[data-version="1"]')).toContainText('시스템(기본 흐름)') // 만든 이 없는 시드 버전
 
     // 버전 저장(note) → 맨 위에 v1
     await versions.getByLabel('버전 메모').fill('첫 배포본')
     await versions.getByRole('button', { name: '버전 저장' }).click()
     await expect(versions.locator('li[data-version="2"]')).toContainText('첫 배포본')
+    await expect(versions.locator('li').first()).toHaveAttribute('data-version', '2') // 최신이 맨 위
 
     // 시험 대화 없이 배포 → 한 번 확인
     await versions.getByRole('button', { name: 'v2 배포' }).click()

@@ -22,6 +22,7 @@ adb = sync_to_async
 
 PROMPT_TOKENS = 1000
 COMPLETION_TOKENS = 200
+EMBED_TOKENS = 3  # 대역 임베딩 응답의 usage
 GPT_4O_MINI_COST = Decimal("0.00027")  # 1000*0.15/1M + 200*0.60/1M
 
 
@@ -184,7 +185,9 @@ async def _assert_widget_turn_counts_tokens(tenant) -> None:
     assert answer["calls"], "ai_answer 노드에 LLM 호출이 남지 않았다"
     assert answer["input_tokens"] == PROMPT_TOKENS and answer["output_tokens"] == COMPLETION_TOKENS
     assert Decimal(answer["cost_usd"]) == GPT_4O_MINI_COST
-    assert row.input_tokens == PROMPT_TOKENS and row.cost_usd == GPT_4O_MINI_COST
+    search = next(e for e in row.entries if e["kind"] == "knowledge_search")
+    assert (search["input_tokens"], search["output_tokens"]) == (EMBED_TOKENS, 0)  # 질의 임베딩도 노드 기록에 남는다
+    assert row.input_tokens == PROMPT_TOKENS + EMBED_TOKENS and row.cost_usd == GPT_4O_MINI_COST
     buckets = await adb(list)(TokenUsage.objects.filter(tenant_id=tenant.id, call_type="chat"))
     assert [(b.input_tokens, b.output_tokens, b.cost_usd) for b in buckets] == [
         (PROMPT_TOKENS, COMPLETION_TOKENS, GPT_4O_MINI_COST)]
@@ -280,3 +283,27 @@ async def test_classify_node_turn_counts_tokens_and_cost_through_the_real_bounda
     assert entry["record"]["output"]["label"] == "refund"
     buckets = await adb(list)(TokenUsage.objects.filter(tenant_id=platform_tenant.id))
     assert sum(b.input_tokens for b in buckets) == PROMPT_TOKENS
+
+
+@pytest.mark.django_db(transaction=True)
+def test_embedding_call_inside_a_node_is_reported_to_the_node_and_rollup_once(openai_stub):
+    """지식 검색 노드의 임베딩 호출: 노드 수집기에 토큰이 남고(판단 기록), 롤업에는 한 번만 붙는다(이중 집계 금지)."""
+    import uuid
+    from types import SimpleNamespace
+
+    from apps.rag.ingesters import get_embeddings
+    from apps.usage.context import collect_calls, set_usage_context
+    from apps.usage.models import TokenUsage
+    from apps.usage.pricing import cost_usd
+
+    tenant_id = uuid.uuid4()
+    provider = SimpleNamespace(base_url=openai_stub, model="text-embedding-3-small", api_key="k",
+                               send_dimensions=False, dim=1024)
+    set_usage_context(tenant_id, "chat")
+    with collect_calls() as calls:
+        get_embeddings(["환불 규정"], provider)
+
+    assert [(c.model, c.input_tokens, c.output_tokens) for c in calls] == [("text-embedding-3-small", 3, 0)]
+    assert cost_usd(calls[0].model, 3, 0) is not None
+    rows = list(TokenUsage.objects.filter(tenant_id=tenant_id))
+    assert [(r.call_type, r.total_tokens, r.request_count) for r in rows] == [("embedding", 3, 1)]

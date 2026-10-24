@@ -96,7 +96,7 @@ export default function VersionsPanel({ flowId, versions, deployedVersion, pendi
         <p className="text-xs text-muted-foreground">아직 저장한 버전이 없습니다. 시험한 초안을 「버전 저장」하면 배포할 수 있습니다.</p>
       ) : (
         <ul className="space-y-1.5">
-          {versions.map((v) => {
+          {[...versions].sort((a, b) => b.number - a.number).map((v) => {
             const act = deployAction({ canDeploy, requiresApproval, version: v.number, deployedVersion, pendingVersion: pending?.version ?? null })
             return (
               <li key={v.number} data-version={v.number} data-deployed={v.number === deployedVersion ? 'true' : undefined}

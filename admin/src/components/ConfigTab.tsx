@@ -304,6 +304,7 @@ export default function ConfigTab() {
                 <Input aria-label="LLM Base URL" value={config.llm_base_url || ''}
                   onChange={e => setConfig(c => ({ ...c, llm_base_url: e.target.value }))} placeholder="예: https://openrouter.ai/api/v1" />
                 <p className={hint}>Custom(직접 호스팅·기타 서비스)일 때만 그 주소를 넣어요.</p>
+                <p className={hint}>스트리밍 사용량 집계를 위해 stream_options(include_usage)를 보냅니다. 이 옵션을 받지 않는 오래된 OpenAI 호환 서버는 오류가 날 수 있습니다.</p>
               </div>
             )}
             <div className="space-y-2">

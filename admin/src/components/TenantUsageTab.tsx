@@ -7,6 +7,7 @@ import { tenantUsage } from '../api'
 import type { TenantUsageOut } from '../generated/model'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { CostCell, CostTotal, DailyCostTable } from './UsageCost'
 
 // 긴 이름이 툴팁(숨겨져 있어도)으로 390폭 밖까지 밀지 않게(#90)
 const TOOLTIP_WRAP = { maxWidth: 260 }
@@ -41,13 +42,15 @@ export default function TenantUsageTab() {
             </CardContent>
           </Card>
 
+          <CostTotal label="총 비용(USD)" cost={data.cost_usd} unknown={data.unknown_cost_models} />
+
           <Card>
             <CardContent className="space-y-4 pt-6">
               <div className="text-sm font-semibold">유형별</div>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>유형</TableHead><TableHead>입력</TableHead><TableHead>출력</TableHead><TableHead>합계</TableHead><TableHead>호출</TableHead>
+                    <TableHead>유형</TableHead><TableHead>입력</TableHead><TableHead>출력</TableHead><TableHead>합계</TableHead><TableHead>호출</TableHead><TableHead>비용</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -58,6 +61,7 @@ export default function TenantUsageTab() {
                       <TableCell>{b.output_tokens.toLocaleString()}</TableCell>
                       <TableCell>{b.total_tokens.toLocaleString()}</TableCell>
                       <TableCell>{b.request_count.toLocaleString()}</TableCell>
+                      <TableCell><CostCell cost={b.cost_usd} unknown={b.unknown_cost_models.length > 0} /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -70,6 +74,8 @@ export default function TenantUsageTab() {
               </ResponsiveContainer>
             </CardContent>
           </Card>
+
+          <DailyCostTable title="일별 비용" daily={data.daily} />
 
           <Card>
             <CardContent className="space-y-3 pt-6">

@@ -169,3 +169,51 @@ describe('편집기 오른쪽 — 판단 기록', () => {
     expect(screen.getByText(/시험 대화를 돌리면/)).toBeInTheDocument()
   })
 })
+
+
+describe('편집기 — 새로고침 뒤 판단 기록 복원', () => {
+  const stored = (n: number, reply: string) => ({
+    turn: n, created_at: '2026-10-01T09:00:00Z', is_test: true, flow_version: null, input_tokens: 120, output_tokens: 30, cost_usd: '0.0001', duration_ms: 42,
+    entries: [ent({ record: { input: '하나' } }), ent({ node_id: 'ai1', kind: 'ai_answer', duration_ms: 40, input_tokens: 120, output_tokens: 30, cost_usd: '0.0001', record: { reason: '근거를 찾아 답함', output: reply } })],
+  })
+
+  beforeEach(() => { window.localStorage.clear() })
+
+  it('시험 한 턴 뒤 새로 열어도(새로고침) 마지막 시험 세션의 판단 기록과 대화가 되돌아온다', async () => {
+    const first = fakeFlowsApi({ graph: GRAPH, testTurns: [turn('첫 답', '0.0001')] })
+    const view = renderEditor()
+    await openTab('시험 대화')
+    await say('하나')
+    await screen.findByText('첫 답')
+    view.unmount()
+
+    const second = fakeFlowsApi({ graph: GRAPH, traces: { s1: { turns: [stored(1, '첫 답')] } } })
+    renderEditor()
+    await openTab('판단 기록')
+    const log = await screen.findByRole('region', { name: '판단 기록' })
+    await waitFor(() => expect(within(log).getByText('턴 1')).toBeInTheDocument())
+    expect(within(log).getByText('$0.0001')).toBeInTheDocument()
+    expect(second.calls.some((c) => c.method === 'GET' && c.path.includes('/sessions/s1/decision-traces'))).toBe(true)
+    expect(first.calls.length).toBeGreaterThan(0)
+    await openTab('시험 대화')
+    expect(await screen.findByText('첫 답')).toBeInTheDocument()
+  })
+
+  it('기억한 세션이 사라졌으면(404) 조용히 비운다 — 「새 대화」는 기억도 지운다', async () => {
+    window.localStorage.setItem('flow-test-session:f1', 'gone')
+    fakeFlowsApi({ graph: GRAPH })
+    renderEditor()
+    await openTab('판단 기록')
+    expect(await screen.findByText(/시험 대화를 돌리면/)).toBeInTheDocument()
+    await waitFor(() => expect(window.localStorage.getItem('flow-test-session:f1')).toBeNull())
+  })
+
+  it('초안마다 따로 기억한다', async () => {
+    window.localStorage.setItem('flow-test-session:other', 's1')
+    const fake = fakeFlowsApi({ graph: GRAPH, traces: { s1: { turns: [stored(1, '다른 흐름 답')] } } })
+    renderEditor()
+    await openTab('판단 기록')
+    expect(await screen.findByText(/시험 대화를 돌리면/)).toBeInTheDocument()
+    expect(fake.calls.some((c) => c.path.includes('/decision-traces'))).toBe(false)
+  })
+})

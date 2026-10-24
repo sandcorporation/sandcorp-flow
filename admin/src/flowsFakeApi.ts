@@ -27,6 +27,8 @@ export function fakeFlowsApi(opts: {
   /** GET /deploy-requests/ 가 돌려줄 목록(상태 필터를 따른다). */
   requests?: FakeRequest[]
   me?: { name: string; email: string }
+  /** GET /sessions/{id}/decision-traces/ 가 돌려줄 값(세션 id → 응답). 없는 세션은 404. */
+  traces?: Record<string, object>
 }) {
   const calls: Call[] = []
   const state = { errors: opts.errors ?? [] }
@@ -106,12 +108,14 @@ export function fakeFlowsApi(opts: {
       return json(200, r)
     }
     if (method === 'GET' && /\/flows\/[^/]+\/$/.test(path)) {
-      return json(200, { flow: flowOut(), draft: { graph: opts.graph, errors: state.errors, valid: state.errors.length === 0 }, versions: [...versions].reverse().map(versionOut), pending_request: st.pending })
+      return json(200, { flow: flowOut(), draft: { graph: opts.graph, errors: state.errors, valid: state.errors.length === 0 }, versions: versions.map(versionOut), pending_request: st.pending })
     }
     if (method === 'PATCH' && path.endsWith('/draft/')) {
       if (opts.patchStatus && opts.patchStatus !== 200) return json(opts.patchStatus, opts.patchBody ?? { detail: '실패', code: 'invalid_patch', index: 0 })
       return json(200, { graph: opts.graph, errors: state.errors, valid: state.errors.length === 0 })
     }
+    const tr = path.match(/\/api\/tenant\/sessions\/([^/]+)\/decision-traces/)
+    if (method === 'GET' && tr) return opts.traces?.[tr[1]] ? json(200, opts.traces[tr[1]]) : json(404, { detail: '없는 세션' })
     return json(404, { detail: 'no' })
   })
   vi.stubGlobal('fetch', fn)

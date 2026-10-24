@@ -147,3 +147,44 @@ def test_usage_config_has_metadata_and_callback():
     assert _USAGE_CB in cfg["callbacks"]
     assert cfg["metadata"]["tenant_id"] == str(tid)
     assert cfg["metadata"]["call_type"] == "chat"
+
+
+@pytest.mark.django_db
+def test_tenant_usage_shows_cost_total_daily_and_unknown_models(client, tenant_with_key, tenant_admin_token):
+    """사용량 응답에 비용(총합·call_type별·일별)이 있고, 단가 미상 모델은 목록으로 알린다(0원으로 치지 않는다)."""
+    tenant, _ = tenant_with_key
+    record_usage(tenant.id, "chat", "gpt-4o-mini", input_tokens=1000, output_tokens=200)  # 0.00027
+    record_usage(tenant.id, "chat", "mystery-model", input_tokens=500, output_tokens=0)
+
+    data = client.get("/api/tenant/usage/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}").json()
+
+    assert data["cost_usd"] == "0.000270"
+    assert data["unknown_cost_models"] == ["mystery-model"]
+    chat = next(b for b in data["by_call_type"] if b["call_type"] == "chat")
+    assert chat["cost_usd"] == "0.000270" and chat["unknown_cost_models"] == ["mystery-model"]
+    assert data["daily"][0]["cost_usd"] == "0.000270" and data["daily"][0]["has_unknown_cost"] is True
+
+
+@pytest.mark.django_db
+def test_tenant_usage_all_known_models_has_no_unknown(client, tenant_with_key, tenant_admin_token):
+    tenant, _ = tenant_with_key
+    record_usage(tenant.id, "chat", "gpt-4o-mini-2024-07-18", input_tokens=1000, output_tokens=200)
+    data = client.get("/api/tenant/usage/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}").json()
+    assert data["cost_usd"] == "0.000270" and data["unknown_cost_models"] == []
+    assert data["daily"][0]["has_unknown_cost"] is False
+
+
+@pytest.mark.django_db
+def test_operator_usage_shows_cost_per_tenant_and_daily(client, tenant_with_key, operator_token):
+    tenant, _ = tenant_with_key
+    other = uuid.uuid4()
+    record_usage(tenant.id, "chat", "gpt-4o-mini", input_tokens=1000, output_tokens=200)
+    record_usage(other, "chat", "mystery-model", input_tokens=20)
+
+    data = client.get("/api/operator/usage/", HTTP_AUTHORIZATION=f"Bearer {operator_token}").json()
+
+    assert data["cost_usd"] == "0.000270" and data["unknown_cost_models"] == ["mystery-model"]
+    rows = {r["tenant_id"]: r for r in data["by_tenant"]}
+    assert rows[str(tenant.id)]["cost_usd"] == "0.000270" and rows[str(tenant.id)]["unknown_cost_models"] == []
+    assert rows[str(other)]["cost_usd"] == "0.000000" and rows[str(other)]["unknown_cost_models"] == ["mystery-model"]
+    assert data["daily"][0]["has_unknown_cost"] is True
