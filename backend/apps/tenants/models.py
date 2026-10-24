@@ -297,3 +297,41 @@ class AuthWebhookEvent(models.Model):
 
     class Meta:
         db_table = "auth_webhook_events"
+
+
+class TenantSecret(models.Model):
+    """테넌트 비밀(#33, ADR-0029) — HTTP 도구가 ``{{secret.이름}}``으로 참조하는 API 키 등.
+
+    값은 Fernet 암호문(``apps.tenants.crypto``)으로만 저장하고 API로는 이름만 내보낸다(쓰기 전용).
+    읽기·쓰기·치환은 ``apps.tenants.tenant_secrets``를 거친다(복호화한 값을 가림 목록에 등록하는 자리).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="secrets")
+    name = models.CharField(max_length=64)
+    ciphertext = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "tenant_secrets"
+        constraints = [models.UniqueConstraint(fields=["tenant", "name"], name="tenant_secret_name_unique")]
+        ordering = ["name"]
+
+
+class TenantAllowedDomain(models.Model):
+    """HTTP 도구가 부를 수 있는 호스트(#33, ADR-0029 「도메인 허용 목록」).
+
+    ``pattern``은 정규화한 호스트(``api.example.com``) 또는 한 단계 하위 와일드카드(``*.example.com``).
+    형식 검사는 저장 때 ``apps.core.safe_http.normalize_allow_pattern``으로, 호출 때 판정은 ``AllowList``로 한다.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="allowed_domains")
+    pattern = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "tenant_allowed_domains"
+        constraints = [models.UniqueConstraint(fields=["tenant", "pattern"], name="tenant_allowed_domain_unique")]
+        ordering = ["pattern"]

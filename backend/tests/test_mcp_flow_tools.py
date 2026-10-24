@@ -175,7 +175,12 @@ def test_unapplicable_op_is_a_tool_error_and_changes_nothing(signer: Signer) -> 
 
 @pytest.mark.django_db(transaction=True)
 def test_example_flow_built_by_patches_then_trimmed_to_handlers_deploys_and_runs(signer: Signer, fake_chat_llm) -> None:
-    admin()
+    import secrets
+
+    from apps.tenants.tenant_secrets import set_secret
+
+    tenant = admin()
+    set_secret(tenant.id, "inquiry_api_key", "zk" + secrets.token_hex(12))  # 예제가 참조하는 비밀(#33 — 없으면 unknown_secret)
     token = mcp_token(signer)
     example = json.loads(EXAMPLE.read_text())
 

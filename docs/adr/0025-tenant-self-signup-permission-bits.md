@@ -29,6 +29,8 @@ Operator의 수동 프로비저닝 경로(create_tenant)는 **공존**한다.
 
 > **추가(#28)**: 흐름 비트 `flow.edit`·`flow.deploy`·`flow.approve`를 Admin 전용으로 더했다(Member = 전체 − 6종). 상담 응답을 바꾸는 일이라 MCP의 「Admin만 편집·배포」(#74)와 같은 판정이어야 해서, MCP `can_edit`도 `flow.edit` 비트를 본다 — 판정은 `apps/tenants/permissions.py` 한 곳. Member에게 `flow.edit`를 주고 싶어지면 이 모듈의 `ADMIN_ONLY`만 바꾸면 HTTP와 MCP가 함께 바뀐다.
 
+> **추가(#33)**: HTTP 도구용 `secrets.manage`(테넌트 비밀 만들기·교체·지우기)·`domains.manage`(허용 도메인 더하기·지우기)를 Admin 전용으로 더했다(Member = 전체 − 8종). 비밀은 외부 자격 증명이고 허용 도메인은 서버가 나가는 길을 넓히므로 흐름 편집과 같은 무게다. 비밀 이름·도메인 목록 읽기는 Member도 된다(값은 누구에게도 안 보인다).
+
 **D. Lockout 방지·복구.** 한 조직은 **항상 최소 1명의 활성 Admin**을 유지한다(마지막 Admin 비활성화·강등
 차단). **TENANT_KEY 인증 = Admin 등가**로 두어, 활성 Admin이 0이 되는 사고에도 TENANT_KEY로 새 Admin을
 만들어 복구하는 break-glass 채널을 유지한다.

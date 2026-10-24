@@ -1,5 +1,6 @@
 from django.http import HttpRequest, HttpResponse
 from ninja import NinjaAPI
+from apps.tenants.secrets_api import domain_router, secret_router
 from apps.tenants.auth import ResourceAuthFailed
 from apps.core.api import router as core_router
 from apps.tenants.api import auth_router, invite_router, member_router, operator_router, tenant_router
@@ -37,6 +38,8 @@ api.add_router("/tenant/flows", flow_router)
 api.add_router("/tenant/deploy-requests", deploy_request_router)
 api.add_router("/tenant/members", member_router)
 api.add_router("/tenant/invites", invite_router)
+api.add_router("/tenant/secrets", secret_router)
+api.add_router("/tenant/allowed-domains", domain_router)
 api.add_router("/chat", chat_router)
 api.add_router("/tenant/documents", rag_router)
 api.add_router("/tenant/visitors", memory_router)

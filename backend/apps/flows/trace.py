@@ -2,8 +2,8 @@
 
 실행기가 노드마다 쌓은 ``TraceEntry``(핸들러가 준 ``record`` + 실행기가 잰 시간·토큰·비용)를 한 턴에 한 번의 insert로 저장한다.
 
-- **비밀 가림**: ``REDACTORS``(문자열 → 문자열)를 저장 직전 한 곳(``prepare``)에서 모든 문자열에 적용한다. 지금은 빈 목록 —
-  M3(#33)가 Tenant Secret 값을 가리는 함수를 넣는다.
+- **비밀 가림**: ``REDACTORS``(문자열 → 문자열)를 저장 직전 한 곳(``prepare``)에서 모든 문자열에 적용한다. 기본은
+  Tenant Secret 가림(``apps.tenants.tenant_secrets.redact``, #33) — 이 프로세스가 복호화한 비밀 원문과 그 부분 문자열.
 - **자르기**: 문자열 하나는 ``MAX_FIELD_CHARS``자까지(넘으면 ``…(잘림)``). 노드 수는 실행기 상한(50)이 막는다 → 한 행은
   많아야 50 × (몇 개 필드 × 2000자) 수준(수백 KB 미만)이고 JSONB 한 칸이다. 방문자 입력·답변이 이보다 긴 일은 드물고
   전문은 ChatMessage에 이미 있어 기록에서 잘라도 정보가 사라지지 않는다.
@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 from apps.flows.contract import TraceEntry
 from apps.flows.schema import JSON
+from apps.tenants.tenant_secrets import redact as redact_tenant_secrets
 
 if TYPE_CHECKING:
     from apps.chat.models import ChatSession
@@ -28,8 +29,8 @@ logger = logging.getLogger(__name__)
 MAX_FIELD_CHARS = 2000
 TRUNCATED_MARK = "…(잘림)"
 
-REDACTORS: list[Callable[[str], str]] = []
-"""비밀 가림 훅. 저장 직전 모든 문자열에 차례로 적용한다. M3(#33)가 채운다."""
+REDACTORS: list[Callable[[str], str]] = [redact_tenant_secrets]
+"""비밀 가림 훅. 저장 직전 모든 문자열에 차례로 적용한다."""
 
 
 def _clean(value: JSON) -> JSON:

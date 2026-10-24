@@ -119,6 +119,23 @@ def _valid_dns_name(host: str) -> bool:
     )
 
 
+def normalize_allow_pattern(raw: str) -> str:
+    """허용 도메인 한 줄을 저장·비교용 꼴로(`API.Example.com.` → `api.example.com`, `*.Example.com` → `*.example.com`).
+
+    호스트명만 받는다(스킴·경로·포트·userinfo·IP 리터럴 거부). 와일드카드는 맨 앞 `*.` 하나만, 기준 이름은 점이 하나 이상
+    (`*.com` 거부). 틀리면 ``ValueError``. 테넌트 허용 목록 저장(#33)과 ``AllowList``가 같은 규칙을 쓴다.
+    """
+    pattern = raw.strip().rstrip(".").lower()
+    is_wild = pattern.startswith("*.")
+    base = pattern[2:] if is_wild else pattern
+    if not base or "*" in base or _is_ip_literal(base.strip("[]")) or not _valid_dns_name(base):
+        raise ValueError(f"허용 도메인 형식이 아니다: {raw!r}")
+    if is_wild and base.count(".") < 1:
+        raise ValueError(f"너무 넓은 와일드카드: {raw!r}")
+    host = _normalize_host(base)
+    return f"*.{host}" if is_wild else host
+
+
 class AllowList:
     """테넌트가 등록한 HTTPS 호스트들.
 
@@ -134,14 +151,11 @@ class AllowList:
         exact: set[str] = set()
         wildcard: set[str] = set()
         for raw in patterns:
-            pattern = raw.strip().rstrip(".").lower()
-            is_wild = pattern.startswith("*.")
-            base = pattern[2:] if is_wild else pattern
-            if not base or "*" in base or _is_ip_literal(base.strip("[]")) or not _valid_dns_name(base):
-                raise ValueError(f"허용 도메인 형식이 아니다: {raw!r}")
-            if is_wild and base.count(".") < 1:
-                raise ValueError(f"너무 넓은 와일드카드: {raw!r}")
-            (wildcard if is_wild else exact).add(_normalize_host(base))
+            pattern = normalize_allow_pattern(raw)
+            if pattern.startswith("*."):
+                wildcard.add(pattern[2:])
+            else:
+                exact.add(pattern)
         self._exact = frozenset(exact)
         self._wildcard = frozenset(wildcard)
 

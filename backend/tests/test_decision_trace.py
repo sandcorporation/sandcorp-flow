@@ -111,12 +111,14 @@ async def test_token_usage_rollup_gets_cost_column(tenant_with_key, fake_chat_ll
 
 @pytest.mark.django_db(transaction=True)
 async def test_redaction_hook_runs_just_before_saving(tenant_with_key, monkeypatch):
-    """비밀 가림 훅(M3가 채움)은 저장 직전 모든 문자열에 적용된다 — 기본은 빈 목록이라 그대로."""
+    """비밀 가림 훅은 저장 직전 모든 문자열에 적용된다 — 기본은 Tenant Secret 가림(#33) 하나."""
     from apps.flows import trace
     from apps.flows.chat_turn import run_chat_turn_async
     from apps.flows.models import DecisionTrace
 
-    assert trace.REDACTORS == []
+    from apps.tenants.tenant_secrets import redact
+
+    assert trace.REDACTORS == [redact]
     monkeypatch.setattr(trace, "REDACTORS", [lambda s: s.replace("sk-secret-123", "[비밀]")])
     tenant, _ = tenant_with_key
     session = await adb(_session)(tenant)
