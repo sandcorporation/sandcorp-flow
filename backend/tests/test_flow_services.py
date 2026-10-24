@@ -329,3 +329,21 @@ def test_test_sessions_stay_out_of_operating_session_lists(client, tenant_admin_
     assert [r["visitor_id"] for r in sessions] == ["real"]
     assert "flow-test:x" not in str(visitors)
     assert test_visitor == []
+
+
+def test_version_note_is_stored_blank_by_default_and_capped(tenant_with_key):
+    tenant, _ = tenant_with_key
+    flow = make_flow(tenant)
+    first = services.save_version(tenant.id, flow.id)
+    assert first.version.note == ""
+
+    services.patch_draft(tenant.id, flow.id, [UpsertNode(op="upsert_node", id="answer", name="v2")])
+    second = services.save_version(tenant.id, flow.id, note="  인사말 수정  ")
+    assert services.get_version(tenant.id, flow.id, 2).note == "인사말 수정"
+
+    services.patch_draft(tenant.id, flow.id, [UpsertNode(op="upsert_node", id="answer", name="v3")])
+    with pytest.raises(services.FlowServiceError) as exc:
+        services.save_version(tenant.id, flow.id, note="가" * (services.VERSION_NOTE_MAX + 1))
+    assert exc.value.code == "note_too_long"
+    assert [v.number for v in services.flow_detail(tenant.id, flow.id).versions] == [1, 2]
+    assert second.created

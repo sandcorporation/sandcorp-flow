@@ -29,6 +29,10 @@ class FlowArgs(TenantArgs):
     flow_id: str = Field(description="흐름 id(list_flows로 확인)")
 
 
+class SaveVersionArgs(FlowArgs):
+    note: str | None = Field(default=None, description="버전 메모(선택, 200자 이내). 새 버전을 만들 때만 붙고 나중에 못 바꾼다.")
+
+
 class GetFlowArgs(FlowArgs):
     version: int | None = Field(default=None, description="버전 번호. 주면 초안 대신 그 버전의 JSON을 돌려준다.")
 
@@ -84,6 +88,7 @@ def _version_row(version: FlowVersion, deployed_id: uuid.UUID | None) -> JSONObj
         "number": version.number,
         "deployed": version.pk == deployed_id,
         "hash": version.hash[:12],
+        "note": version.note,
         "created_at": version.created_at.isoformat(),
     }
 
@@ -162,15 +167,15 @@ async def update_flow(ctx: ToolContext, args: UpdateFlowArgs) -> JSONObject:
 @register(
     "save_version",
     "초안을 바뀌지 않는 새 버전으로 저장한다(배포는 따로). 초안이 마지막 버전과 같으면 그 버전을 돌려준다(created=false). "
-    "초안이 검증을 통과하지 못하면 saved=false와 errors. 인자: flow_id.",
-    FlowArgs,
+    "초안이 검증을 통과하지 못하면 saved=false와 errors. 인자: flow_id, note(선택 메모, 200자 이내; 실패: note_too_long).",
+    SaveVersionArgs,
     scope="flow.write",
     writes=True,
 )
-async def save_version(ctx: ToolContext, args: FlowArgs) -> JSONObject:
+async def save_version(ctx: ToolContext, args: SaveVersionArgs) -> JSONObject:
     user_id = ctx.require_membership().user_id
     try:
-        result = await _service(lambda: services.save_version(_tenant_id(ctx), args.flow_id, created_by_id=user_id))
+        result = await _service(lambda: services.save_version(_tenant_id(ctx), args.flow_id, created_by_id=user_id, note=args.note))
     except services.FlowInvalid as exc:
         return {"saved": False, "message": exc.message, "errors": _errors(exc.errors)}
     return {"saved": True, "version": result.version.number, "created": result.created}

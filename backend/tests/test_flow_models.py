@@ -171,3 +171,13 @@ def test_version_in_use_by_session_cannot_be_deleted(tenant, flow):
     flow.save()
     with pytest.raises(ProtectedError):
         v.delete()
+
+
+def test_version_note_cannot_be_changed_after_creation(flow):
+    v = FlowVersion.objects.create(flow=flow, graph=GRAPH, note="처음 메모")
+    v.note = "바꾼 메모"
+    with pytest.raises(ImmutableFlowVersionError):
+        v.save()
+    with pytest.raises(ImmutableFlowVersionError):
+        FlowVersion.objects.filter(pk=v.pk).update(note="x")
+    assert FlowVersion.objects.get(pk=v.pk).note == "처음 메모"
