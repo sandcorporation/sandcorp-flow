@@ -1,3 +1,4 @@
+import { scrollLogToBottom } from '@/lib/scroll'
 import { useState, useEffect, useRef, ChangeEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { listEscalations, claimEscalation, sendEscalationMessage, resolveEscalation, openEscalationStream, sendTypingIndicator, getEscalationMessages, getSessionMessages, listSessions, takeoverSession } from '../api'
@@ -19,16 +20,16 @@ type ChatMsg = { id?: string; role: string; content: string; created_at?: string
 
 function ChatHistory({ messages }: { messages: ChatMsg[] }) {
   const bottomRef = useRef<HTMLDivElement>(null)
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => { scrollLogToBottom(bottomRef.current) }, [messages])
 
   if (!messages.length) return <p className="py-2 text-center text-xs text-muted-foreground">대화 내역 없음</p>
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex max-h-80 flex-col gap-1.5 overflow-y-auto">
       {messages.map(m => (
         <div key={m.id || `${m.role}-${m.created_at}`} className={cn('flex flex-col', m.role === 'user' ? 'items-start' : 'items-end')}>
           <span className="mb-0.5 text-[10px] text-muted-foreground">{ROLE_LABEL[m.role] || m.role}</span>
-          <div className={cn('max-w-[80%] rounded-lg px-2.5 py-1.5 text-sm leading-relaxed', ROLE_BUBBLE[m.role] || 'self-start bg-muted')}>{m.role === 'assistant' ? <Markdown>{m.content}</Markdown> : m.content}</div>
+          <div className={cn('max-w-[80%] break-words rounded-lg px-2.5 py-1.5 text-sm leading-relaxed', ROLE_BUBBLE[m.role] || 'self-start bg-muted')}>{m.role === 'assistant' ? <Markdown>{m.content}</Markdown> : m.content}</div>
         </div>
       ))}
       <div ref={bottomRef} />
@@ -85,7 +86,7 @@ function EscalationCard({ esc, onUpdate, incomingMessage }: { esc: EscalationOut
           <span className="text-sm font-semibold">세션 {esc.session_id.slice(0, 8)}…</span>
           <Badge variant={STATUS_VARIANT[esc.status] || 'secondary'}>{STATUS_LABEL[esc.status]}</Badge>
         </div>
-        {esc.reason && <p className="text-xs text-muted-foreground">{esc.reason}</p>}
+        {esc.reason && <p className="break-words text-xs text-muted-foreground">{esc.reason}</p>}
 
         <div className="max-h-60 overflow-y-auto rounded-md bg-muted/40 p-2.5">
           <ChatHistory messages={messages} />

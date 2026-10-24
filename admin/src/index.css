@@ -145,8 +145,30 @@
   }
 }
 
+/* 공용 Table 좁은 폭 모드(#90): 390폭 부근에서 행 = 카드, 열 이름은 셀 위 라벨(data-label은 Table이 th에서 채운다).
+   가로 스크롤 없이 모든 정보·작업이 보이게 한다. */
+@media (max-width: 639px) {
+  .flow-table { overflow: visible; }
+  .flow-table table, .flow-table tbody { display: block; width: 100%; }
+  .flow-table thead { display: none; }
+  .flow-table tr { display: block; border: 1px solid hsl(var(--flow-line)) !important; border-radius: 2px; margin-bottom: 8px; padding: 4px 0; background: hsl(var(--flow-surface)); }
+  .flow-table td { display: block; padding: 6px 12px; overflow-wrap: anywhere; }
+  .flow-table td[data-label]::before { content: attr(data-label); display: block; font-family: var(--flow-font-cond); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; color: hsl(var(--flow-muted)); }
+  .flow-table td:empty { display: none; }
+  .flow-table td[colspan] { text-align: center; }
+  .flow-table td[colspan]::before { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;
   }
 }
+
+/* 긴 연속 글자(ID·URL·붙여쓴 이름)가 말풍선·카드 밖으로 밀지 않게(#90) */
+@layer base {
+  main { overflow-wrap: anywhere; }
+}
+
+/* 안 보이는 차트 툴팁이 위치만으로 문서 폭을 밀지 않게 — 숨은 동안은 아예 그리지 않는다(#90) */
+.recharts-tooltip-wrapper[style*="visibility: hidden"] { display: none !important; }

@@ -1,3 +1,4 @@
+import { scrollLogToBottom } from '@/lib/scroll'
 import { useState, useEffect, useRef, useMemo, Fragment } from 'react'
 import { getSessionMessages, getSessionCheckpoint, getSessionRetrievals, type RetrievalTurn } from '../api'
 import type { SessionMessageOut } from '../generated/model'
@@ -50,7 +51,7 @@ function TurnTrace({ turn }: { turn: RetrievalTurn }) {
 
 export function ChatHistory({ messages, retrievals }: { messages: SessionMessageOut[]; retrievals?: RetrievalTurn[] }) {
   const bottomRef = useRef<HTMLDivElement>(null)
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => { scrollLogToBottom(bottomRef.current) }, [messages])
 
   // 검색 근거를 유저 메시지에 순서대로 매칭(턴=유저 메시지). 내용 일치로 소비 — HITL 등 비-AI 턴은
   // 매칭이 건너뛰어져 정렬이 어긋나지 않는다.
@@ -75,7 +76,7 @@ export function ChatHistory({ messages, retrievals }: { messages: SessionMessage
         <Fragment key={m.id || i}>
           <div className={cn('flex flex-col', m.role === 'user' ? 'items-end' : 'items-start')}>
             <span className="mb-0.5 text-[10px] text-muted-foreground">{ROLE_LABEL[m.role] || m.role}</span>
-            <div className={cn('max-w-[75%] rounded-lg px-3 py-2 text-sm leading-relaxed', m.role === 'assistant' ? '' : 'whitespace-pre-wrap', ROLE_BUBBLE[m.role] || 'self-start bg-muted')}>
+            <div className={cn('max-w-[75%] break-words rounded-lg px-3 py-2 text-sm leading-relaxed', m.role === 'assistant' ? '' : 'whitespace-pre-wrap', ROLE_BUBBLE[m.role] || 'self-start bg-muted')}>
               {m.role === 'assistant' ? <Markdown>{m.content}</Markdown> : m.content}
             </div>
             {m.created_at && <span className="mt-0.5 text-[10px] text-muted-foreground">{new Date(m.created_at).toLocaleString()}</span>}

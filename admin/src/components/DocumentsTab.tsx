@@ -105,7 +105,7 @@ export default function DocumentsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <input ref={fileRef} type="file" accept=".pdf,.txt,.png,.jpg,.jpeg,.webp"
           onChange={handleFileSelect} className="hidden" id="file-upload" />
         <label htmlFor="file-upload" className={cn(buttonVariants({ variant: 'default' }), 'cursor-pointer')}>

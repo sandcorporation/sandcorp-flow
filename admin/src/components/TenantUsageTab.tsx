@@ -1,3 +1,4 @@
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { useState, useEffect } from 'react'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -6,6 +7,10 @@ import { tenantUsage } from '../api'
 import type { TenantUsageOut } from '../generated/model'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+
+// 긴 이름이 툴팁(숨겨져 있어도)으로 390폭 밖까지 밀지 않게(#90)
+const TOOLTIP_WRAP = { maxWidth: 260 }
+const TOOLTIP_BOX = { whiteSpace: 'normal' as const, overflowWrap: 'anywhere' as const }
 
 const PERIODS = [{ d: 7, label: '7일' }, { d: 30, label: '30일' }, { d: 90, label: '90일' }]
 
@@ -39,27 +44,27 @@ export default function TenantUsageTab() {
           <Card>
             <CardContent className="space-y-4 pt-6">
               <div className="text-sm font-semibold">유형별</div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-muted-foreground">
-                    <th className="pb-1">유형</th><th>입력</th><th>출력</th><th>합계</th><th>호출</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>유형</TableHead><TableHead>입력</TableHead><TableHead>출력</TableHead><TableHead>합계</TableHead><TableHead>호출</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {data.by_call_type.map(b => (
-                    <tr key={b.call_type} data-testid="usage-row" className="border-t border-border">
-                      <td className="py-1.5">{b.call_type}</td>
-                      <td>{b.input_tokens.toLocaleString()}</td>
-                      <td>{b.output_tokens.toLocaleString()}</td>
-                      <td>{b.total_tokens.toLocaleString()}</td>
-                      <td>{b.request_count.toLocaleString()}</td>
-                    </tr>
+                    <TableRow key={b.call_type} data-testid="usage-row">
+                      <TableCell>{b.call_type}</TableCell>
+                      <TableCell>{b.input_tokens.toLocaleString()}</TableCell>
+                      <TableCell>{b.output_tokens.toLocaleString()}</TableCell>
+                      <TableCell>{b.total_tokens.toLocaleString()}</TableCell>
+                      <TableCell>{b.request_count.toLocaleString()}</TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={data.by_call_type}>
-                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="call_type" /><YAxis /><Tooltip />
+                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="call_type" tickFormatter={(v: string) => (v.length > 8 ? `${v.slice(0, 8)}…` : v)} /><YAxis /><Tooltip wrapperStyle={TOOLTIP_WRAP} contentStyle={TOOLTIP_BOX} />
                   <Bar dataKey="total_tokens" fill="hsl(var(--flow-accent))" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -71,7 +76,7 @@ export default function TenantUsageTab() {
               <div className="text-sm font-semibold">일별 추이</div>
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={data.daily}>
-                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><Tooltip />
+                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><Tooltip wrapperStyle={TOOLTIP_WRAP} contentStyle={TOOLTIP_BOX} />
                   <Line type="monotone" dataKey="total_tokens" stroke="hsl(var(--flow-accent))" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>

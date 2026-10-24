@@ -1,0 +1,142 @@
+const { test, expect } = require('@playwright/test')
+const fs = require('fs')
+const path = require('path')
+const { operatorToken } = require('./operatorToken')
+const { memberToken } = require('./memberToken')
+const ROUTES = require('./narrow-routes.json')
+
+const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
+const SHOTS = process.env.SHOTS_DIR // 있으면 화면마다 스크린샷을 남긴다(증거용)
+
+// 390폭에서 표·셸이 가로로 잘리거나 밀리지 않는다(#90). 기준은 페이지가 아니라 모든 요소다 —
+// 표 래퍼(overflow-auto) 안쪽에서 가로 스크롤이 생기면 페이지는 0이어도 내용이 잘리기 때문이다.
+// 표마다 긴 이름·작업 버튼이 많은 행을 일부러 넣어 빈 표로 통과하지 못하게 한다.
+const LONG = '아주긴고객사이름주식회사샌드코퍼레이션글로벌솔루션즈-2026-서울지점-LongNameWithoutSpaces'
+const PARAMS = { ':visitorId': 'v-long-0001', ':sessionId': 's-long-0001', ':escalationId': 'e-long-0001' }
+const T0 = '2026-10-01T09:00:00Z'
+
+const FIXTURES = [
+  [/\/api\/operator\/tenants\/$/, [
+    { id: 't1', name: LONG, is_active: true, created_at: T0, active_admin_count: 0 },
+    { id: 't2', name: '정지된 고객사', is_active: false, created_at: T0, active_admin_count: 1 },
+    { id: 't3', name: '보통 고객사', is_active: true, created_at: T0, active_admin_count: 2 },
+  ]],
+  [/\/api\/operator\/usage\/$/, {
+    total_tokens: 123456789,
+    by_tenant: [{ tenant_id: 't1', tenant_name: LONG, total_tokens: 98765432, request_count: 12345 }],
+    daily: [{ date: '2026-10-01', total_tokens: 1000 }],
+  }],
+  [/\/api\/tenant\/usage\/$/, {
+    total_tokens: 123456789,
+    by_call_type: [{ call_type: 'chat_completion_with_a_very_long_call_type_name', input_tokens: 12345678, output_tokens: 87654321, total_tokens: 99999999, request_count: 123456 }],
+    daily: [{ date: '2026-10-01', total_tokens: 1000 }],
+  }],
+  [/\/api\/tenant\/documents\/$/, [
+    { id: 'd1', name: LONG + '.pdf', status: 'ready', error_message: '' },
+    { id: 'd2', name: '실패한 문서.pdf', status: 'failed', error_message: '텍스트를 추출하지 못했습니다 — 스캔본인지 확인하세요' },
+  ]],
+  [/\/api\/tenant\/members\/$/, [
+    { id: 'm1', user_id: 'u1', name: LONG, email: 'a-very-long-email-address-for-testing@example-company-domain.co.kr', sub_tail: 'ABCDEF', is_active: true, role: 'admin' },
+    { id: 'm2', user_id: 'u2', name: '팀원 둘', email: 'm2@example.com', sub_tail: 'GHIJKL', is_active: true, role: 'member' },
+    { id: 'm3', user_id: 'u3', name: '비활성 팀원', email: null, sub_tail: 'MNOPQR', is_active: false, role: 'member' },
+  ]],
+  [/\/api\/tenant\/invites\/$/, [{ id: 'i1', role: 'member', expires_at: '2026-12-01T00:00:00Z', created_at: T0 }]],
+  [/\/api\/tenant\/visitors\/$/, [{ visitor_id: 'v-long-0001' }, { visitor_id: 'visitor-' + 'x'.repeat(60) }]],
+  [/\/api\/tenant\/visitors\/[^/]+\/sessions\/$/, [{ session_id: 's-long-0001', visitor_id: 'v-long-0001', is_hitl: true, created_at: T0 }]],
+  [/\/api\/tenant\/visitors\/[^/]+\/memory\/$/, [
+    { id: 'mem1', key: 'preferred_contact_channel_and_time', value: LONG + LONG },
+    { id: 'mem2', key: '이름', value: '홍길동' },
+  ]],
+  [/\/api\/tenant\/sessions\/[^/]+\/messages\/$/, [
+    { id: 'x1', role: 'user', content: LONG + LONG, created_at: T0 },
+    { id: 'x2', role: 'assistant', content: 'https://example.com/' + 'a'.repeat(120), created_at: T0 },
+  ]],
+  [/\/api\/tenant\/escalations\/[^/]+\/messages$/, Array.from({ length: 12 }, (_, i) => ({ id: `em${i}`, role: i % 2 ? 'human_agent' : 'user', content: `긴 대화 ${i} ` + LONG, created_at: T0 }))],
+  [/\/api\/tenant\/escalations\/$/, [{ id: 'e-long-0001', session_id: 's-long-0001', trigger_type: 'user_request', reason: LONG, status: 'pending', created_at: T0 }]],
+]
+
+async function mockApi(page) {
+  await page.route(/\/api\/(operator|tenant)\//, (route) => {
+    const req = route.request()
+    if (req.method() !== 'GET') return route.fallback()
+    const { pathname } = new URL(req.url())
+    const hit = FIXTURES.find(([re]) => re.test(pathname))
+    if (!hit) return route.fallback()
+    return route.fulfill({ json: hit[1] })
+  })
+}
+
+/** 넘치는 요소: 안쪽 내용이 자기 폭보다 넓은데 보이게 두었거나(clip 아님) 스크롤 컨테이너인 것. 문서 자체도 본다. */
+async function overflowing(page) {
+  return page.evaluate(() => {
+    const out = []
+    const de = document.documentElement
+    if (de.scrollWidth > de.clientWidth) out.push(`html ${de.scrollWidth}>${de.clientWidth}`)
+    for (const el of document.body.querySelectorAll('*')) {
+      if (el.closest('svg')) continue // 차트 글자는 svg 안에서 따로 그려진다
+      if (el.scrollWidth > el.clientWidth && el.clientWidth > 0 && getComputedStyle(el).display !== 'inline') {
+        const r = el.getBoundingClientRect()
+        if (r.width === 0 || getComputedStyle(el).visibility === 'hidden') continue
+        out.push(`${el.tagName.toLowerCase()}${el.className && typeof el.className === 'string' ? '.' + el.className.split(' ').slice(0, 3).join('.') : ''} ${el.scrollWidth}>${el.clientWidth} «${(el.textContent || '').trim().slice(0, 30)}»`)
+      }
+    }
+    return out
+  })
+}
+
+const targets = []
+for (const [role, list] of Object.entries(ROUTES)) {
+  if (role.startsWith('_')) continue
+  for (const r of list) targets.push({ role, route: r })
+}
+
+for (const theme of ['light', 'dark']) {
+  test.describe(`390폭 가로 넘침 없음 — ${theme}`, () => {
+    test.use({ viewport: { width: 390, height: 844 } })
+    for (const { role, route } of targets) {
+      test(`${role}/${route}`, async ({ page }) => {
+        const url = route.split('/').map((s) => PARAMS[s] ?? s).join('/')
+        const key = role === 'operator' ? 'op_access' : 'agent_access'
+        const token = role === 'operator' ? operatorToken() : memberToken()
+        await page.addInitScript(([k, t, th]) => {
+          sessionStorage.setItem(k, t)
+          localStorage.setItem('admin_theme', th)
+        }, [key, token, theme])
+        await mockApi(page)
+        await page.goto(`${ADMIN_URL}/admin-ui/${role}/${url}`)
+        await page.waitForLoadState('load') // HITL 은 SSE 가 열려 있어 networkidle 이 오지 않는다
+        await page.waitForTimeout(800)
+        if (SHOTS) {
+          fs.mkdirSync(SHOTS, { recursive: true })
+          await page.screenshot({ path: path.join(SHOTS, `${process.env.SHOT_TAG || 'after'}-${theme}-${role}-${route.replace(/[/:]/g, '_')}.png`), fullPage: true })
+        }
+        expect(await overflowing(page)).toEqual([])
+      })
+    }
+  })
+}
+
+// 설정 탭 줄에 세로 스크롤바가 생기지 않는다(#90). 가로 넘침 검사는 세로를 보지 않으므로 따로 둔다.
+test('설정 탭 줄: 세로 넘침 0', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.addInitScript((t) => sessionStorage.setItem('agent_access', t), memberToken())
+  await mockApi(page)
+  await page.goto(`${ADMIN_URL}/admin-ui/tenant/config`)
+  const tabs = page.getByRole('tablist').first()
+  await expect(tabs).toBeVisible()
+  const m = await tabs.evaluate((el) => ({ sh: el.scrollHeight, ch: el.clientHeight, oy: getComputedStyle(el).overflowY }))
+  expect(m.sh).toBeLessThanOrEqual(m.ch)
+  expect(m.oy).not.toBe('scroll')
+})
+
+// HITL 화면을 열어도 페이지가 아래로 끌려가지 않는다(#90): 대화 로그 scrollIntoView 가 페이지까지 올리던 결함.
+test('HITL 진입: window.scrollY == 0', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.addInitScript((t) => sessionStorage.setItem('agent_access', t), memberToken())
+  await mockApi(page)
+  await page.goto(`${ADMIN_URL}/admin-ui/tenant/hitl`)
+  await expect(page.getByText('긴 대화 0').first()).toBeVisible()
+  await page.waitForTimeout(1200) // smooth 스크롤이 끝날 시간
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
+  expect(await page.evaluate(() => document.querySelector('main').scrollTop)).toBe(0)
+})
