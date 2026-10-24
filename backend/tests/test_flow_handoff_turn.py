@@ -107,3 +107,36 @@ async def test_instructions_do_not_leak_into_the_next_ai_answer_node(tenant_with
 
     assert "첫 노드 지침" in str(fake_chat_llm.captured[0][1][0].content)
     assert "첫 노드 지침" not in str(fake_chat_llm.captured[1][1][0].content)
+
+
+def test_hitl_reason_schema_asks_for_one_korean_sentence():
+    """넘김 사유 필드 설명이 한국어 한 문장을 지정한다(#92: HITL 카드에 영어 사유가 나왔다)."""
+    from apps.agent.nodes import HITLResponse
+
+    desc = HITLResponse.model_json_schema()["properties"]["hitl_reason"].get("description", "")
+    assert "한국어" in desc and "한 문장" in desc
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_system_prompt_asks_for_korean_handoff_reason(tenant_with_key, fake_chat_llm):
+    tenant, _ = tenant_with_key
+    from apps.flows.defaults import DEFAULT_FLOW
+
+    await _run(tenant, DEFAULT_FLOW, "안녕하세요")
+
+    system = str(fake_chat_llm.captured[0][1][0].content)
+    assert "넘김 사유는 한국어 한 문장" in system
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_fake_reason_is_stored_and_shown_as_is(tenant_with_key, fake_chat_llm, visitor_wire):
+    from apps.agent.nodes import HITLResponse
+    from apps.escalation.models import Escalation
+    from apps.flows.defaults import DEFAULT_FLOW
+
+    tenant, _ = tenant_with_key
+    fake_chat_llm.override = lambda m: HITLResponse(response="x", needs_hitl=True, hitl_reason="방문자가 사람 상담원 연결을 요청함")
+    await _run(tenant, DEFAULT_FLOW, "사람 상담원 연결해 주세요")
+
+    reasons = await sync_to_async(lambda: list(Escalation.objects.values_list("reason", flat=True)))()
+    assert reasons == ["방문자가 사람 상담원 연결을 요청함"]
