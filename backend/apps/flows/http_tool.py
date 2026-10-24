@@ -11,6 +11,8 @@
   ``Authorization``·``Cookie``만 떼므로 ``X-Api-Key`` 같은 헤더·307 본문의 비밀이 새 호스트로 따라가는 것을 막는다(#32 함정).
   비밀이 없는 요청은 허용 목록 안에서 홉마다 다시 검사하며 따른다.
 - **실패**는 턴을 깨지 않고 ``error`` 갈래로: 판단 기록 ``record.error``에 이유 코드(``FAILURE_CODES``). 문구는 호스트까지만.
+- **가짜 API**(#131): 예약 호스트(``demo_api.HOST``) 정확 일치면 ``_send``가 네트워크 없이 프로세스 안에서 처리한다.
+  응답은 같은 ``SafeResponse``라 상태 코드·``save``·실패 코드·``LIMITS`` 규칙이 갈라지지 않는다.
 - 판단 기록·상태에 들어가는 글은 이 테넌트 비밀로 가린다(``tenant_secrets.redact``) — 응답이 비밀을 되돌려 보내도 남지 않는다.
   헤더·본문은 기록하지 않는다.
 """
@@ -28,6 +30,7 @@ from urllib.parse import quote, urlsplit
 from asgiref.sync import sync_to_async
 
 from apps.core import safe_http
+from apps.flows import demo_api
 from apps.flows.schema import JSON, HttpToolConfig
 from apps.flows.templates import REF_RE, Ref, is_missing, parse_path, parse_ref, pick
 from apps.tenants import tenant_secrets as ts
@@ -177,6 +180,18 @@ def _extract(config: HttpToolConfig, body: bytes) -> tuple[dict[str, object], li
     return saved, missing
 
 
+async def _send(tenant_id: uuid.UUID, method: str, req: Prepared) -> safe_http.SafeResponse:
+    """전송 결정 지점 하나: 예약 호스트 정확 일치면 프로세스 안 가짜 API(네트워크 0), 아니면 safe_http(허용 목록)."""
+    if demo_api.is_reserved(req.url):
+        return demo_api.request(method, req.url, body=req.body, limits=LIMITS)
+    allow = await sync_to_async(ts.allow_list_for)(tenant_id)
+    client = safe_http.allow_list_client(allow, LIMITS)
+    return await asyncio.to_thread(
+        client.request, method, req.url, headers=req.headers, body=req.body,
+        cross_host_redirects=not req.carries_secrets,
+    )
+
+
 async def call(tenant_id: uuid.UUID, config: HttpToolConfig, scope: Scope) -> CallResult:
     """틀 치환 → 요청 → 응답 경로 추출. 실패는 예외가 아니라 ``CallResult.error``로 돌려준다(값은 가린 뒤)."""
     url = ""
@@ -188,12 +203,7 @@ async def call(tenant_id: uuid.UUID, config: HttpToolConfig, scope: Scope) -> Ca
     try:
         req = await sync_to_async(prepare)(tenant_id, config, scope)
         url = req.url
-        allow = await sync_to_async(ts.allow_list_for)(tenant_id)
-        client = safe_http.allow_list_client(allow, LIMITS)
-        resp = await asyncio.to_thread(
-            client.request, config.method, req.url, headers=req.headers, body=req.body,
-            cross_host_redirects=not req.carries_secrets,
-        )
+        resp = await _send(tenant_id, config.method, req)
         status = resp.status
         if not 200 <= resp.status < 300:
             raise Failure(HTTP_ERROR, f"HTTP {resp.status}", resp.status)

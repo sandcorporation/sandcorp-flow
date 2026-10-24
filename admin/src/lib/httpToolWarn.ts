@@ -12,6 +12,19 @@ export function urlHost(url: string): string | null {
   return host === '' ? null : host
 }
 
+/** 가짜 API 예약 호스트(서버 `apps/flows/demo_api.HOST` 와 같은 값, #131). 모든 테넌트에 암묵 허용된다. */
+export const DEMO_API_HOST = 'demo-api.flow.sandcorp.co.kr'
+
+/**
+ * 서버가 프로세스 안 가짜 API 로 처리하는 주소인가 — 서버 `demo_api.is_reserved` 와 같은 정확 일치
+ * (`https://` + 예약 호스트 그대로, 뒤는 끝·`/`·`?`·`#`). 대문자·포트·끝 점·하위 도메인 변형은 아니다(서버도 safe_http 로 보낸다).
+ */
+export function isDemoApiUrl(url: string): boolean {
+  const prefix = `https://${DEMO_API_HOST}`
+  const u = url.trim()
+  return u.startsWith(prefix) && (u.length === prefix.length || '/?#'.includes(u[prefix.length]))
+}
+
 /** 서버 safe_http.AllowList 와 같은 규칙: 정확 일치, 또는 `*.base` 의 한 단계 하위(apex·두 단계 이상은 아님). */
 export function hostAllowed(host: string, patterns: readonly string[]): boolean {
   const h = norm(host)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { urlHost, hostAllowed, secretNamesUsed } from './httpToolWarn'
+import { urlHost, hostAllowed, secretNamesUsed, isDemoApiUrl, DEMO_API_HOST } from './httpToolWarn'
 
 describe('urlHost — https 주소의 호스트(포트·경로 제외, 소문자)', () => {
   it.each([
@@ -38,4 +38,25 @@ describe('secretNamesUsed — config 에서 쓰는 {{secret.이름}}', () => {
       .toEqual(['other', 'shop_key'])
   })
   it('없으면 빈 배열', () => expect(secretNamesUsed({ url: 'https://a.com' })).toEqual([]))
+})
+
+describe('isDemoApiUrl — 가짜 API 예약 호스트 정확 일치(서버 demo_api.is_reserved 와 같은 규칙)', () => {
+  it.each([
+    `https://${DEMO_API_HOST}/orders/{{state.fields.order_no}}`,
+    `https://${DEMO_API_HOST}/reservations`,
+    `https://${DEMO_API_HOST}?simulate=error`,
+    `https://${DEMO_API_HOST}`,
+  ])('예약 호스트: %s', (url) => expect(isDemoApiUrl(url)).toBe(true))
+
+  it.each([
+    `https://${DEMO_API_HOST}.evil.com/x`,
+    `https://x.${DEMO_API_HOST}/x`,
+    `http://${DEMO_API_HOST}/x`,
+    `https://${DEMO_API_HOST}:8443/x`,
+    `https://${DEMO_API_HOST}:443/x`,
+    `https://${DEMO_API_HOST.toUpperCase()}/x`,
+    `https://${DEMO_API_HOST}./x`,
+    `https://u@${DEMO_API_HOST}/x`,
+    'https://flow.sandcorp.co.kr/x',
+  ])('변형은 예약 호스트가 아니다: %s', (url) => expect(isDemoApiUrl(url)).toBe(false))
 })
