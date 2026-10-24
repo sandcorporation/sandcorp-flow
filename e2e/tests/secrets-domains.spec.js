@@ -54,7 +54,7 @@ test.describe('설정 > 비밀·허용 도메인 (#113)', () => {
     await expect(page.getByText('E2E_TOKEN', { exact: true })).toHaveCount(0)
   })
 
-  test('Member 로 강등된 계정은 서버가 쓰기를 막고 「권한이 없습니다.」를 보인다', async ({ page }) => {
+  test('Member 로 강등된 계정은 (토큰은 옛 Admin 이어도) 목록만 보이고 쓰기 컨트롤이 없다', async ({ page }) => {
     test.setTimeout(90_000)
     const tenant = await provisionTenant(`Secrets Member ${Date.now()}`)
     const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
@@ -66,13 +66,28 @@ test.describe('설정 > 비밀·허용 도메인 (#113)', () => {
 
     await openMemberSession(page, ADMIN_URL, tenant.secondToken, ROUTE)
     await expect(page.getByText('seen.example.com', { exact: true })).toBeVisible()
-    // 세션 토큰의 역할 표시는 옛 값이라 컨트롤이 보일 수 있다 — 서버가 DB 역할로 막는 것이 기준이다.
-    if (await page.getByLabel('허용 도메인 패턴').count()) {
-      await page.getByLabel('허용 도메인 패턴').fill('nope.example.com')
-      await page.getByRole('button', { name: '도메인 추가' }).click()
-      await expect(page.getByText('권한이 없습니다.')).toBeVisible()
-    }
-    await expect(page.getByText('nope.example.com')).toHaveCount(0)
+    // 토큰은 로그인 때의 admin 이지만 화면은 서버 역할(members/me)을 따른다 — 쓰기 컨트롤이 없다(#120).
+    await expect(page.getByText(/관리자만/).first()).toBeVisible()
+    await expect(page.getByLabel('허용 도메인 패턴')).toHaveCount(0)
+    await expect(page.getByLabel('비밀 값')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /삭제|값 바꾸기|도메인 추가|비밀 저장/ })).toHaveCount(0)
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/member-secrets-after-demotion.png`, fullPage: true })
+  })
+
+  test('강등된 계정은 팀원·흐름 화면에서도 Admin 전용 컨트롤이 없다(#120)', async ({ page }) => {
+    test.setTimeout(90_000)
+    const tenant = await provisionTenant(`Role Server ${Date.now()}`)
+    const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
+    const members = await (await api.get('/api/tenant/members/')).json()
+    const second = members.find((m) => m.name.includes('둘째'))
+    expect((await api.patch(`/api/tenant/members/${second.id}/role`, { data: { role: 'member' } })).ok()).toBeTruthy()
+
+    await openMemberSession(page, ADMIN_URL, tenant.secondToken, 'tenant/agents')
+    await expect(page.getByText(/팀원 관리는 관리자만/)).toBeVisible()
+    await expect(page.getByRole('button', { name: /초대/ })).toHaveCount(0)
+    await page.goto(`${ADMIN_URL}/admin-ui/tenant/flows`)
+    await expect(page.getByRole('heading', { name: '흐름', exact: true })).toBeVisible()
+    await expect(page.getByText('새 흐름')).toHaveCount(0)
   })
 
   test('390폭: 긴 이름·긴 패턴이 있어도 어떤 요소도 가로로 넘치지 않는다', async ({ page }) => {
