@@ -1,9 +1,11 @@
 """OCR 포트 — 엔진 주입 + 페이지 상한 (issue 157).
 
 포트는 결정적 Fake 백엔드로 엔진-무관 행동을 검증한다(이미지/스캔PDF가 주입된 백엔드로 전사되는가,
-상한이 호출 수를 통제하는가). 실제 Paddle 통합 흐름은 test_rag.py(이미지/스캔PDF 업로드)가 커버한다.
+상한이 호출 수를 통제하는가). 업로드→인제스션→VisionOCR 통합 흐름은 test_rag.py(이미지/스캔PDF 업로드,
+transcribe_image Fake)가 커버한다.
 """
 import fitz
+import pytest
 
 
 class _StubOCR:
@@ -64,15 +66,19 @@ def test_pdf_ocr_fallback_respects_page_cap(settings):
     assert stub.calls == 2  # 5페이지지만 상한 2까지만
 
 
-def test_get_ocr_backend_defaults_to_paddle_in_dev():
-    """팩토리는 OCR 미설정 시 dev/test에서 Paddle 백엔드를 돌려준다."""
-    from apps.rag.ocr import get_ocr_backend, PaddleOCR
+@pytest.mark.parametrize("platform_defaults", [True, False], ids=["dev", "prod"])
+def test_get_ocr_backend_unconfigured_errors_only_when_ocr_needed(settings, platform_defaults):
+    """OCR 미설정이면 dev·prod 구분 없이 폴백 엔진이 없다 — 팩토리는 통과하고(TXT 등은 인제스션 가능),
+    실제 전사를 요청하는 순간 설정 안내 오류를 낸다(ADR-0020 보충)."""
+    from apps.rag.ocr import get_ocr_backend, OCRNotConfiguredError
 
-    assert isinstance(get_ocr_backend(None), PaddleOCR)
+    settings.PLATFORM_DEFAULT_PROVIDERS_ENABLED = platform_defaults
+    backend = get_ocr_backend(None)
+    with pytest.raises(OCRNotConfiguredError, match="OCR Provider가 설정되지 않았습니다"):
+        backend.transcribe(_png_bytes())
 
 
 # ── issue 158: Vision OCR 경계 + VisionOCR + ocr_provider 리졸버 ──────────────
-import pytest
 
 
 @pytest.mark.django_db
@@ -157,14 +163,13 @@ def test_transcribe_image_builds_vision_message_with_guardrail(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_get_ocr_backend_errors_in_prod_without_ocr_provider(tenant_with_key, settings):
-    """prod(플랫폼 기본 비활성)에서 OCR 미설정이면 명확한 에러(Paddle 폴백 없음)."""
-    from apps.rag.ocr import get_ocr_backend
+def test_get_ocr_backend_unconfigured_tenant_config_errors_on_transcribe(tenant_with_key):
+    """OCR 미설정 TenantConfig도 같은 경로 — 전사 시 명확한 오류(Paddle 폴백 없음)."""
+    from apps.rag.ocr import get_ocr_backend, OCRNotConfiguredError
     from apps.tenants.models import TenantConfig
 
-    settings.PLATFORM_DEFAULT_PROVIDERS_ENABLED = False
     tenant, _ = tenant_with_key
     config = TenantConfig.objects.get(tenant=tenant)  # ocr 미설정
 
-    with pytest.raises(ValueError):
-        get_ocr_backend(config)
+    with pytest.raises(OCRNotConfiguredError):
+        get_ocr_backend(config).transcribe(_png_bytes())

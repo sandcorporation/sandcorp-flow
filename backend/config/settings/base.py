@@ -136,8 +136,5 @@ CORS_ALLOW_ALL_ORIGINS = True
 MEDIA_ROOT = BASE_DIR / "media"
 MEDIA_URL = "/media/"
 
-# PaddleOCR
-PADDLE_OCR_URL = os.environ.get("PADDLE_OCR_URL", "http://paddle-ocr:8080")
-PADDLE_OCR_TIMEOUT = float(os.environ.get("PADDLE_OCR_TIMEOUT", "60.0"))
 # 스캔 PDF의 vision OCR 비용 통제 — 한 문서에서 OCR할 최대 페이지 수(초과분은 생략).
 OCR_MAX_PAGES = int(os.environ.get("OCR_MAX_PAGES", "30"))

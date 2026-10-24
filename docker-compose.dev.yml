@@ -130,27 +130,7 @@ services:
         condition: service_healthy
     restart: "no"
 
-  # OCR은 prod에서 per-Tenant Vision Provider로 옮겼으나(PRD-vision-ocr), dev는 결정적 로컬
-  # OCR 폴백으로 Paddle을 유지한다(OCR 미설정 테넌트도 문서 OCR이 되게 + 통합 테스트 실제 객체).
-  paddle-ocr:
-    build:
-      context: ./paddle_service
-      dockerfile: Dockerfile
-    runtime: nvidia
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-    volumes:
-      - paddle_models:/root/.paddleocr
-    healthcheck:
-      test: [ "CMD-SHELL", "python3 -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health').status==200 else 1)\"" ]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 300s
-
 volumes:
   widget_node_modules:
   admin_node_modules:
   ollama_data:
-  paddle_models:

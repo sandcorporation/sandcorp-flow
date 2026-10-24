@@ -294,6 +294,39 @@ def tenant_with_key(db):
     return tenant, raw_key
 
 
+class FakeVisionOCR:
+    """vision OCR 경계(`apps.agent.llm.transcribe_image`)의 결정적 Fake.
+
+    vision 모델은 비결정 외부 경계라 Fake로 바꾼다(CLAUDE.md 예외 조항). 시험이 `text`에 넣은 문자열을
+    "이미지에 보이는 글자"로 돌려주고, 받은 호출(provider·mime)을 기록한다. 인제스션→OCR 포트→
+    VisionOCR→경계까지는 실제 코드가 돈다.
+    """
+
+    def __init__(self):
+        self.text = ""
+        self.calls: list[tuple[str, str]] = []  # (provider.type, mime_type)
+
+    def __call__(self, provider, image_bytes: bytes, mime_type: str = "image/png") -> str:
+        self.calls.append((provider.type, mime_type))
+        return self.text
+
+
+@pytest.fixture
+def vision_ocr(tenant_with_key, monkeypatch) -> FakeVisionOCR:
+    """tenant_with_key 테넌트에 OCR(Vision) Provider를 설정하고 transcribe_image를 Fake로 바꾼다."""
+    from apps.tenants.models import TenantConfig
+
+    tenant, _ = tenant_with_key
+    config = TenantConfig.objects.get(tenant=tenant)
+    config.ocr_provider_type = "openai"
+    config.ocr_model = "gpt-4o-mini"
+    config.save()
+
+    fake = FakeVisionOCR()
+    monkeypatch.setattr("apps.agent.llm.transcribe_image", fake)
+    return fake
+
+
 @pytest.fixture
 def tenant_agent_token(tenant_with_key):
     from apps.tenants.models import TenantAgent

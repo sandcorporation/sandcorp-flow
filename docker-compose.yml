@@ -114,8 +114,8 @@ services:
       redis:
         condition: service_healthy
 
-  # OCR은 prod에서 per-Tenant Vision Provider로 수행한다(PRD-vision-ocr) — Paddle GPU 서비스는
-  # prod에서 제거됐다. dev/test는 결정적 로컬 OCR로 Paddle을 유지한다(docker-compose.dev/test.yml).
+  # OCR은 per-Tenant Vision Provider로 수행한다(PRD-vision-ocr) — Paddle 서비스는 dev/test에서도
+  # 제거됐다(ADR-0020 보충). 별도 OCR 컨테이너 없음.
 
 volumes:
   postgres_data:

@@ -46,7 +46,7 @@ def ingest_document(self, document_id: str, tenant_id: str, mime_type: str):
             file_path = os.path.join(settings.MEDIA_ROOT, "documents", document_id)
             with open(file_path, "rb") as f:
                 file_bytes = f.read()
-            # OCR 백엔드는 tenant config로 해석한다(prod=vision, dev/test=Paddle 폴백).
+            # OCR 백엔드는 tenant config로 해석한다(설정됨=vision, 미설정=OCR이 필요할 때 명확한 오류).
             config = TenantConfig.objects.filter(tenant_id=tenant_id).first()
             ocr = get_ocr_backend(config)
             text = get_ingester(mime_type).extract_text(file_bytes, ocr)

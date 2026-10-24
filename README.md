@@ -19,7 +19,7 @@ Sandcorp Flow는 타사 웹사이트에 iframe으로 삽입하는 챗봇을 제�
 | **Knowledge Graph** | **Postgres + pgvector**에 흡수 — Entity Mention·관계(메타데이터) + **per-Tenant 가변차원 HNSW**(Text Unit/Mention 임베딩, 차원별 vec 테이블). 과거 Neo4j에서 이전([ADR-0021](./docs/adr/0021-graphstore-pgvector-replaces-neo4j.md)) |
 | **PostgreSQL** | Django 모델(Tenant·Document·ChatMessage 등) + **LangGraph Checkpoint**(대화 state) |
 | **Ollama** | dev 기본 임베딩 `bge-m3`(다국어, 1024차원). prod에선 Tenant Embedding Provider가 대체 |
-| **OCR** | 이미지/스캔 PDF의 텍스트 추출 — prod은 **per-Tenant Vision Provider**(GPT-4o·Claude·Gemini 등), dev/test는 **PaddleOCR**(GPU) 폴백 ([ADR-0020](./docs/adr/0020-vision-ocr-replaces-paddle.md)) |
+| **OCR** | 이미지/스캔 PDF의 텍스트 추출 — dev/test/prod 모두 **per-Tenant Vision Provider**(GPT-4o·Claude·Gemini 등, BYOK) 하나. 미설정 테넌트는 이미지·스캔 PDF 업로드가 명확한 오류로 실패 ([ADR-0020](./docs/adr/0020-vision-ocr-replaces-paddle.md)) |
 | **Redis** | SSE pub/sub + **taskiq(chat)·Celery(배치) 브로커** + **EventBus(Streams)** + relay wake + 레이트리밋·세션 락 |
 | **Widget** (`/chatbot/{slug}/`) | Visitor용 채팅 위젯 (React) — 토큰 없이 slug로 접근 |
 | **Landing** (`/`) | 공개 소개 페이지 — 실제 `ChatWidget`을 mock 스트리밍으로 구동하는 라이브 챗봇 데모 + 지식그래프(react-force-graph) 데모 + 연락처. widget 레포의 별도 멀티페이지 엔트리(무거운 데모 의존은 landing 청크에만 → 위젯 챗봇 번들은 경량 유지) |
@@ -56,7 +56,7 @@ Tenant마다 하나의 지식그래프가 Neo4j에 저장됩니다. 모든 노�
 
 소스는 **파일 업로드**(PDF·TXT·이미지·**Excel xlsx/xls**)와 **웹 URL**(명시적, 재귀 크롤 아님) 두 가지입니다(Document Source로 분기).
 
-1. **텍스트 추출**: PDF는 PyMuPDF로 추출하되 **단어 수 부족 또는 깨진 추출(Garbled Extraction, mojibake) 감지 시 OCR로 재추출**([ADR-0009](./docs/adr/0009-garbled-extraction-ocr-not-llm-cleanup.md) — LLM 정제가 아니라 픽셀 재인식). OCR 엔진은 **OCRBackend 포트** 뒤에서 prod=per-Tenant Vision Provider(전사 가드레일+temp 0), dev/test=Paddle로 갈린다([ADR-0020](./docs/adr/0020-vision-ocr-replaces-paddle.md)). 이미지는 OCR, TXT는 그대로, **Excel은 시트별 헤더-키 행별 텍스트로 평탄화**, **웹은 URL을 fetch해 메인 콘텐츠 추출**(보일러플레이트 제거).
+1. **텍스트 추출**: PDF는 PyMuPDF로 추출하되 **단어 수 부족 또는 깨진 추출(Garbled Extraction, mojibake) 감지 시 OCR로 재추출**([ADR-0009](./docs/adr/0009-garbled-extraction-ocr-not-llm-cleanup.md) — LLM 정제가 아니라 픽셀 재인식). OCR 엔진은 **OCRBackend 포트** 뒤의 per-Tenant Vision Provider(전사 가드레일+temp 0) 하나다 — 미설정이면 OCR이 필요한 순간 설정 안내 오류(짧지만 정상인 PDF 텍스트 레이어는 그대로 사용)([ADR-0020](./docs/adr/0020-vision-ocr-replaces-paddle.md)). 이미지는 OCR, TXT는 그대로, **Excel은 시트별 헤더-키 행별 텍스트로 평탄화**, **웹은 URL을 fetch해 메인 콘텐츠 추출**(보일러플레이트 제거).
 2. **Entity/관계 추출**: 추출 텍스트를 **추출 LLM**(Tenant Provider 또는 플랫폼 기본)에 구조화 출력으로 보내 `(entities, relations)`를 받습니다. 추출은 **해당 문서 내부만** 봅니다. 문서 레이블 Mention을 시드하고, 추출된 각 Mention을 `mentions` 관계로 연결합니다(이름 병합 없이 — 동치는 재구축 단계에서 `SAME_AS`로).
 3. **임베딩**: Mention(`name+description`)과 Text Unit을 **Tenant Embedding Provider**(미설정 시 dev=ollama `bge-m3`)로 배치 임베딩해 **per-Tenant 벡터 인덱스**에 저장합니다. 인덱스 차원은 Tenant의 임베딩 모델에 맞춰지고, Tenant마다 라벨·인덱스가 격리됩니다([ADR-0012](./docs/adr/0012-per-tenant-llm-embedding-providers.md)).
 4. **신선도 표시**: 그래프가 바뀌었으므로 `stale`로 표시됩니다. **Entity Resolution(SAME_AS)**은 전역 연산이라 업로드마다 돌리지 않고 **배치/트리거**로 재구축합니다([ADR-0008](./docs/adr/0008-incremental-ingest-batched-community-rebuild.md), [ADR-0016](./docs/adr/0016-remove-global-search-keep-entity-resolution.md)).
@@ -149,13 +149,13 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 | LLM Provider | **per-Tenant** — OpenAI / Claude(Anthropic 네이티브) / Custom(OpenAI-호환). 미설정 시 플랫폼 기본(OpenRouter). 챗·추출 공용, 키 암호화 저장 |
 | Embedding Provider | **per-Tenant**(LLM과 독립) — OpenAI/Custom, OpenAI-호환 `/v1/embeddings`. dev 기본 `bge-m3`(Ollama, 1024차원) |
 | Knowledge Graph | **Postgres + pgvector**(차원별 HNSW, **per-Tenant 가변차원**) — 메타데이터와 임베딩 분리 |
-| OCR | prod=per-Tenant Vision LLM(GPT-4o·Claude·Gemini 등), dev/test=PaddleOCR(PP-OCRv5) — 이미지/스캔 PDF·깨진 추출 |
+| OCR | per-Tenant Vision LLM(GPT-4o·Claude·Gemini 등) — dev/test/prod 같은 경로. 이미지/스캔 PDF·깨진 추출 |
 | 관계형 DB | PostgreSQL 16 (Django 모델 + LangGraph 체크포인트) |
 | 메시징 | Redis 7 (SSE pub/sub + Celery 브로커 + 레이트리밋·세션 락) |
 | 프론트 | React 18 + Vite. 그래프 시각화: `react-force-graph-2d` |
 | 인증 | JWT(python-jose). Visitor는 공개 slug URL + opt-in HMAC 신원검증. TENANT_KEY는 HMAC API·팀원 생성용 |
 
-> **GPU**: PaddleOCR·Ollama는 GPU 빌드를 사용합니다. Docker Desktop에서는 `runtime: nvidia` + `NVIDIA_VISIBLE_DEVICES=all`로 패스스루합니다. bge-m3가 GPU flash-attention에서 NaN 임베딩을 내는 이슈가 있어 `OLLAMA_FLASH_ATTENTION=0`을 설정합니다.
+> **GPU**: 필수 아님. GPU 호스트에선 Ollama(bge-m3)가 GPU를 씁니다(시험 인프라는 GPU 없이도 돈다 — 9장). Docker Desktop에서는 `runtime: nvidia` + `NVIDIA_VISIBLE_DEVICES=all`로 패스스루합니다. bge-m3가 GPU flash-attention에서 NaN 임베딩을 내는 이슈가 있어 `OLLAMA_FLASH_ATTENTION=0`을 설정합니다.
 
 ---
 
@@ -176,7 +176,6 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 | `OLLAMA_EMBED_MODEL` | dev 기본 임베딩 모델 | `bge-m3` |
 | `PLATFORM_DEFAULT_PROVIDERS_ENABLED` | 플랫폼 기본 Provider 폴백(OpenRouter LLM + ollama 임베딩). **dev만 `true`**, prod(GPU 없음)는 `false` → Tenant가 LLM·Embedding Provider 설정 필수. `dev.py`/`prod.py`에서 명시(env 아님) | `True`(dev)/`False`(prod) |
 | `CHAT_RATE_LIMIT_PER_VISITOR` / `CHAT_RATE_LIMIT_PER_TENANT` | 공개 URL 레이트리밋(분당) | `20` / `300` |
-| `PADDLE_OCR_URL` | PaddleOCR 서비스 URL (dev/test 폴백 OCR) | `http://paddle-ocr:8080` |
 | `OCR_MAX_PAGES` | 스캔 PDF의 vision OCR 페이지 상한(비용 통제) | `30` |
 | `DEBUG` | 디버그 모드 | `False`(운영) |
 
@@ -189,7 +188,7 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 cp .env.example .env
 # .env에 DB/Redis/Neo4j/OpenRouter 키 입력
 
-# 2. 인프라 + 앱 기동 (dev 스택: db, redis, ollama(+bge-m3), paddle-ocr,
+# 2. 인프라 + 앱 기동 (dev 스택: db, redis, ollama(+bge-m3),
 #    api(uvicorn), worker(Celery 배치), worker-chat(taskiq chat), widget, admin)
 docker compose -f docker-compose.dev.yml up --build
 
@@ -266,8 +265,10 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 
 ## 9. 테스트
 
-- **단위/통합**: `docker-compose.test.yml`의 `test` 서비스(pytest). **실제 Neo4j·실제 bge-m3**를 사용(결정적). 비결정적 외부 경계인 **LLM 호출만 결정적 Fake로 교체**합니다(`apps/agent/llm` 경계 + conftest Fake) — 외부 모델 판단이 아니라 우리 코드 동작을 검증.
-  - **실행**: `./scripts/test.ps1` (PowerShell) 또는 `bash scripts/test.sh` — 호스트 `backend/`를 마운트해 코드 변경을 즉시 반영하고, **종료 시 테스트 전용 인프라(Neo4j·OCR·ollama 등 GPU 포함)를 자동 `stop`** 하여 VRAM/메모리를 돌려줍니다(다음 실행은 `start`로 빠르게 재개). 인자로 특정 테스트 경로를 넘길 수 있습니다(예: `bash scripts/test.sh tests/test_rag.py`).
+- **단위/통합**: `docker-compose.test.yml`의 `test` 서비스(pytest). **실제 Postgres(pgvector)·실제 bge-m3(Ollama)**를 사용(결정적). 비결정적 외부 경계인 **LLM·Vision OCR 호출만 결정적 Fake로 교체**합니다(`apps/agent/llm` 경계 + conftest Fake, OCR은 `vision_ocr` 픽스처가 `transcribe_image`를 대체) — 외부 모델 판단이 아니라 우리 코드 동작을 검증.
+  - **실행**: `./scripts/test.ps1` (PowerShell) 또는 `bash scripts/test.sh` — 호스트 `backend/`를 마운트해 코드 변경을 즉시 반영하고, **종료 시 테스트 전용 인프라(db·redis·ollama)를 자동 `stop`** 하여 메모리(GPU면 VRAM)를 돌려줍니다(다음 실행은 `start`로 빠르게 재개). 인자로 특정 테스트 경로를 넘길 수 있습니다(예: `bash scripts/test.sh tests/test_rag.py`).
+  - **GPU 없이 돈다**: 기본 `docker-compose.test.yml`은 CPU 구성(ollama CPU, OCR 컨테이너 없음)입니다. `docker info`에 nvidia 런타임이 있으면 스크립트가 `docker-compose.test.gpu.yml`을 겹쳐 ollama를 GPU로 돌립니다. `TEST_GPU=0|1`로 강제할 수 있습니다.
+  - 리눅스에선 시험 컨테이너가 호스트 uid:gid로 돌아, 마운트한 `backend/`에 root 소유 파일을 남기지 않습니다.
 - **E2E**: Playwright. 챗 LLM은 OpenAI 호환 **Fake LLM 서비스**(`fake_llm/`)로 결정화합니다.
 - 인제스션·추출 프롬프트의 실제 타당성은 실제 OpenRouter로 bring-up 검증합니다.
 
@@ -282,7 +283,7 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 - **`0021` GraphStore 저장 엔진을 Neo4j→Postgres+pgvector로 이전** (그래프 모델 보존, 박스 부담↓·관리형 이식)
 - **`0008` 증분 인제스션 + 배치 Community 재구축**
 - **`0009` 깨진 추출(Garbled)은 LLM 정제가 아니라 OCR 재추출** (+ Amendment: 픽셀 vision OCR 허용)
-- **`0020` OCR을 per-Tenant Vision Provider로 (Paddle는 dev/test 격하)**
+- **`0020` OCR을 per-Tenant Vision Provider로 (Paddle는 dev/test 격하 → 2026-10-24 보충: dev/test에서도 제거)**
 - **`0010` Entity 정체성은 이름이 아니라 맥락 — Mention/Entity 분리 + 비파괴 SAME_AS 동치**
 - **`0011` 공개 Tenant Slug URL이 EmbedToken을 대체** + 계층형 Visitor 신원(opt-in HMAC)
 - **`0012` Tenant 부담 멀티 Provider(LLM·Embedding) + per-Tenant 가변차원 인덱스 + 재임베딩 재구축**

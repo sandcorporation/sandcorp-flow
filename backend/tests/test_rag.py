@@ -364,7 +364,10 @@ def _make_pdf(*page_texts):
 
 @pytest.mark.django_db
 def test_ingest_multipage_pdf_includes_text_from_all_pages(client, tenant_agent_token, tenant_with_key):
-    """멀티페이지 PDF를 업로드하면 모든 페이지의 텍스트가 Text Unit에 포함된다."""
+    """멀티페이지 PDF를 업로드하면 모든 페이지의 텍스트가 Text Unit에 포함된다.
+
+    단어 수가 OCR 폴백 문턱보다 적지만 OCR Provider 미설정이라, 정상 텍스트 레이어를 그대로 쓴다.
+    """
     from apps.rag.models import Document
 
     tenant, _ = tenant_with_key
@@ -393,8 +396,29 @@ def test_ingest_multipage_pdf_includes_text_from_all_pages(client, tenant_agent_
 
 
 @pytest.mark.django_db
-def test_ingest_empty_pdf_results_in_no_chunks(client, tenant_agent_token, tenant_with_key):
-    """텍스트가 없는 빈 PDF를 업로드하면 status=ready이고 Text Unit이 생성되지 않는다."""
+def test_scanned_pdf_without_ocr_provider_fails_with_clear_error(client, tenant_agent_token, tenant_with_key):
+    """OCR Provider 미설정 테넌트의 스캔 PDF(텍스트 레이어 없음)는 status=failed와 설정 안내 오류가 남는다."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from apps.rag.models import Document
+
+    uploaded = SimpleUploadedFile(
+        "scan.pdf", _make_image_only_pdf("SYSEX dump sends entire FCB1010 memory"), content_type="application/pdf"
+    )
+    resp = client.post(
+        "/api/tenant/documents/",
+        {"file": uploaded},
+        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+    )
+    assert resp.status_code == 201
+
+    doc = Document.objects.get(id=resp.json()["id"])
+    assert doc.status == Document.STATUS_FAILED
+    assert "OCR Provider가 설정되지 않았습니다" in doc.error_message
+
+
+@pytest.mark.django_db
+def test_ingest_empty_pdf_results_in_no_chunks(client, tenant_agent_token, tenant_with_key, vision_ocr):
+    """텍스트가 없는 빈 PDF를 업로드하면(OCR도 빈 결과) status=ready이고 Text Unit이 생성되지 않는다."""
     import fitz
     from apps.rag.models import Document
 
@@ -504,12 +528,13 @@ def _make_jpg_with_text(text: str) -> bytes:
 
 
 @pytest.mark.django_db
-def test_ingest_png_creates_chunks(client, tenant_agent_token, tenant_with_key):
-    """PNG 이미지 업로드 시 OCR로 텍스트가 추출되어 status=ready, Text Unit이 생성된다."""
+def test_ingest_png_creates_chunks(client, tenant_agent_token, tenant_with_key, vision_ocr):
+    """PNG 이미지 업로드 시 OCR(Vision)로 텍스트가 전사되어 status=ready, Text Unit이 생성된다."""
     from django.core.files.uploadedfile import SimpleUploadedFile
     from apps.rag.models import Document
 
     tenant, _ = tenant_with_key
+    vision_ocr.text = "FCB1010 MIDI controller test"
     png_bytes = _make_png_with_text("FCB1010 MIDI controller test")
     uploaded = SimpleUploadedFile("test_ocr.png", png_bytes, content_type="image/png")
 
@@ -525,16 +550,18 @@ def test_ingest_png_creates_chunks(client, tenant_agent_token, tenant_with_key):
     assert doc.status == Document.STATUS_READY, (
         f"Expected ready, got {doc.status}: {doc.error_message}"
     )
-    assert _has_graph_text_units(tenant.id, doc_id)
+    assert vision_ocr.calls == [("openai", "image/png")]
+    assert "FCB1010" in _graph_text(tenant.id, doc_id)
 
 
 @pytest.mark.django_db
-def test_ingest_jpg_creates_chunks(client, tenant_agent_token, tenant_with_key):
-    """JPG 이미지 업로드 시 OCR로 텍스트가 추출되어 status=ready, Text Unit이 생성된다."""
+def test_ingest_jpg_creates_chunks(client, tenant_agent_token, tenant_with_key, vision_ocr):
+    """JPG 이미지 업로드 시 OCR(Vision)로 텍스트가 전사되어 status=ready, Text Unit이 생성된다."""
     from django.core.files.uploadedfile import SimpleUploadedFile
     from apps.rag.models import Document
 
     tenant, _ = tenant_with_key
+    vision_ocr.text = "Expression pedal calibration guide"
     jpg_bytes = _make_jpg_with_text("Expression pedal calibration guide")
     uploaded = SimpleUploadedFile("test_ocr.jpg", jpg_bytes, content_type="image/jpeg")
 
@@ -550,7 +577,27 @@ def test_ingest_jpg_creates_chunks(client, tenant_agent_token, tenant_with_key):
     assert doc.status == Document.STATUS_READY, (
         f"Expected ready, got {doc.status}: {doc.error_message}"
     )
-    assert _has_graph_text_units(tenant.id, doc_id)
+    assert vision_ocr.calls == [("openai", "image/jpeg")]
+    assert "calibration" in _graph_text(tenant.id, doc_id)
+
+
+@pytest.mark.django_db
+def test_ingest_image_without_ocr_provider_fails_with_clear_error(client, tenant_agent_token, tenant_with_key):
+    """OCR Provider 미설정 테넌트가 이미지를 올리면 status=failed와 설정 안내 오류가 남는다(폴백 OCR 없음)."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from apps.rag.models import Document
+
+    uploaded = SimpleUploadedFile("no_ocr.png", _make_png_with_text("no ocr here"), content_type="image/png")
+    resp = client.post(
+        "/api/tenant/documents/",
+        {"file": uploaded},
+        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+    )
+    assert resp.status_code == 201
+
+    doc = Document.objects.get(id=resp.json()["id"])
+    assert doc.status == Document.STATUS_FAILED
+    assert "OCR Provider가 설정되지 않았습니다" in doc.error_message
 
 
 @pytest.mark.django_db
@@ -592,13 +639,14 @@ def _make_image_only_pdf(text: str) -> bytes:
 
 
 @pytest.mark.django_db
-def test_pdf_ocr_fallback_used_when_text_too_sparse(client, tenant_agent_token, tenant_with_key):
+def test_pdf_ocr_fallback_used_when_text_too_sparse(client, tenant_agent_token, tenant_with_key, vision_ocr):
     """텍스트 레이어가 없는 스캔 PDF는 OCR fallback을 통해 status=ready이고 Text Unit이 생성된다."""
     from django.core.files.uploadedfile import SimpleUploadedFile
     from apps.rag.models import Document
     import fitz
 
     tenant, _ = tenant_with_key
+    vision_ocr.text = "SYSEX dump sends entire FCB1010 memory"
     pdf_bytes = _make_image_only_pdf("SYSEX dump sends entire FCB1010 memory")
 
     # 텍스트 레이어가 없음을 먼저 확인
@@ -619,17 +667,18 @@ def test_pdf_ocr_fallback_used_when_text_too_sparse(client, tenant_agent_token, 
     assert doc.status == Document.STATUS_READY, (
         f"Expected ready, got {doc.status}: {doc.error_message}"
     )
-    assert _has_graph_text_units(tenant.id, doc_id)
+    assert vision_ocr.calls == [("openai", "image/png")]  # 렌더한 페이지 1장을 OCR
+    assert "SYSEX" in _graph_text(tenant.id, doc_id)
 
 
 @pytest.mark.django_db
-def test_pdf_normal_text_skips_ocr(client, tenant_agent_token, tenant_with_key):
+def test_pdf_normal_text_skips_ocr(client, tenant_agent_token, tenant_with_key, vision_ocr):
     """단어 수 >= 50인 정상 PDF는 OCR fallback 없이 처리된다."""
     from apps.rag.models import Document
 
     tenant, _ = tenant_with_key
-    long_text = "FCB1010 MIDI controller " * 10  # 50개 이상 단어
-    pdf_bytes = _make_pdf(long_text)
+    # 한 줄이 페이지 폭을 넘으면 잘리므로 페이지 5장 × 12단어 = 60단어(OCR 폴백 문턱 50 이상)로 나눈다.
+    pdf_bytes = _make_pdf(*(["FCB1010 MIDI controller bank A preset " * 2] * 5))
 
     f = io.BytesIO(pdf_bytes)
     f.name = "normal.pdf"
@@ -644,6 +693,7 @@ def test_pdf_normal_text_skips_ocr(client, tenant_agent_token, tenant_with_key):
     doc = Document.objects.get(id=doc_id)
     assert doc.status == Document.STATUS_READY
     assert _has_graph_text_units(tenant.id, doc_id)
+    assert vision_ocr.calls == []  # 텍스트 레이어로 충분 — OCR 호출 없음
 
 
 # ── PRD garbled-pdf-ocr-fallback: 깨진 텍스트 레이어(mojibake) → OCR 재추출 ────
@@ -679,7 +729,7 @@ def _make_garbled_text_layer_pdf(visible_text: str, garbled_layer: str) -> bytes
 
 
 @pytest.mark.django_db
-def test_pdf_garbled_text_layer_triggers_ocr_recovery(client, tenant_agent_token, tenant_with_key):
+def test_pdf_garbled_text_layer_triggers_ocr_recovery(client, tenant_agent_token, tenant_with_key, vision_ocr):
     """텍스트 레이어가 mojibake인 PDF는 깨짐 감지로 OCR 재추출되어, 깨진 텍스트가 Text Unit에 남지 않는다."""
     from django.core.files.uploadedfile import SimpleUploadedFile
     from apps.rag.models import Document
@@ -688,6 +738,7 @@ def test_pdf_garbled_text_layer_triggers_ocr_recovery(client, tenant_agent_token
 
     tenant, _ = tenant_with_key
     visible = "FCB1010 expression pedal calibration guide for stage use"
+    vision_ocr.text = visible  # 픽셀에 보이는 정상 텍스트를 vision이 전사한다
     pdf_bytes = _make_garbled_text_layer_pdf(visible, _MOJIBAKE)
 
     # 전제: 텍스트 레이어가 깨졌고(단어 수는 충분) → 단어 수 조건이 아니라 깨짐 감지로 트리거되어야 한다.

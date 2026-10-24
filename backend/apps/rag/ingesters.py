@@ -98,11 +98,20 @@ class PDFIngester(DocumentIngester):
         import fitz  # pymupdf
         from apps.rag.text_quality import is_garbled
 
+        from apps.rag.ocr import OCRNotConfiguredError
+
         doc = fitz.open(stream=file_bytes, filetype="pdf")
         text = "\n".join(str(page.get_text()) for page in doc)
+        garbled = is_garbled(text)
         # 텍스트 레이어가 희소(스캔)하거나 폰트 인코딩이 깨져(mojibake) 추출되면 OCR로 재추출한다.
-        if len(text.split()) < PDF_OCR_FALLBACK_MIN_WORDS or is_garbled(text):
-            text = _ocr_pdf(file_bytes, ocr)
+        if len(text.split()) < PDF_OCR_FALLBACK_MIN_WORDS or garbled:
+            try:
+                text = _ocr_pdf(file_bytes, ocr)
+            except OCRNotConfiguredError:
+                # OCR 미설정: 짧지만 정상인 텍스트 레이어는 그대로 쓴다. 비었거나(스캔) 깨졌으면
+                # OCR 없이는 내용을 얻을 수 없으니 설정 안내 오류를 그대로 올린다.
+                if garbled or not text.strip():
+                    raise
         return text
 
 

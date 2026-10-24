@@ -394,13 +394,13 @@ export default function ConfigTab() {
           <div className="space-y-4 border-t border-border pt-6">
             <div>
               <h3 className="text-sm font-semibold">OCR(Vision) Provider</h3>
-              <p className="text-xs text-muted-foreground">이미지·스캔 PDF의 글자를 읽어들이는 vision 모델이에요(예: GPT-4o, Claude, Gemini). {config.platform_default_providers_enabled ? '미설정 시 개발 환경은 PaddleOCR로 대체합니다.' : '미설정 시 이미지·스캔 문서 업로드는 막힙니다(이미지를 쓰면 설정 필요).'}</p>
+              <p className="text-xs text-muted-foreground">이미지·스캔 PDF의 글자를 읽어들이는 vision 모델이에요(예: GPT-4o, Claude, Gemini). 미설정 시 이미지·스캔 문서 업로드는 막힙니다(이미지를 쓰면 설정 필요).</p>
             </div>
             <div className="space-y-2">
               <Label>OCR Provider 타입</Label>
               <Select aria-label="OCR Provider 타입" value={config.ocr_provider_type || ''}
                 onChange={e => { const v = e.target.value; setConfig(c => ({ ...c, ocr_provider_type: v, ocr_base_url: v === 'custom' ? c.ocr_base_url : '' })) }}>
-                <option value="">{config.platform_default_providers_enabled ? '기본 (dev: PaddleOCR)' : '(미설정)'}</option>
+                <option value="">(미설정)</option>
                 <option value="openai">OpenAI</option>
                 <option value="anthropic">Claude (Anthropic)</option>
                 <option value="custom">Custom (OpenAI-호환)</option>
