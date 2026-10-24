@@ -24,7 +24,7 @@ LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
 SERVER_INFO = {"name": "sandcorp-flow", "version": "0.1.0"}
 INSTRUCTIONS = (
     "Sandcorp Flow 상담 흐름 도구. 먼저 list_tenants로 내 테넌트와 역할을 보고, 흐름 JSON을 쓰기 전에 "
-    "get_flow_schema를 한 번 읽는다. 테넌트 도구는 tenant(slug) 인자를 받는다(멤버십이 하나면 생략). "
+    "get_flow_schema를 한 번 읽는다. 테넌트 도구는 tenant(slug 또는 id) 인자를 받는다(멤버십이 하나면 생략). "
     "편집·배포는 Admin만 된다."
 )
 
