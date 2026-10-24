@@ -12,6 +12,7 @@ from typing import Literal
 from asgiref.sync import sync_to_async
 from pydantic import Field
 
+from apps.flows import trace_query
 from apps.mcp.access import TenantArgs
 from apps.mcp.pagination import decode_cursor, encode_cursor
 from apps.mcp.registry import JSONObject, ToolContext, ToolError, register
@@ -19,6 +20,7 @@ from apps.memory import services
 
 DEFAULT_WINDOW_DAYS = 7
 MAX_MESSAGE_CHARS = 2000
+MAX_TRACE_TURNS = 20
 
 
 class ListSessionsArgs(TenantArgs):
@@ -78,7 +80,7 @@ async def list_sessions(ctx: ToolContext, args: ListSessionsArgs) -> JSONObject:
 @register(
     "get_session",
     "상담 세션 하나: 방문자·메시지(오래된 것부터, role=user|assistant|human_agent)·사람 넘김 이력(trigger·reason·"
-    "status·시각)·대화가 고정된 흐름 버전(flow_version={flow, number}, 없으면 null). 긴 대화는 limit개씩 자르고 "
+    "status·시각)·대화가 고정된 흐름 버전(flow_version={flow, number}, 없으면 null). 최근 20턴의 판단 기록 합계(decision_traces: turn·토큰·비용 USD·걸린 시간, 모르는 모델이면 비용 null)·긴 대화는 limit개씩 자르고 "
     "has_more=true면 next_cursor로 이어 읽는다. 메시지 하나가 2000자를 넘으면 잘라 truncated=true. "
     "인자: session_id, limit?, cursor?. 실패: session_not_found(없거나 남의 테넌트·시험 세션).",
     GetSessionArgs,
@@ -99,6 +101,10 @@ async def get_session(ctx: ToolContext, args: GetSessionArgs) -> JSONObject:
     if loaded is None:
         raise ToolError("session_not_found", "그런 상담 세션이 없습니다(list_sessions로 id를 확인하세요).")
     session, messages, escalations = loaded
+    # 판단 기록: 최근 턴의 합계만(노드별 상세는 시험 한 턴 test_turn 결과와 세션 화면 API) — 응답 크기 상한
+    traces = await sync_to_async(trace_query.session_turns)(
+        tenant_id, args.session_id, entries=False, limit=MAX_TRACE_TURNS
+    )
     page = messages[: args.limit]
     version = session.flow_version
     has_more = len(messages) > args.limit
@@ -119,6 +125,7 @@ async def get_session(ctx: ToolContext, args: GetSessionArgs) -> JSONObject:
             }
             for m in page
         ],
+        "decision_traces": traces or [],
         "has_more": has_more,
         "next_cursor": encode_cursor(offset + args.limit) if has_more else None,
         "escalations": [

@@ -196,6 +196,38 @@ def get_session_messages(request, session_id: str):
     ]
 
 
+class DecisionTurnOut(Schema):
+    turn: int
+    created_at: str
+    is_test: bool
+    flow_version: Optional[int] = None
+    input_tokens: int
+    output_tokens: int
+    cost_usd: Optional[str] = None  # 단가 표에 없는 모델이 있었으면 null
+    duration_ms: int
+    entries: List[dict]  # 노드별 {node_id, kind, handle, record, duration_ms, input_tokens, output_tokens, cost_usd, calls}
+
+
+class DecisionTracesOut(Schema):
+    turns: List[DecisionTurnOut]
+
+
+@session_router.get("/{session_id}/decision-traces", response={200: DecisionTracesOut, 404: DetailOut})
+def get_session_decision_traces(request, session_id: str):
+    """세션의 턴별 판단 기록(Decision Trace, 오래된 턴부터). 테넌트 범위 — 남의 세션은 404. 읽기는 모든 멤버. 시험 세션도 읽는다."""
+    from django.core.exceptions import ValidationError
+
+    from apps.flows import trace_query
+
+    try:
+        turns = trace_query.session_turns(request.auth.tenant.id, session_id)
+    except (ValidationError, ValueError):
+        return 404, {"detail": "Not found"}
+    if turns is None:
+        return 404, {"detail": "Not found"}
+    return 200, {"turns": turns}
+
+
 @memory_router.get("/", response=List[VisitorOut])
 def list_visitors(request, search: Optional[str] = None):
     from apps.chat.models import ChatSession

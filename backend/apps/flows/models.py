@@ -127,3 +127,32 @@ class FlowVersion(models.Model):
             self.number = (last.number if last else 0) + 1
         super().save(*args, **kwargs)
 
+
+
+class DecisionTrace(models.Model):
+    """한 턴의 판단 기록(Decision Trace, ADR-0027) — 턴마다 한 행. 운영 턴과 시험 턴이 같은 형식이다.
+
+    ``entries``는 지난 노드마다 ``{node_id, kind, handle, record, duration_ms, input_tokens, output_tokens,
+    cost_usd, calls}``(``apps.flows.trace``). 합계 칼럼은 조회·집계용 — ``cost_usd``는 단가 표에 없는 모델이
+    한 번이라도 있었으면 null(합계를 모른다). 비밀 값은 저장 직전 가리고 긴 글은 잘라 저장한다.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant_id = models.UUIDField()
+    session = models.ForeignKey("chat.ChatSession", on_delete=models.CASCADE, related_name="decision_traces")
+    flow_version = models.ForeignKey(
+        FlowVersion, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    """돈 흐름 버전. 시험 한 턴(초안)과 기본 흐름은 비어 있다."""
+    is_test = models.BooleanField(default=False)
+    entries = models.JSONField(default=list)
+    input_tokens = models.BigIntegerField(default=0)
+    output_tokens = models.BigIntegerField(default=0)
+    cost_usd = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True)
+    duration_ms = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "decision_traces"
+        indexes = [models.Index(fields=["session", "created_at"])]
+        ordering = ["created_at"]

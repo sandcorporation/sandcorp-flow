@@ -8,6 +8,7 @@ import type {
   AppsMemoryApiGetSessionCheckpoint200,
   AppsMemoryApiGetSessionRetrievals200,
   AppsMemoryApiListSessionsParams,
+  DecisionTracesOut,
   DetailOut,
   SessionListItemOut,
   SessionMessageOut,
@@ -94,6 +95,49 @@ export const getAppsMemoryApiGetSessionCheckpointUrl = (sessionId: string,) => {
 export const appsMemoryApiGetSessionCheckpoint = async (sessionId: string, options?: RequestInit): Promise<appsMemoryApiGetSessionCheckpointResponse> => {
   
   return customInstance<appsMemoryApiGetSessionCheckpointResponse>(getAppsMemoryApiGetSessionCheckpointUrl(sessionId),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+);}
+
+
+/**
+ * 세션의 턴별 판단 기록(Decision Trace, 오래된 턴부터). 테넌트 범위 — 남의 세션은 404. 읽기는 모든 멤버. 시험 세션도 읽는다.
+ * @summary Get Session Decision Traces
+ */
+export type appsMemoryApiGetSessionDecisionTracesResponse200 = {
+  data: DecisionTracesOut
+  status: 200
+}
+
+export type appsMemoryApiGetSessionDecisionTracesResponse404 = {
+  data: DetailOut
+  status: 404
+}
+    
+export type appsMemoryApiGetSessionDecisionTracesResponseSuccess = (appsMemoryApiGetSessionDecisionTracesResponse200) & {
+  headers: Headers;
+};
+export type appsMemoryApiGetSessionDecisionTracesResponseError = (appsMemoryApiGetSessionDecisionTracesResponse404) & {
+  headers: Headers;
+};
+
+export type appsMemoryApiGetSessionDecisionTracesResponse = (appsMemoryApiGetSessionDecisionTracesResponseSuccess | appsMemoryApiGetSessionDecisionTracesResponseError)
+
+export const getAppsMemoryApiGetSessionDecisionTracesUrl = (sessionId: string,) => {
+
+
+  
+
+  return `/api/tenant/sessions/${sessionId}/decision-traces`
+}
+
+export const appsMemoryApiGetSessionDecisionTraces = async (sessionId: string, options?: RequestInit): Promise<appsMemoryApiGetSessionDecisionTracesResponse> => {
+  
+  return customInstance<appsMemoryApiGetSessionDecisionTracesResponse>(getAppsMemoryApiGetSessionDecisionTracesUrl(sessionId),
   {      
     ...options,
     method: 'GET'

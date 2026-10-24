@@ -211,6 +211,9 @@ def test_example_flow_built_by_patches_then_trimmed_to_handlers_deploys_and_runs
     turn = ok(call(token, "test_turn", {"flow_id": flow_id, "message": "영업시간이 어떻게 되나요?"}))
     assert turn["ran"] is True and turn["reply"] == "안녕하세요! 무엇을 도와드릴까요?"
     assert [t["node_id"] for t in turn["trace"]] == ["start", "cases", "general"]
+    general = turn["trace"][2]  # 판단 기록(#24): 노드별 토큰·비용·시간·입출력이 실린다
+    assert general["input_tokens"] > 0 and general["cost_usd"] is not None and "duration_ms" in general
+    assert general["record"]["input"] == "영업시간이 어떻게 되나요?"
     assert turn["handoff"] is False
 
     handoff = ok(call(token, "test_turn", {
