@@ -22,7 +22,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from pydantic import BaseModel, ConfigDict, Field
 
-from apps.flows.models import Flow, FlowDraft, FlowVersion
+from apps.flows.models import DeployRequest, Flow, FlowDraft, FlowVersion
 from apps.flows.schema import DEFAULT_HANDLE, JSON, FlowError, NodeKind, validate_flow
 
 if TYPE_CHECKING:
@@ -77,6 +77,12 @@ class FlowInvalid(FlowServiceError):
 
 
 # ── 결과 ─────────────────────────────────────────────────────────────────────
+
+
+class ApprovalRequired(FlowServiceError):
+    """이 테넌트는 배포에 승인이 필요하다 — ``submit_deploy``로 요청을 만들어야 한다."""
+
+    code = "approval_required"
 
 
 @dataclass(frozen=True)
@@ -150,6 +156,20 @@ def create_flow(tenant_id: uuid.UUID, name: str, graph: JSON | None = None) -> F
         with transaction.atomic():
             flow = Flow.objects.create(tenant_id=tenant_id, name=name)
             FlowDraft.objects.create(flow=flow, graph=graph if graph is not None else copy.deepcopy(EMPTY_GRAPH))
+    except IntegrityError as exc:
+        raise FlowServiceError(f"이름이 '{name}'인 흐름이 이미 있습니다.", code="duplicate_name") from exc
+    return flow
+
+
+def rename_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, name: str) -> Flow:
+    name = name.strip()
+    if not name:
+        raise FlowServiceError("흐름 이름이 비었습니다.", code="invalid_name")
+    flow = get_flow(tenant_id, flow_id)
+    flow.name = name
+    try:
+        with transaction.atomic():
+            flow.save(update_fields=["name", "updated_at"])
     except IntegrityError as exc:
         raise FlowServiceError(f"이름이 '{name}'인 흐름이 이미 있습니다.", code="duplicate_name") from exc
     return flow
@@ -350,27 +370,122 @@ def save_version(
 
 
 def deploy_requires_approval(flow: Flow) -> bool:
-    """「배포에 관리자 승인 필요」(#28) 자리. 그 규칙이 생기면 여기서 판정하고 ``deploy_version``이 따른다."""
-    return False
+    """이 흐름의 테넌트가 「배포에 승인 필요」를 켰는지(``TenantConfig.deploy_requires_approval``)."""
+    from apps.tenants.models import TenantConfig
+
+    return TenantConfig.objects.filter(tenant_id=flow.tenant_id, deploy_requires_approval=True).exists()
 
 
-def deploy_version(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, number: int) -> Flow:
-    """그 버전을 배포 중으로 둔다(되돌리기도 이것). 핸들러 없는 노드가 있으면 ``FlowInvalid``."""
+def _apply_deploy(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, number: int) -> Flow:
+    """승인 규칙 없이 그 버전을 배포 중으로 둔다(승인 처리·되돌리기가 쓴다). 핸들러 없는 노드가 있으면 ``FlowInvalid``."""
     version = get_version(tenant_id, flow_id, number)
     errors = unsupported_node_errors(version.graph)
     if errors:
         raise FlowInvalid(f"버전 {number}에 실행기가 아직 돌릴 수 없는 노드가 있어 배포할 수 없습니다.", errors)
     with transaction.atomic():
         flow = Flow.objects.select_for_update().get(pk=version.flow_id)
-        if deploy_requires_approval(flow):  # pragma: no cover — #28이 채운다
-            raise FlowServiceError("이 테넌트는 배포에 관리자 승인이 필요합니다.", code="approval_required")
         flow.deployed_version = version
         flow.save(update_fields=["deployed_version", "updated_at"])
     return flow
 
 
+def deploy_version(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, number: int) -> Flow:
+    """그 버전을 곧바로 배포한다. 승인이 필요한 테넌트면 ``ApprovalRequired``(우회 금지 — ``submit_deploy`` 사용)."""
+    flow = get_flow(tenant_id, flow_id)
+    if deploy_requires_approval(flow):
+        raise ApprovalRequired("이 테넌트는 배포에 관리자 승인이 필요합니다. 배포 요청을 만드세요.")
+    return _apply_deploy(tenant_id, flow_id, number)
+
+
+@dataclass(frozen=True)
+class DeployOutcome:
+    flow: Flow
+    request: DeployRequest | None = None
+    """승인이 필요해 배포 대신 만든 요청. 바로 배포됐으면 None."""
+
+    @property
+    def deployed(self) -> bool:
+        return self.request is None
+
+
+def submit_deploy(
+    tenant_id: uuid.UUID, flow_id: uuid.UUID | str, number: int, *, requested_by_id: uuid.UUID | None = None
+) -> DeployOutcome:
+    """배포 진입점(HTTP·MCP 공통): 승인 불필요면 배포, 필요면 배포 요청을 만든다(앞의 대기 요청은 ``superseded``).
+
+    요청을 만들 때도 버전 존재·핸들러 있음을 검사한다 — 승인자가 배포할 수 없는 버전을 받지 않게.
+    """
+    flow = get_flow(tenant_id, flow_id)
+    if not deploy_requires_approval(flow):
+        return DeployOutcome(_apply_deploy(tenant_id, flow_id, number))
+    version = get_version(tenant_id, flow_id, number)
+    errors = unsupported_node_errors(version.graph)
+    if errors:
+        raise FlowInvalid(f"버전 {number}에 실행기가 아직 돌릴 수 없는 노드가 있어 배포를 요청할 수 없습니다.", errors)
+    with transaction.atomic():
+        Flow.objects.select_for_update().only("id").get(pk=flow.pk)
+        DeployRequest.objects.filter(flow=flow, status=DeployRequest.PENDING).update(status=DeployRequest.SUPERSEDED)
+        request = DeployRequest.objects.create(flow=flow, version=version, requested_by_id=requested_by_id)
+    return DeployOutcome(flow, request)
+
+
+def list_deploy_requests(tenant_id: uuid.UUID, status: str | None = None) -> list[DeployRequest]:
+    qs = DeployRequest.objects.for_tenant(tenant_id).select_related("flow", "version")
+    if status:
+        qs = qs.filter(status=status)
+    return list(qs.order_by("-created_at"))
+
+
+def _get_request(tenant_id: uuid.UUID, request_id: uuid.UUID | str) -> DeployRequest:
+    try:
+        return DeployRequest.objects.for_tenant(tenant_id).select_related("flow", "version").get(pk=request_id)
+    except (DeployRequest.DoesNotExist, DjangoValidationError, ValueError, TypeError) as exc:
+        raise FlowServiceError(f"배포 요청 '{request_id}'이 이 테넌트에 없습니다.", code="request_not_found") from exc
+
+
+def _decide(
+    tenant_id: uuid.UUID,
+    request_id: uuid.UUID | str,
+    status: str,
+    decided_by_id: uuid.UUID | None,
+    note: str | None,
+) -> DeployRequest:
+    from django.utils import timezone
+
+    note = (note or "").strip()
+    if len(note) > VERSION_NOTE_MAX:
+        raise FlowServiceError(f"결정 메모는 {VERSION_NOTE_MAX}자 이내여야 합니다.", code="note_too_long")
+    with transaction.atomic():
+        request = DeployRequest.objects.select_for_update().get(pk=_get_request(tenant_id, request_id).pk)
+        if request.status != DeployRequest.PENDING:
+            raise FlowServiceError("이미 처리됐거나 새 요청으로 대체된 배포 요청입니다.", code="request_not_pending")
+        if status == DeployRequest.APPROVED:
+            if decided_by_id is not None and decided_by_id == request.requested_by_id:
+                raise FlowServiceError("자기가 올린 배포 요청은 승인할 수 없습니다. 다른 Admin이 승인해야 합니다.", code="self_approval")
+            _apply_deploy(tenant_id, request.flow_id, request.version.number)  # 실패(FlowInvalid)면 요청은 대기로 남는다
+        request.status = status
+        request.decided_by_id = decided_by_id
+        request.decided_at = timezone.now()
+        request.decision_note = note
+        request.save(update_fields=["status", "decided_by", "decided_at", "decision_note"])
+    return request
+
+
+def approve_deploy_request(
+    tenant_id: uuid.UUID, request_id: uuid.UUID | str, *, decided_by_id: uuid.UUID | None = None, note: str | None = None
+) -> DeployRequest:
+    """승인하고 그 버전을 배포한다. 요청자 본인은 불가(``self_approval``) — 사용자 없는 결정(TENANT_KEY)은 가능."""
+    return _decide(tenant_id, request_id, DeployRequest.APPROVED, decided_by_id, note)
+
+
+def reject_deploy_request(
+    tenant_id: uuid.UUID, request_id: uuid.UUID | str, *, decided_by_id: uuid.UUID | None = None, note: str | None = None
+) -> DeployRequest:
+    return _decide(tenant_id, request_id, DeployRequest.REJECTED, decided_by_id, note)
+
+
 def rollback(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
-    """배포 중 버전 바로 앞 번호의 버전을 다시 배포한다."""
+    """배포 중 버전 바로 앞 번호의 버전을 다시 배포한다. 긴급 복구라 승인 규칙을 타지 않는다(이미 있던 버전이다)."""
     flow = get_flow(tenant_id, flow_id)
     current = flow.deployed_version
     if current is None:
@@ -378,7 +493,7 @@ def rollback(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
     previous = FlowVersion.objects.filter(flow=flow, number__lt=current.number).order_by("-number").first()
     if previous is None:
         raise VersionNotFound(f"버전 {current.number}보다 앞선 버전이 없습니다.")
-    return deploy_version(tenant_id, flow.pk, previous.number)
+    return _apply_deploy(tenant_id, flow.pk, previous.number)
 
 
 # ── 시험 한 턴 ───────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@
  */
 import type { TenantConfigInAgentDisplayName } from './tenantConfigInAgentDisplayName';
 import type { TenantConfigInBrandName } from './tenantConfigInBrandName';
+import type { TenantConfigInDeployRequiresApproval } from './tenantConfigInDeployRequiresApproval';
 import type { TenantConfigInEmbedApiKey } from './tenantConfigInEmbedApiKey';
 import type { TenantConfigInEmbedBaseUrl } from './tenantConfigInEmbedBaseUrl';
 import type { TenantConfigInEmbedDim } from './tenantConfigInEmbedDim';
@@ -36,6 +37,7 @@ import type { TenantConfigInWelcomeMessage } from './tenantConfigInWelcomeMessag
 export interface TenantConfigIn {
   agent_display_name?: TenantConfigInAgentDisplayName;
   brand_name?: TenantConfigInBrandName;
+  deploy_requires_approval?: TenantConfigInDeployRequiresApproval;
   embed_api_key?: TenantConfigInEmbedApiKey;
   embed_base_url?: TenantConfigInEmbedBaseUrl;
   embed_dim?: TenantConfigInEmbedDim;

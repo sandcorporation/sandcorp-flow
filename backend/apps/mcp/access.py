@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from apps.mcp.registry import ToolError
 from apps.tenants.members import active_memberships
+from apps.tenants.permissions import FLOW_EDIT, has_permission
 from apps.tenants.models import Membership, User
 from apps.tenants.resource_token import AccessToken
 
@@ -50,7 +51,7 @@ def resolve_membership(memberships: list[Membership], slug: str | None) -> Membe
 
 
 def can_edit(membership: Membership) -> bool:
-    return membership.role == Membership.ROLE_ADMIN
+    return has_permission(membership, FLOW_EDIT)  # 판정은 권한 비트 한 곳(HTTP 흐름 API와 같은 규칙)
 
 
 def require_editor(membership: Membership) -> None:

@@ -156,3 +156,42 @@ class DecisionTrace(models.Model):
         db_table = "decision_traces"
         indexes = [models.Index(fields=["session", "created_at"])]
         ordering = ["created_at"]
+
+
+class DeployRequestQuerySet(models.QuerySet["DeployRequest"]):
+    def for_tenant(self, tenant_id: uuid.UUID) -> Self:
+        return self.filter(flow__tenant_id=tenant_id)
+
+
+class DeployRequest(models.Model):
+    """「배포에 승인 필요」(``TenantConfig.deploy_requires_approval``)일 때 배포 대신 생기는 요청(#28).
+
+    한 흐름에 대기 중인 요청은 하나 — 새 요청이 오면 앞의 것은 ``superseded``. 승인하면 그 버전이 배포된다.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    SUPERSEDED = "superseded"
+    STATUS_CHOICES = [(PENDING, "대기"), (APPROVED, "승인"), (REJECTED, "거절"), (SUPERSEDED, "대체됨")]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    flow = models.ForeignKey(Flow, on_delete=models.CASCADE, related_name="deploy_requests")
+    version = models.ForeignKey(FlowVersion, on_delete=models.CASCADE, related_name="+")
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=PENDING)
+    requested_by = models.ForeignKey("tenants.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    decided_by = models.ForeignKey("tenants.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_note = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = DeployRequestQuerySet.as_manager()
+
+    class Meta:
+        db_table = "flow_deploy_requests"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["flow"], condition=Q(status="pending"), name="deploy_request_one_pending_per_flow"
+            ),
+        ]

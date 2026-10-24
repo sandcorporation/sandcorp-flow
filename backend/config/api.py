@@ -7,9 +7,18 @@ from apps.chat.api import chat_router
 from apps.rag.api import rag_router
 from apps.memory.api import memory_router, session_router
 from apps.escalation.api import escalation_router
+from apps.flows.api import deploy_request_router, error_body, flow_router
+from apps.flows.services import FlowServiceError
 from apps.usage.api import tenant_usage_router, operator_usage_router
 
 api = NinjaAPI(title="Sandcorp Flow API", version="1.0.0")
+
+
+@api.exception_handler(FlowServiceError)
+def _flow_service_error(request: HttpRequest, exc: FlowServiceError) -> HttpResponse:
+    """흐름 서비스 오류 → ``{detail, code, ...}`` + 상태 코드(``apps.flows.api.error_body``)."""
+    status, body = error_body(exc)
+    return api.create_response(request, body, status=status)
 
 
 @api.exception_handler(ResourceAuthFailed)
@@ -24,6 +33,8 @@ api.add_router("/", core_router)
 api.add_router("/auth", auth_router)
 api.add_router("/operator", operator_router)
 api.add_router("/tenant", tenant_router)
+api.add_router("/tenant/flows", flow_router)
+api.add_router("/tenant/deploy-requests", deploy_request_router)
 api.add_router("/tenant/members", member_router)
 api.add_router("/tenant/invites", invite_router)
 api.add_router("/chat", chat_router)
