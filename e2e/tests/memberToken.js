@@ -30,10 +30,29 @@ async function takeOnboardingTicket(timeoutMs = 15000) {
   throw new Error('onboarding_ticket이 시드되지 않았습니다(api-e2e 로그 확인)')
 }
 
+/**
+ * 스펙 전용 새 조직과 그 Admin 멤버 토큰을 받는다(#65). 조직 이름을 요청 파일로 떨구면 시드(--serve-tenants-from)가
+ * 조직+Admin 멤버십을 만들고 토큰을 쓴다. 반환: { name, token }.
+ */
+async function provisionTenant(name, timeoutMs = 15000) {
+  const dir = path.join(DIR, 'tenant_requests')
+  fs.mkdirSync(dir, { recursive: true })
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  fs.writeFileSync(path.join(dir, `${id}.req.tmp`), name)
+  fs.renameSync(path.join(dir, `${id}.req.tmp`), path.join(dir, `${id}.req`))
+  const tokenFile = path.join(dir, `${id}.token`)
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    if (fs.existsSync(tokenFile)) return { name, token: fs.readFileSync(tokenFile, 'utf8').trim() }
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  throw new Error('조직 요청이 처리되지 않았습니다(api-e2e 로그 확인)')
+}
+
 /** 관리 화면을 고객(멤버)으로 연 상태로 만든다(access는 sessionStorage `agent_access`, ADR-0013). */
 async function openMemberSession(page, adminUrl, token, route = 'tenant') {
   await page.addInitScript((t) => sessionStorage.setItem('agent_access', t), token)
   await page.goto(`${adminUrl}/admin-ui/${route}`)
 }
 
-module.exports = { memberToken, inviteeToken, dropInvite, openMemberSession, takeOnboardingTicket }
+module.exports = { memberToken, inviteeToken, dropInvite, openMemberSession, takeOnboardingTicket, provisionTenant }

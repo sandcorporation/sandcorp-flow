@@ -1,41 +1,22 @@
 const { test, expect, request } = require('@playwright/test')
-const { operatorToken } = require('./operatorToken')
+const { provisionTenant, openMemberSession } = require('./memberToken')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const API_URL = process.env.API_URL || 'http://localhost:8000'
 
 async function setup() {
   const api = await request.newContext({ baseURL: API_URL })
-  const opToken = operatorToken()
-  const tenantRes = await api.post('/api/operator/tenants/', {
-    headers: { Authorization: `Bearer ${opToken}` },
-    data: { name: `Document Label E2E ${Date.now()}` },
-  })
-  const tenant = await tenantRes.json()
+  const tenant = await provisionTenant(`Document Label E2E ${Date.now()}`)
   await api.dispose()
   return { tenant }
 }
 
 async function agentToken(tenant) {
-  const api = await request.newContext({ baseURL: API_URL })
-  const res = await api.post('/api/tenant/agents/auth/login', {
-    data: {
-      tenant_name: tenant.name,
-      username: tenant.agent_username,
-      password: tenant.agent_temp_password,
-    },
-  })
-  const { access_token } = await res.json()
-  await api.dispose()
-  return access_token
+  return tenant.token
 }
 
 async function loginAsTenantAgent(page, tenant) {
-  await page.goto(`${ADMIN_URL}/admin-ui/tenant`)
-  await page.fill('input[placeholder="Tenant 이름"]', tenant.name)
-  await page.fill('input[placeholder="사용자명"]', tenant.agent_username)
-  await page.fill('input[placeholder="비밀번호"]', tenant.agent_temp_password)
-  await page.click('button[type="submit"]')
+  await openMemberSession(page, ADMIN_URL, tenant.token)
   await expect(page.locator('a:has-text("문서")')).toBeVisible({ timeout: 10000 })
 }
 

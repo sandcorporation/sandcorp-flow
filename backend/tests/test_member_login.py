@@ -480,3 +480,21 @@ def test_seed_e2e_member_accepts_invite_dropped_in_file(tenant_with_key, tmp_pat
 
     me = Client().get("/api/tenant/members/me", **_hdr(token_file.read_text()))
     assert me.status_code == 200 and me.json()["tenant_id"] == str(tenant.id) and me.json()["role"] == "member"
+
+
+@pytest.mark.django_db
+def test_seed_e2e_member_serves_tenant_requests(tmp_path) -> None:
+    """E2E 대역(#65): 요청 파일의 이름으로 새 조직+Admin 멤버십을 만들고 그 멤버의 세션 토큰을 쓴다."""
+    from django.core.management import call_command
+
+    from apps.tenants.models import Tenant
+
+    (tmp_path / "a.req").write_text("E2E 요청 조직")
+    call_command(
+        "seed_e2e_member", "--token-file", "/dev/null", "--serve-tenants-from", str(tmp_path), "--wait-seconds", "1"
+    )
+
+    me = Client().get("/api/tenant/members/me", **_hdr((tmp_path / "a.token").read_text()))
+    assert me.status_code == 200 and me.json()["role"] == "admin"
+    assert Tenant.objects.filter(name="E2E 요청 조직").count() == 1
+    assert not (tmp_path / "a.req").exists()

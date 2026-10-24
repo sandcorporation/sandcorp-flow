@@ -1,5 +1,5 @@
 const { test, expect, request } = require('@playwright/test')
-const { operatorToken } = require('./operatorToken')
+const { provisionTenant, openMemberSession } = require('./memberToken')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const WIDGET_URL = process.env.WIDGET_URL || 'http://localhost:5173'
@@ -13,23 +13,10 @@ const HITL_SYSTEM_PROMPT =
 async function setupHitlTest() {
   const api = await request.newContext({ baseURL: API_URL })
 
-  const opToken = operatorToken()
-
-  const tenantRes = await api.post('/api/operator/tenants/', {
-    headers: { Authorization: `Bearer ${opToken}` },
-    data: { name: `HITL E2E ${Date.now()}` },
-  })
-  const tenant = await tenantRes.json()
+  const tenant = await provisionTenant(`HITL E2E ${Date.now()}`)
 
   // 에이전트 로그인 후 HITL 유도 시스템 프롬프트 설정
-  const agentRes = await api.post('/api/tenant/agents/auth/login', {
-    data: {
-      tenant_name: tenant.name,
-      username: tenant.agent_username,
-      password: tenant.agent_temp_password,
-    },
-  })
-  const { access_token: agentToken } = await agentRes.json()
+  const agentToken = tenant.token
 
   await api.patch('/api/tenant/config/', {
     headers: { Authorization: `Bearer ${agentToken}` },
@@ -50,9 +37,7 @@ async function setupHitlTest() {
 
   return {
     slug,
-    tenantName: tenant.name,
-    agentUsername: tenant.agent_username,
-    agentPassword: tenant.agent_temp_password,
+    tenant,
   }
 }
 
@@ -90,11 +75,7 @@ test.describe('HITL 전체 플로우', () => {
     // 이 테스트는 자체 escalation을 만들어 다른 테스트에 의존하지 않는다 (독립성)
     await escalateViaWidget(page, ctx.slug)
 
-    await page.goto(`${ADMIN_URL}/admin-ui/tenant`)
-    await page.fill('input[placeholder="Tenant 이름"]', ctx.tenantName)
-    await page.fill('input[placeholder="사용자명"]', ctx.agentUsername)
-    await page.fill('input[placeholder="비밀번호"]', ctx.agentPassword)
-    await page.click('button[type="submit"]')
+    await openMemberSession(page, ADMIN_URL, ctx.tenant.token)
     await expect(page.locator('a:has-text("문서")')).toBeVisible({ timeout: 10000 })
 
     await page.click('a:has-text("HITL")')
@@ -118,11 +99,7 @@ test.describe('HITL 전체 플로우', () => {
     await visitor.click('button:has-text("전송")')
 
     // 어드민 에이전트 로그인 → 상담 콘솔
-    await page.goto(`${ADMIN_URL}/admin-ui/tenant`)
-    await page.fill('input[placeholder="Tenant 이름"]', ctx.tenantName)
-    await page.fill('input[placeholder="사용자명"]', ctx.agentUsername)
-    await page.fill('input[placeholder="비밀번호"]', ctx.agentPassword)
-    await page.click('button[type="submit"]')
+    await openMemberSession(page, ADMIN_URL, ctx.tenant.token)
     await expect(page.locator('a:has-text("문서")')).toBeVisible({ timeout: 10000 })
     await page.click('a:has-text("HITL")')
 

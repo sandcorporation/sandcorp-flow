@@ -88,6 +88,22 @@ def build_completion(body: dict) -> dict:
     }
 
 
+def build_stream_chunks(completion: dict) -> list[dict]:
+    """같은 응답을 OpenAI 스트리밍 청크로 쪼갠다 — 챗 그래프가 stream=true로 부른다(#65: 스트림을 못 받아 위젯이 답을 못 받았다)."""
+    choice = completion["choices"][0]
+    base = {
+        "id": completion["id"],
+        "object": "chat.completion.chunk",
+        "created": completion["created"],
+        "model": completion["model"],
+    }
+    return [
+        {**base, "choices": [{"index": 0, "delta": {"role": "assistant", "content": choice["message"]["content"]}, "finish_reason": None}]},
+        {**base, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
+        {**base, "choices": [], "usage": completion["usage"]},
+    ]
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
@@ -96,6 +112,17 @@ class Handler(BaseHTTPRequestHandler):
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _send_stream(self, completion):
+        payload = "".join(
+            f"data: {json.dumps(c, ensure_ascii=False)}\n\n" for c in build_stream_chunks(completion)
+        ) + "data: [DONE]\n\n"
+        data = payload.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -115,7 +142,11 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             body = {}
         if self.path.rstrip("/").endswith("/chat/completions"):
-            self._send_json(200, build_completion(body))
+            completion = build_completion(body)
+            if body.get("stream"):
+                self._send_stream(completion)
+            else:
+                self._send_json(200, completion)
         else:
             self._send_json(404, {"error": "not found"})
 

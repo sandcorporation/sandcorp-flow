@@ -1,5 +1,5 @@
 const { test, expect, request } = require('@playwright/test')
-const { operatorToken } = require('./operatorToken')
+const { provisionTenant, openMemberSession } = require('./memberToken')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const API_URL = process.env.API_URL || 'http://localhost:8000'
@@ -7,22 +7,9 @@ const API_URL = process.env.API_URL || 'http://localhost:8000'
 async function setup() {
   const api = await request.newContext({ baseURL: API_URL })
 
-  const opToken = operatorToken()
+  const tenant = await provisionTenant(`Visitors E2E ${Date.now()}`)
 
-  const tenantRes = await api.post('/api/operator/tenants/', {
-    headers: { Authorization: `Bearer ${opToken}` },
-    data: { name: `Visitors E2E ${Date.now()}` },
-  })
-  const tenant = await tenantRes.json()
-
-  const agentRes = await api.post('/api/tenant/agents/auth/login', {
-    data: {
-      tenant_name: tenant.name,
-      username: tenant.agent_username,
-      password: tenant.agent_temp_password,
-    },
-  })
-  const { access_token: agentToken } = await agentRes.json()
+  const agentToken = tenant.token
 
   // 공개 슬러그 설정 — 방문자는 slug로 챗 스트림에 연결한다(ADR-0011, embed_token 폐지)
   const slug = `vis-e2e-${Date.now()}`
@@ -36,11 +23,7 @@ async function setup() {
 }
 
 async function loginAsTenantAgent(page, tenant) {
-  await page.goto(`${ADMIN_URL}/admin-ui/tenant`)
-  await page.fill('input[placeholder="Tenant 이름"]', tenant.name)
-  await page.fill('input[placeholder="사용자명"]', tenant.agent_username)
-  await page.fill('input[placeholder="비밀번호"]', tenant.agent_temp_password)
-  await page.click('button[type="submit"]')
+  await openMemberSession(page, ADMIN_URL, tenant.token)
   await expect(page.locator('a:has-text("문서")')).toBeVisible({ timeout: 10000 })
 }
 
