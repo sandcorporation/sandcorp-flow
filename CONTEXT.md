@@ -233,6 +233,9 @@ HTTP 도구 등에서 쓰는 테넌트 비밀 값. 암호화해 저장하고, �
 **Domain Allowlist**
 테넌트가 등록한 「허용 도메인」 — HTTP 도구가 부를 수 있는 호스트. 정확한 호스트(`api.example.com`) 또는 한 단계 하위 와일드카드(`*.example.com`)만 저장된다(스킴·경로·포트·IP 거부, `*.com` 거부). 관리는 Admin(`domains.manage`).
 
+**Demo API (가짜 API)**
+예제 흐름·`/try`의 HTTP 도구가 부르는 결정적 엔드포인트(주문 조회·레벨 테스트 예약·문의 접수 흉내). 예약 호스트 `https://demo-api.flow.sandcorp.co.kr` 글자 그대로일 때만 HTTP 도구가 네트워크 없이 같은 프로세스에서 처리하고, 모든 테넌트에 허용 도메인 없이 허용된다(대문자·포트·하위 도메인 같은 변형은 일반 경로). 상태를 저장하지 않고, 실패 흉내(번호 `9500`·`9408`, `?simulate=`)로 error 갈래를 보여 줄 수 있다. 실제 API처럼 같은 실패 코드·`save` 규칙을 거친다.
+
 ## Plans & Trial
 
 **Platform Key**
