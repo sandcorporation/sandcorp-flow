@@ -17,12 +17,12 @@ const UNKNOWN = '로그인하지 못했습니다. 다시 시도하세요.'
 export default function OperatorLogin() {
   const [params] = useSearchParams()
   const reason = params.get('login_error')
-  const muted = { marginTop: 16, fontSize: 13, color: 'hsl(var(--muted-foreground))' }
+  const muted = { marginTop: 16, fontSize: 13, color: 'hsl(var(--flow-muted))' }
 
   return (
     <div style={s.center}>
       {/* 카드가 흰 배경 고정이라 다크 테마에서도 글자색을 카드 쪽에 묶는다(HMI 테마 #27 전까지). */}
-      <div style={{ ...s.card, color: 'hsl(var(--foreground))', wordBreak: 'keep-all' }}>
+      <div style={{ ...s.card, color: 'hsl(var(--flow-text))', wordBreak: 'keep-all' }}>
         {reason ? (
           <>
             <h2 style={s.title}>로그인할 수 없습니다</h2>
@@ -33,7 +33,7 @@ export default function OperatorLogin() {
         ) : (
           <>
             <h2 style={s.title}>Operator 로그인</h2>
-            <p style={{ fontSize: 14, color: 'hsl(var(--muted-foreground))', lineHeight: 1.6, marginBottom: 20 }}>
+            <p style={{ fontSize: 14, color: 'hsl(var(--flow-muted))', lineHeight: 1.6, marginBottom: 20 }}>
               sandcorp 대표 계정으로 로그인합니다.
             </p>
           </>
