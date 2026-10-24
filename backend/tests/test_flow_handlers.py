@@ -1,7 +1,6 @@
 """첫 핸들러 넷(시작·지식 검색·AI 답변·사람 넘김)과 기본 흐름(#23).
 
-기본 흐름은 운영 챗(build_graph)과 **같은 동작**이어야 한다(#72가 갈아 끼울 때 회귀가 없게) — 같은 Fake LLM 입력에
-같은 답·같은 HITL 분기·같은 저장을 비교한다. LLM은 결정적 Fake, DB·임베딩·체크포인터는 실제 객체.
+기본 흐름은 옛 운영 챗(build_graph, #72에서 제거)과 같은 동작이다 — 답·HITL 분기·LLM 스키마·저장을 못 박는다. LLM은 결정적 Fake, DB·임베딩·체크포인터는 실제 객체.
 """
 import pytest
 from asgiref.sync import sync_to_async
@@ -24,28 +23,17 @@ def _snapshot(session_id):
     return session.is_hitl, messages, escalations
 
 
-async def _old_and_new(tenant, message, fake):
-    """같은 입력을 기존 build_graph 경로와 기본 흐름 실행기로 한 번씩 돌려 결과를 나란히 돌려준다."""
-    from apps.agent.graph import run_chat_agent_async
+async def _run_default(tenant, message, fake):
+    """기본 흐름을 실행기로 한 턴 돌려 (답, LLM 스키마 순서, 저장 스냅숏)과 상태를 돌려준다."""
     from apps.chat.models import ChatSession
     from apps.flows.defaults import DEFAULT_FLOW
     from apps.flows.executor import run_flow_turn_async
 
-    old = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-old")
+    session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-new")
     fake.captured.clear()
-    old_answer = await run_chat_agent_async(old, message)
-    old_schemas = [name for name, _ in fake.captured]
-
-    new = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-new")
-    fake.captured.clear()
-    result = await run_flow_turn_async(new, message, DEFAULT_FLOW)
-    new_schemas = [name for name, _ in fake.captured]
-
-    return (
-        (old_answer, old_schemas, await adb(_snapshot)(old.id)),
-        (result["assistant_response"], new_schemas, await adb(_snapshot)(new.id)),
-        result,
-    )
+    result = await run_flow_turn_async(session, message, DEFAULT_FLOW)
+    schemas = [name for name, _ in fake.captured]
+    return (result["assistant_response"], schemas, await adb(_snapshot)(session.id)), result
 
 
 def test_default_flow_is_valid_and_shaped_start_search_answer_handoff():
@@ -61,48 +49,46 @@ def test_default_flow_is_valid_and_shaped_start_search_answer_handoff():
 
 
 @pytest.mark.django_db(transaction=True)
-async def test_default_flow_matches_build_graph_for_plain_answer(tenant_with_key, fake_chat_llm):
+async def test_default_flow_for_plain_answer(tenant_with_key, fake_chat_llm):
     tenant, _ = tenant_with_key
-    old, new, result = await _old_and_new(tenant, "영업시간이 어떻게 되나요?", fake_chat_llm)
-    assert new == old
-    assert old[2][0] is False  # 넘기지 않음
+    new, result = await _run_default(tenant, "영업시간이 어떻게 되나요?", fake_chat_llm)
+    assert new[1] == ["HITLResponse"]
+    assert new[2][0] is False  # 넘기지 않음
+    assert new[2][1] == [("assistant", new[0])]
     assert [t["kind"] for t in result["trace"]] == ["start", "knowledge_search", "ai_answer"]
 
 
 @pytest.mark.django_db(transaction=True)
-async def test_default_flow_matches_build_graph_for_handoff(tenant_with_key, fake_chat_llm):
+async def test_default_flow_for_handoff(tenant_with_key, fake_chat_llm):
     """「상담원」 → AI가 needs_hitl → 사람 넘김(세션 HITL·Escalation 한 건)까지 같다."""
     tenant, _ = tenant_with_key
-    old, new, result = await _old_and_new(tenant, "상담원 연결해 주세요", fake_chat_llm)
-    assert new == old
+    new, result = await _run_default(tenant, "상담원 연결해 주세요", fake_chat_llm)
     is_hitl, _, escalations = new[2]
     assert is_hitl is True and len(escalations) == 1
     assert [t["kind"] for t in result["trace"]] == ["start", "knowledge_search", "ai_answer", "handoff"]
 
 
 @pytest.mark.django_db(transaction=True)
-async def test_default_flow_matches_build_graph_when_hitl_disabled(tenant_with_key, fake_chat_llm):
+async def test_default_flow_when_hitl_disabled(tenant_with_key, fake_chat_llm):
     """테넌트가 사람 넘김을 끄면 넘김 없는 답변 스키마(PlainResponse)로 답하고 넘기지 않는다."""
     from apps.tenants.models import TenantConfig
 
     tenant, _ = tenant_with_key
     await adb(TenantConfig.objects.filter(tenant=tenant).update)(hitl_enabled=False)
-    old, new, _ = await _old_and_new(tenant, "상담원 연결해 주세요", fake_chat_llm)
-    assert new == old
+    new, _ = await _run_default(tenant, "상담원 연결해 주세요", fake_chat_llm)
     assert new[1] == ["PlainResponse"]
     assert new[2][0] is False
 
 
 @pytest.mark.django_db(transaction=True)
-async def test_default_flow_matches_build_graph_for_source_fallback(tenant_with_key, fake_chat_llm):
+async def test_default_flow_for_source_fallback(tenant_with_key, fake_chat_llm):
     """그래프 검색으로 모자라면 원문 폴백 후 한 번 더 묻는다 — LLM 호출 횟수·답까지 같다."""
     from tests.test_local_source_fallback import _fake_1920, _seed_text_unit
 
     tenant, _ = tenant_with_key
     await adb(_seed_text_unit)(tenant)
     fake_chat_llm.override = _fake_1920
-    old, new, _ = await _old_and_new(tenant, "지원하는 모니터의 해상도", fake_chat_llm)
-    assert new == old
+    new, _ = await _run_default(tenant, "지원하는 모니터의 해상도", fake_chat_llm)
     assert "1920" in new[0]
     assert new[1] == ["HITLResponse", "HITLResponse"]
 

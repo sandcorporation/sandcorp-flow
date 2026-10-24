@@ -1,4 +1,4 @@
-"""chat 1턴 taskiq 태스크 + dispatch 어댑터 (issue 194, ADR-0024).
+"""chat 1턴 taskiq 태스크 + dispatch 어댑터 (issue 194, ADR-0024). 한 턴은 흐름 실행기로 돈다(#72, ADR-0027).
 
 기존 Celery run_chat_agent_task의 async 대응. 세션 직렬화(락)·하드 timeout·at-most-once·예외 시
 publish_error는 여기서, graceful/백프레셔는 taskiq가 제공. 뷰는 dispatch_chat만 안다(전송·큐 구현
@@ -17,7 +17,7 @@ async def chat_task(session_id: str, user_message: str) -> None:
 
     from apps.chat.models import ChatSession
     from apps.chat.session_lock import aacquire, arelease
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.sse import apublish_error
 
     if not await aacquire(session_id):
@@ -27,7 +27,7 @@ async def chat_task(session_id: str, user_message: str) -> None:
         if not await sync_to_async(_admit_turn)(session):
             await _pause_politely(session)
             return
-        await asyncio.wait_for(run_chat_agent_async(session, user_message), timeout=CHAT_HARD_TIMEOUT)
+        await asyncio.wait_for(run_chat_turn_async(session, user_message), timeout=CHAT_HARD_TIMEOUT)
     except Exception:  # noqa: BLE001 — 비멱등 스트리밍이라 재시도 안 함, 사용자에게 알리고 재전송 유도
         await apublish_error(session_id, "응답 생성 중 오류가 발생했습니다. 다시 시도해 주세요.")
     finally:

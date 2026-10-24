@@ -3,7 +3,7 @@
 - 흐름 노드 하나 = LangGraph 노드 하나. 노드 종류별 핸들러(``contract.HANDLERS``)가 상태를 바꾸고 갈래를 고르면,
   실행기가 ``FlowGraph.outgoing``으로 다음 노드를 정한다. 갈래에 선이 없으면 턴이 끝난다.
 - 턴 끝(``FINISH_NODE``)에서 기존 ``save_messages_node``로 대화를 저장한다. 사람 넘김처럼 핸들러가 이미 저장했으면
-  (``NodeOutcome.saved``) 바로 끝낸다 — 기존 build_graph의 save_messages/create_escalation 종단과 같다.
+  (``NodeOutcome.saved``) 바로 끝낸다 — 옛 build_graph(#72에서 제거)의 save_messages/create_escalation 종단과 같다.
 - ``await_reply`` AI 답변 뒤에는 ``resume_node``에 다음 노드를 적어 두고 턴을 끝낸다. 다음 턴은 거기서 시작한다
   (체크포인터가 상태를 이어 준다).
 - 한 턴 노드 상한 ``MAX_STEPS_PER_TURN``을 넘으면 그 자리에서 턴을 끝낸다(``step_limit_exceeded``).
@@ -168,7 +168,7 @@ async def run_flow_turn_async(
 
     LLM 클라이언트는 노드가 만들지 않는다 — ``chat_provider(config)``로 고른 Provider를 ContextVar에 넣고,
     AI 답변 핸들러가 부르는 기존 ``call_llm_*``이 그것을 꺼내 쓴다. 체험 턴 차감은 이 함수를 부르는 쪽
-    (chat_task의 ``trial.admit_turn``)이 맡는다 — 운영 경로 교체는 #72.
+    (chat_task의 ``trial.admit_turn``)이 맡는다. 운영 진입은 ``apps.flows.chat_turn``(#72).
 
     ``dry_run=True``(시험 한 턴, #76)면 갈래는 운영과 똑같이 고르되 사람 넘김 노드가 실제로 넘기지 않는다 —
     Escalation·웹훅·상담원/방문자 SSE가 생기지 않고, trace에 넘김 노드가 남고 ``needs_hitl``이 참이 된다.

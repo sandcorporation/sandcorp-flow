@@ -9,7 +9,7 @@ import pytest
 @pytest.mark.django_db(transaction=True)
 async def test_ai_escalation_records_one_session_escalated_event(tenant_with_key, fake_chat_llm):
     from asgiref.sync import sync_to_async
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
     from apps.events.models import EventStore, Outbox
     from apps.events.types import SESSION_ESCALATED
@@ -18,7 +18,7 @@ async def test_ai_escalation_records_one_session_escalated_event(tenant_with_key
     tenant, _ = tenant_with_key
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-esc")
 
-    await run_chat_agent_async(session, "상담원 연결해 주세요")
+    await run_chat_turn_async(session, "상담원 연결해 주세요")
 
     evs = await adb(lambda: list(EventStore.objects.filter(aggregate_id=str(session.id), type=SESSION_ESCALATED)))()
     assert len(evs) == 1                                                  # 정확히 1건
@@ -31,7 +31,7 @@ async def test_full_pipeline_fires_webhook_once_on_ai_escalation(
     tenant_with_key, fake_chat_llm, webhook_server, drain_events
 ):
     from asgiref.sync import sync_to_async
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.tenants.models import TenantConfig
     from apps.chat.models import ChatSession
     adb = sync_to_async
@@ -45,7 +45,7 @@ async def test_full_pipeline_fires_webhook_once_on_ai_escalation(
     await adb(_setup)()
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-wh")
 
-    await run_chat_agent_async(session, "상담원 연결해 주세요")
+    await run_chat_turn_async(session, "상담원 연결해 주세요")
     await adb(drain_events)()  # 전이 이벤트 → relay → webhook 소비자
 
     assert len(webhook_server["received"]) == 1  # webhook 1회(at-least-once+멱등)

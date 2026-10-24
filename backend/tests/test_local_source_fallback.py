@@ -40,7 +40,7 @@ def _fake_1920(messages):
 @pytest.mark.django_db(transaction=True)
 async def test_context_sufficient_flows_to_checkpoint(tenant_with_key, fake_chat_llm):
     """call_llm이 context_sufficient를 상태로 흘려 체크포인트에 노출한다."""
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import HITLResponse
     from apps.chat.models import ChatSession
 
@@ -50,7 +50,7 @@ async def test_context_sufficient_flows_to_checkpoint(tenant_with_key, fake_chat
     )
     tenant, _ = tenant_with_key
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-ctx")
-    await run_chat_agent_async(session, "지원하는 모니터의 해상도")
+    await run_chat_turn_async(session, "지원하는 모니터의 해상도")
 
     cp = await adb(_read_cv)(session.id)
     assert cp is not None
@@ -60,7 +60,7 @@ async def test_context_sufficient_flows_to_checkpoint(tenant_with_key, fake_chat
 @pytest.mark.django_db(transaction=True)
 async def test_local_search_falls_back_to_source_text(tenant_with_key, fake_chat_llm):
     """그래프엔 없고 TextUnit(원문)에만 있는 사실을, miss 시 원문 폴백으로 답한다."""
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
 
     tenant, _ = tenant_with_key
@@ -68,7 +68,7 @@ async def test_local_search_falls_back_to_source_text(tenant_with_key, fake_chat
     fake_chat_llm.override = _fake_1920
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-res")
-    answer = await run_chat_agent_async(session, "지원하는 모니터의 해상도")
+    answer = await run_chat_turn_async(session, "지원하는 모니터의 해상도")
     assert "1920" in answer
 
 
@@ -76,7 +76,7 @@ async def test_local_search_falls_back_to_source_text(tenant_with_key, fake_chat
 async def test_fallback_streams_answer_once(tenant_with_key, fake_chat_llm, monkeypatch):
     """폴백으로 call_llm이 2회 실행돼도 응답은 1번만 스트리밍된다(중복 방지)."""
     from apps.agent import nodes
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import HITLResponse
     from apps.chat.models import ChatSession
 
@@ -101,7 +101,7 @@ async def test_fallback_streams_answer_once(tenant_with_key, fake_chat_llm, monk
     monkeypatch.setattr(nodes, "apublish_token", _atok)
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-dup")
-    answer = await run_chat_agent_async(session, "지원하는 모니터의 해상도")
+    answer = await run_chat_turn_async(session, "지원하는 모니터의 해상도")
 
     cv = (await adb(_read_cv)(session.id))["channel_values"]
     assistants = [m for m in (cv.get("messages") or []) if m.get("role") == "assistant"]
@@ -113,7 +113,7 @@ async def test_fallback_streams_answer_once(tenant_with_key, fake_chat_llm, monk
 @pytest.mark.django_db(transaction=True)
 async def test_transient_rag_chunks_not_retained_in_resting_checkpoint(tenant_with_key, fake_chat_llm):
     """휴지 체크포인트는 대화(messages)만 보존하고 턴 한정 검색 산출물(rag_chunks)은 비운다."""
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
 
     tenant, _ = tenant_with_key
@@ -121,7 +121,7 @@ async def test_transient_rag_chunks_not_retained_in_resting_checkpoint(tenant_wi
     fake_chat_llm.override = _fake_1920
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-slim")
-    await run_chat_agent_async(session, "지원하는 모니터의 해상도")
+    await run_chat_turn_async(session, "지원하는 모니터의 해상도")
 
     cv = (await adb(_read_cv)(session.id))["channel_values"]
     assert cv.get("rag_chunks") == []
@@ -132,7 +132,7 @@ async def test_transient_rag_chunks_not_retained_in_resting_checkpoint(tenant_wi
 @pytest.mark.django_db(transaction=True)
 async def test_no_source_fallback_when_graph_answers(tenant_with_key, fake_chat_llm):
     """그래프로 답한 happy path(context_sufficient=True)에선 원문 폴백을 타지 않는다."""
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import HITLResponse
     from apps.chat.models import ChatSession
 
@@ -141,7 +141,7 @@ async def test_no_source_fallback_when_graph_answers(tenant_with_key, fake_chat_
         response="안녕하세요!", needs_hitl=False, hitl_reason="", context_sufficient=True)
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-happy")
-    answer = await run_chat_agent_async(session, "안녕")
+    answer = await run_chat_turn_async(session, "안녕")
     assert answer == "안녕하세요!"
 
     cv = (await adb(_read_cv)(session.id))["channel_values"]
@@ -153,7 +153,8 @@ async def test_no_source_fallback_when_graph_answers(tenant_with_key, fake_chat_
 async def test_session_retrievals_recovers_chunks_from_history(tenant_with_key, fake_chat_llm):
     """휴지 체크포인트는 rag_chunks를 비우지만, session_retrievals는 히스토리에서 턴별 검색 결과를
     복원한다 — 테넌트가 어드민에서 검색 과정을 보게 한다(issue 207, 체크포인트 슬림화는 불변)."""
-    from apps.agent.graph import run_chat_agent_async, session_retrievals
+    from apps.agent.graph import session_retrievals
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
 
     tenant, _ = tenant_with_key
@@ -161,7 +162,7 @@ async def test_session_retrievals_recovers_chunks_from_history(tenant_with_key, 
     fake_chat_llm.override = _fake_1920
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-retr")
-    await run_chat_agent_async(session, "지원하는 모니터의 해상도")
+    await run_chat_turn_async(session, "지원하는 모니터의 해상도")
 
     # 휴지 체크포인트엔 비어 있다(슬림화 불변)
     cv = (await adb(_read_cv)(session.id))["channel_values"]
@@ -174,6 +175,5 @@ async def test_session_retrievals_recovers_chunks_from_history(tenant_with_key, 
     assert last["chunk_count"] >= 1
     assert any("1920" in c for c in last["chunks"])
     # 실행 노드 흐름도 히스토리(versions_seen)에서 복원된다 — 원문 폴백 경로
-    assert last["nodes"][:2] == ["local_search", "call_llm"]
-    assert "source_search" in last["nodes"]
-    assert last["nodes"][-1] == "save_messages"
+    # 실행 노드는 흐름 노드 id(#72). 원문 폴백은 AI 답변 핸들러 안에서 돌아 따로 보이지 않는다.
+    assert last["nodes"] == ["start", "search", "answer", "__flow_finish__"]

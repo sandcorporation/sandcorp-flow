@@ -3,7 +3,7 @@
 
 배선·직렬화의 단위 검증은 test_chat_task(taskiq chat_task 직접)·test_chat_message_async가,
 큐 라우팅 같은 Celery 내부는 async 전환(ADR-0024)으로 폐기됐다. 여기선 POST /message →
-dispatch_chat(InMemoryBroker await_inplace) → run_chat_agent_async의 종단 동작만 본다.
+dispatch_chat(InMemoryBroker await_inplace) → run_chat_turn_async의 종단 동작만 본다.
 """
 import pytest
 from utils import get_redis_message, open_stream

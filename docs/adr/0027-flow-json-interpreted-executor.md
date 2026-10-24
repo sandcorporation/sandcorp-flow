@@ -53,3 +53,9 @@ Accepted (2026-10-24, 사용자 결정)
   `{{secret.이름}}` 참조(앞에 스킴 한 단어 허용, 예: `Bearer {{secret.key}}`)만 받는다. 원문을 넣으면 `invalid_config`.
 - **공개 흐름**: 테넌트당 하나의 Flow를 `is_public`으로 정한다(부분 유일 제약). 새 ChatSession은 만들어질 때
   그 Flow의 배포 중 버전을 `flow_version`에 고정한다(없으면 비워 둔다 — 기존 세션도 비어 있다).
+
+## 보충: 운영 챗 전환(2026-10-24, #72)
+- 운영 챗(taskiq worker-chat 한 턴)은 실행기로 돈다. `build_graph`는 지웠다. 진입은 `apps/flows/chat_turn.run_chat_turn_async`.
+- **고정 버전이 없는 세션**(이 칸이 생기기 전 세션)은 첫 턴에 그 테넌트 공개 흐름의 배포 중 버전에 고정해 이어 간다. 공개 흐름이 없는 테넌트는 고정하지 않고 기본 흐름(`DEFAULT_FLOW`)으로 돈다.
+- **배포 순간 진행 중이던 대화**: 체크포인트 자리(thread_id=세션)는 그대로다. 옛 그래프 체크포인트에는 재개 지점이 없으므로 새 턴은 시작 노드부터 돌고, 대화 기록(`messages`)은 그 위에 이어 쌓인다. 옛 그래프가 턴 중간에 멈춘 체크포인트도 새 입력으로 덮어 시작한다(시험 `test_chat_executor_cutover`).
+

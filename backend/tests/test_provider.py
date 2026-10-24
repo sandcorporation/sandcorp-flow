@@ -119,7 +119,7 @@ def test_saving_masked_key_preserves_real_key(client, tenant_admin_token, tenant
 async def test_chat_routes_through_tenant_llm_provider(tenant_with_key, fake_chat_llm):
     """run_chat_agent의 LLM 호출이 Tenant가 설정한 provider로 라우팅된다(키 복호화 전달)."""
     from asgiref.sync import sync_to_async
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
     from apps.tenants.models import TenantConfig
     from apps.tenants.crypto import encrypt_secret
@@ -136,7 +136,7 @@ async def test_chat_routes_through_tenant_llm_provider(tenant_with_key, fake_cha
     await adb(_setup)()
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-provider")
-    await run_chat_agent_async(session, "안녕하세요")
+    await run_chat_turn_async(session, "안녕하세요")
 
     prov = fake_chat_llm.last_provider
     assert prov is not None and prov.type == "custom"
@@ -148,12 +148,12 @@ async def test_chat_routes_through_tenant_llm_provider(tenant_with_key, fake_cha
 async def test_chat_falls_back_to_platform_provider_when_unset(tenant_with_key, fake_chat_llm):
     """provider 미설정 Tenant는 플랫폼 기본(OpenRouter)으로 폴백한다."""
     from asgiref.sync import sync_to_async
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
 
     tenant, _ = tenant_with_key
     session = await sync_to_async(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-default")
-    await run_chat_agent_async(session, "안녕하세요")
+    await run_chat_turn_async(session, "안녕하세요")
 
     prov = fake_chat_llm.last_provider
     assert prov is not None and prov.type == ""  # 플랫폼 기본

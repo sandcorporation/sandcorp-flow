@@ -57,7 +57,7 @@ def test_structured_stream_kwargs_strict_json_schema_except_anthropic():
 @pytest.mark.django_db(transaction=True)
 async def test_chat_answer_streams_token_deltas(tenant_with_key, fake_chat_llm, monkeypatch):
     """종단 패스에서 응답이 토큰 델타로 여러 번 publish되고 누적이 전체와 일치한다(실시간)."""
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import HITLResponse
     from apps.chat.models import ChatSession
 
@@ -68,7 +68,7 @@ async def test_chat_answer_streams_token_deltas(tenant_with_key, fake_chat_llm, 
 
     tenant, _ = tenant_with_key
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-stream")
-    answer = await run_chat_agent_async(session, "안녕")
+    answer = await run_chat_turn_async(session, "안녕")
 
     assert answer == "안녕하세요 반갑습니다"
     assert len(tokens) >= 2                          # 델타로 여러 번 흘림
@@ -80,7 +80,7 @@ async def test_chat_answer_streams_token_deltas(tenant_with_key, fake_chat_llm, 
 async def test_streaming_degrades_to_oneshot_when_control_field_late(tenant_with_key, monkeypatch):
     """제어필드가 response보다 늦게 오는 provider면 자동으로 one-shot 저하한다(중복·깨짐 없음)."""
     from apps.agent import llm
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
 
     async def control_late_astream(provider, messages, schema):
@@ -93,7 +93,7 @@ async def test_streaming_degrades_to_oneshot_when_control_field_late(tenant_with
 
     tenant, _ = tenant_with_key
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-late")
-    answer = await run_chat_agent_async(session, "안녕")
+    answer = await run_chat_turn_async(session, "안녕")
 
     assert answer == "전체응답입니다"
     assert tokens == ["전체응답입니다"]   # 점진 스트림 없이 한 번에(저하)
@@ -103,7 +103,7 @@ async def test_streaming_degrades_to_oneshot_when_control_field_late(tenant_with
 @pytest.mark.django_db(transaction=True)
 async def test_hitl_off_path_streams_token_deltas(tenant_with_key, fake_chat_llm, monkeypatch):
     """HITL-off 테넌트(call_llm_plain / PlainResponse)도 델타로 스트리밍한다(issue 171)."""
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import PlainResponse
     from apps.chat.models import ChatSession
     from apps.tenants.models import TenantConfig
@@ -122,7 +122,7 @@ async def test_hitl_off_path_streams_token_deltas(tenant_with_key, fake_chat_llm
     _capture_publish(monkeypatch, tokens, dones)
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-plain")
-    answer = await run_chat_agent_async(session, "안녕")
+    answer = await run_chat_turn_async(session, "안녕")
 
     assert answer == "도와드릴게요 무엇이든"
     assert len(tokens) >= 2
@@ -134,7 +134,7 @@ async def test_hitl_off_path_streams_token_deltas(tenant_with_key, fake_chat_llm
 async def test_kill_switch_disables_streaming(tenant_with_key, fake_chat_llm, settings, monkeypatch):
     """CHAT_STREAMING_ENABLED=False면 현행 one-shot으로 동작한다(델타 없이 1회·issue 172)."""
     settings.CHAT_STREAMING_ENABLED = False
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import HITLResponse
     from apps.chat.models import ChatSession
 
@@ -145,7 +145,7 @@ async def test_kill_switch_disables_streaming(tenant_with_key, fake_chat_llm, se
 
     tenant, _ = tenant_with_key
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-killswitch")
-    answer = await run_chat_agent_async(session, "안녕")
+    answer = await run_chat_turn_async(session, "안녕")
 
     assert answer == "한방에 답합니다"
     assert tokens == ["한방에 답합니다"]   # one-shot(델타 아님)
@@ -156,7 +156,7 @@ async def test_kill_switch_disables_streaming(tenant_with_key, fake_chat_llm, se
 async def test_stream_error_propagates_without_false_done(tenant_with_key, monkeypatch):
     """스트림 도중 예외는 에러 경계로 전파되며(거짓 done 없이), chat_task가 publish_error로 알린다."""
     from apps.agent import llm
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
 
     async def boom(provider, messages, schema):
@@ -170,6 +170,6 @@ async def test_stream_error_propagates_without_false_done(tenant_with_key, monke
     tenant, _ = tenant_with_key
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-err")
     with pytest.raises(RuntimeError):
-        await run_chat_agent_async(session, "안녕")
+        await run_chat_turn_async(session, "안녕")
 
     assert dones["n"] == 0   # 에러 시 거짓 완료(done) 미발행 — chat_task가 publish_error 처리
