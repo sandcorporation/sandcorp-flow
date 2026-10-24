@@ -6,6 +6,7 @@
  */
 
 export interface TenantOut {
+  active_admin_count?: number;
   created_at: string;
   id: string;
   is_active: boolean;

@@ -5,6 +5,8 @@
  * OpenAPI spec version: 1.0.0
  */
 import type {
+  AdminInviteOut,
+  AppsTenantsApiOperatorAdminInvite400,
   AppsTenantsApiOperatorLogout200,
   AppsTenantsApiOperatorLogoutAll200,
   AppsTenantsApiOperatorRefresh401,
@@ -228,6 +230,49 @@ export const appsTenantsApiDeleteTenant = async (tenantId: string, options?: Req
   {      
     ...options,
     method: 'DELETE'
+    
+    
+  }
+);}
+
+
+/**
+ * 주인 없는 Tenant(또는 추가 Admin)를 위한 Admin 초대 링크(7일·1회용). 테넌트 생성 때와 같은 경로.
+ * @summary Operator Admin Invite
+ */
+export type appsTenantsApiOperatorAdminInviteResponse201 = {
+  data: AdminInviteOut
+  status: 201
+}
+
+export type appsTenantsApiOperatorAdminInviteResponse400 = {
+  data: AppsTenantsApiOperatorAdminInvite400
+  status: 400
+}
+    
+export type appsTenantsApiOperatorAdminInviteResponseSuccess = (appsTenantsApiOperatorAdminInviteResponse201) & {
+  headers: Headers;
+};
+export type appsTenantsApiOperatorAdminInviteResponseError = (appsTenantsApiOperatorAdminInviteResponse400) & {
+  headers: Headers;
+};
+
+export type appsTenantsApiOperatorAdminInviteResponse = (appsTenantsApiOperatorAdminInviteResponseSuccess | appsTenantsApiOperatorAdminInviteResponseError)
+
+export const getAppsTenantsApiOperatorAdminInviteUrl = (tenantId: string,) => {
+
+
+  
+
+  return `/api/operator/tenants/${tenantId}/admin-invite`
+}
+
+export const appsTenantsApiOperatorAdminInvite = async (tenantId: string, options?: RequestInit): Promise<appsTenantsApiOperatorAdminInviteResponse> => {
+  
+  return customInstance<appsTenantsApiOperatorAdminInviteResponse>(getAppsTenantsApiOperatorAdminInviteUrl(tenantId),
+  {      
+    ...options,
+    method: 'POST'
     
     
   }

@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test')
 const { openOperatorSession } = require('./operatorToken')
+const { dropInvite } = require('./memberToken')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 
@@ -34,5 +35,25 @@ test.describe('Operator 플로우', () => {
     await page.click('button:has-text("추가")')
 
     await expect(page.locator(`text=${tenantName}`).first()).toBeVisible({ timeout: 5000 })
+  })
+
+  // #66: 멤버 없이 만든 테넌트는 「주인 없음」이다. 목록에서 Admin 초대를 내 수락시키면 배지가 사라진다.
+  test('주인 없는 테넌트에 Admin 초대를 내고 수락되면 「주인 없음」이 사라진다', async ({ page }) => {
+    await openOperatorSession(page, ADMIN_URL)
+    const name = `Orphan E2E ${Date.now()}`
+    await page.fill('input[placeholder="고객사 이름"]', name)
+    await page.click('button:has-text("추가")')
+    const row = page.locator('tr', { hasText: name })
+    await expect(row.getByText('주인 없음')).toBeVisible({ timeout: 5000 })
+
+    await row.getByRole('button', { name: 'Admin 초대 링크 만들기' }).click()
+    const url = await page.locator('code', { hasText: 'invite=' }).last().innerText()
+    const raw = new URL(url).searchParams.get('invite')
+    dropInvite(raw)
+
+    await expect(async () => {
+      await page.reload()
+      await expect(page.locator('tr', { hasText: name }).getByText('주인 없음')).toHaveCount(0, { timeout: 1000 })
+    }).toPass({ timeout: 20000 })
   })
 })
