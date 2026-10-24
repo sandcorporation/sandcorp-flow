@@ -23,7 +23,7 @@ Sandcorp Flow는 타사 웹사이트에 iframe으로 삽입하는 챗봇을 제�
 | **Redis** | SSE pub/sub + **taskiq(chat)·Celery(배치) 브로커** + **EventBus(Streams)** + relay wake + 레이트리밋·세션 락 |
 | **Widget** (`/chatbot/{slug}/`) | Visitor용 채팅 위젯 (React) — 토큰 없이 slug로 접근 |
 | **Landing** (`/`) | 공개 소개 페이지 — 실제 `ChatWidget`을 mock 스트리밍으로 구동하는 라이브 챗봇 데모 + 지식그래프(react-force-graph) 데모 + 연락처. widget 레포의 별도 멀티페이지 엔트리(무거운 데모 의존은 landing 청크에만 → 위젯 챗봇 번들은 경량 유지) |
-| **Admin UI** (`/admin-ui/`) | Operator·Tenant 관리 화면 (React + Tailwind/shadcn, **산업용 HMI 테마**(ADR-0026): 무채 회녹색 바탕·호박색 주색·2px 모서리·그림자 없음, 토큰은 `admin/src/index.css`의 `--flow-*`) — **좌측 사이드바 내비 + 자원별 URL 라우트**(ADR-0017). 문서·**지식그래프 인스펙터**·Visitors·설정(Provider 포함)·팀원·HITL·**토큰 사용량**(테넌트=자기 것/오퍼레이터=전체, recharts) 섹션 |
+| **Admin UI** (`/admin-ui/`) | Operator·Tenant 관리 화면 (React + Tailwind/shadcn, **산업용 HMI 테마**(ADR-0026): 무채 회녹색 바탕·호박색 주색·2px 모서리·그림자 없음, 토큰은 `admin/src/index.css`의 `--flow-*`) — **좌측 사이드바 내비 + 자원별 URL 라우트**(ADR-0017). 문서·**지식그래프 인스펙터**·Visitors·설정(Provider 포함)·팀원·HITL·**토큰 사용량**(테넌트=자기 것/오퍼레이터=전체, recharts) 섹션. **390폭**: 공용 `Table`이 카드형으로 접히고 셸은 햄버거 메뉴 — `e2e/tests/narrow-overflow.spec.js`가 모든 라우트(`narrow-routes.json`)의 넘치는 요소 0개를 지킨다 |
 | **Nginx** | 리버스 프록시, 정적 파일 서빙 |
 
 > **저장소 역할 분담**: **PostgreSQL이 관계형 데이터 + LangGraph 대화 체크포인트 + RAG 지식그래프·임베딩(pgvector)** 을 모두 담당합니다. GraphRAG의 엔티티/관계 모델은 그대로이며 저장 엔진만 Neo4j→pgvector로 이전했습니다([ADR-0021](./docs/adr/0021-graphstore-pgvector-replaces-neo4j.md)) — 단일 DB로 통합해 박스 부담을 줄이고 관리형 Postgres 이식을 단순화. (GraphRAG 채택 자체는 [ADR-0007](./docs/adr/0007-graphrag-neo4j-replaces-2step-vector-rag.md).)
