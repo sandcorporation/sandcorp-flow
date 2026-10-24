@@ -20,6 +20,16 @@ class DocumentOut(Schema):
     error_message: str
 
 
+def _refuse_try_upload(tenant_id: uuid.UUID) -> None:
+    """체험 테넌트(#134)는 문서를 들이지 않는다 — 지식은 체험 도서관의 예제 묶음만."""
+    from apps.tenants import try_tenant
+
+    try:
+        try_tenant.ensure_allowed(tenant_id, "upload")
+    except try_tenant.TryRestricted as exc:
+        raise HttpError(403, f"{exc.code}: 체험에서는 문서를 올릴 수 없습니다.") from exc
+
+
 class UrlsIn(Schema):
     urls: List[str]
 
@@ -27,6 +37,7 @@ class UrlsIn(Schema):
 @rag_router.post("/", response={201: DocumentOut})
 def upload_document(request, file: UploadedFile = File(...), name: str = Form(None)):  # pyright: ignore[reportCallIssue]
     tenant = request.auth.tenant
+    _refuse_try_upload(tenant.id)
     mime_type = file.content_type or "text/plain"
 
     if mime_type not in MIME_TO_INGESTER:
@@ -60,6 +71,7 @@ def upload_document(request, file: UploadedFile = File(...), name: str = Form(No
 def add_url_documents(request, body: UrlsIn):
     """명시적 URL(들)을 각각 Document로 등록하고 fetch·인제스션을 트리거한다(재귀 크롤 아님)."""
     tenant = request.auth.tenant
+    _refuse_try_upload(tenant.id)
     from apps.rag.tasks import ingest_document
 
     out = []

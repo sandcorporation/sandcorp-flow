@@ -80,6 +80,21 @@ class FlowInvalid(FlowServiceError):
 # ── 결과 ─────────────────────────────────────────────────────────────────────
 
 
+class TryDeployRefused(FlowServiceError):
+    """체험 테넌트(Try Session, #134)는 배포하지 않는다 — 편집·버전·시험 대화만."""
+
+    code = "try_restricted"
+
+
+def _refuse_try_deploy(tenant_id: uuid.UUID) -> None:
+    from apps.tenants import try_tenant
+
+    try:
+        try_tenant.ensure_allowed(tenant_id, "deploy")
+    except try_tenant.TryRestricted as exc:
+        raise TryDeployRefused("체험 흐름은 배포할 수 없습니다. 가입한 뒤 내 테넌트에서 배포하세요.") from exc
+
+
 class ApprovalRequired(FlowServiceError):
     """이 테넌트는 배포에 승인이 필요하다 — ``submit_deploy``로 요청을 만들어야 한다."""
 
@@ -447,7 +462,9 @@ def deploy_requires_approval(flow: Flow) -> bool:
 
 
 def _apply_deploy(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, number: int) -> Flow:
-    """승인 규칙 없이 그 버전을 배포 중으로 둔다(승인 처리·되돌리기가 쓴다). 핸들러 없는 노드가 있으면 ``FlowInvalid``."""
+    """승인 규칙 없이 그 버전을 배포 중으로 둔다(승인 처리·되돌리기가 쓴다). 핸들러 없는 노드가 있으면 ``FlowInvalid``.
+    체험 테넌트면 ``TryDeployRefused``(배포 경로가 모두 여기를 지난다)."""
+    _refuse_try_deploy(tenant_id)
     version = get_version(tenant_id, flow_id, number)
     errors = unsupported_node_errors(version.graph)
     if errors:
@@ -485,6 +502,7 @@ def submit_deploy(
 
     요청을 만들 때도 버전 존재·핸들러 있음을 검사한다 — 승인자가 배포할 수 없는 버전을 받지 않게.
     """
+    _refuse_try_deploy(tenant_id)  # 배포 요청(승인 대기)도 만들지 않는다
     flow = get_flow(tenant_id, flow_id)
     if not deploy_requires_approval(flow):
         return DeployOutcome(_apply_deploy(tenant_id, flow_id, number))

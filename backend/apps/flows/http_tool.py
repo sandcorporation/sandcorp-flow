@@ -44,9 +44,12 @@ HTTP_ERROR = "http_error"
 INVALID_JSON = "invalid_json"
 UNKNOWN_SECRET = "unknown_secret"
 INTERNAL_ERROR = "internal_error"
+TRY_RESTRICTED = "try_restricted"
+"""체험 테넌트(#134)가 가짜 API 밖을 부르려 했다(``apps.tenants.try_tenant.RESTRICTED``와 같은 값)."""
 
 FAILURE_CODES: tuple[str, ...] = (
     *(c.value for c in safe_http.SafeHttpErrorCode), HTTP_ERROR, INVALID_JSON, UNKNOWN_SECRET, INTERNAL_ERROR,
+    TRY_RESTRICTED,
 )
 """``record.error``에 남는 이유 코드 전부(safe_http 코드 + HTTP 도구 코드)."""
 
@@ -181,7 +184,13 @@ def _extract(config: HttpToolConfig, body: bytes) -> tuple[dict[str, object], li
 
 
 async def _send(tenant_id: uuid.UUID, method: str, req: Prepared) -> safe_http.SafeResponse:
-    """전송 결정 지점 하나: 예약 호스트 정확 일치면 프로세스 안 가짜 API(네트워크 0), 아니면 safe_http(허용 목록)."""
+    """전송 결정 지점 하나: 예약 호스트 정확 일치면 프로세스 안 가짜 API(네트워크 0), 아니면 safe_http(허용 목록).
+
+    체험 테넌트(#134)는 가짜 API만 — 허용 목록·비밀이 있어도 그 밖은 연결 없이 ``try_restricted``."""
+    from apps.tenants import try_tenant
+
+    if not await sync_to_async(try_tenant.http_allowed)(tenant_id, req.url):
+        raise Failure(TRY_RESTRICTED, "체험에서는 가짜 API만 부를 수 있습니다")
     if demo_api.is_reserved(req.url):
         return demo_api.request(method, req.url, body=req.body, limits=LIMITS)
     allow = await sync_to_async(ts.allow_list_for)(tenant_id)

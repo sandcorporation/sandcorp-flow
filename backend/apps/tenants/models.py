@@ -82,6 +82,12 @@ class Tenant(models.Model):
     created_by = models.ForeignKey(
         "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="created_tenants"
     )
+    # 테넌트 종류(#134, ADR-0030). standard = 일반 고객 조직. try = Try Session마다 만드는 숨은 체험 테넌트(예제 사본,
+    # 24시간 뒤 삭제). try_library = 예제 지식 묶음을 한 번 적재해 두는 공유 「체험 도서관」. 체험 쪽은 일반 목록·관리 API·
+    # 운영 집계에 나오지 않고, 제약은 apps.tenants.try_tenant 한 곳에서 건다. (Trial Quota(#41)의 trial_turns와 다른 것이다.)
+    kind = models.CharField(max_length=16, default="standard", db_default="standard")
+    try_example_id = models.CharField(max_length=64, blank=True, default="", db_default="")
+    try_expires_at = models.DateTimeField(null=True, blank=True)
 
     # 커스텀 매니저를 명시 주석해 django-types의 기본 Manager 추론을 덮어쓴다(create_with_key 인식).
     objects: "TenantManager" = TenantManager()
@@ -92,6 +98,7 @@ class Tenant(models.Model):
         constraints = [
             models.UniqueConstraint(Lower("name"), name="uq_tenant_name_ci"),
         ]
+        indexes = [models.Index(fields=["kind", "try_expires_at"], name="tenants_kind_expires_idx")]
 
     @classmethod
     def verify_key(cls, raw_key: str) -> "Tenant | None":

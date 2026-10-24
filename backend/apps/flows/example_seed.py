@@ -37,6 +37,13 @@ def _doc_id(tenant_id: uuid.UUID, example_id: str, name: str) -> uuid.UUID:
     return uuid.uuid5(_DOC_NAMESPACE, f"{tenant_id}:{example_id}:{name}")
 
 
+def example_doc_ids(tenant_id: uuid.UUID, example_id: str) -> list[uuid.UUID]:
+    """그 테넌트에 적재된(또는 적재될) 예제 문서들의 id — 체험 테넌트의 지식 검색을 이 묶음으로 좁힐 때 쓴다(#134)."""
+    if example_id not in EXAMPLES:
+        raise UnknownExample(example_id)
+    return [_doc_id(tenant_id, example_id, item.name) for item in EXAMPLES[example_id].docs]
+
+
 def seed_example_knowledge(tenant_id: uuid.UUID, example_id: str, *, force: bool = False) -> list:
     """예제의 지식 문서를 테넌트에 적재하고 Document 목록을 돌려준다. ``force``면 ready여도 다시 적재."""
     from apps.rag.models import Document

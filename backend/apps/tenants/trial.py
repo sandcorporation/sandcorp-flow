@@ -38,8 +38,19 @@ def platform_key_ready() -> bool:
 
 
 def uses_platform_key(config: TenantConfig) -> bool:
-    """자기 LLM Provider가 없고 dev 폴백도 꺼져 있으면 플랫폼 키 경로다(키가 실제로 있는지는 따로)."""
-    return not config.llm_provider_type and not _platform_default_enabled()
+    """자기 LLM Provider가 없고 dev 폴백도 꺼져 있으면 플랫폼 키 경로다(키가 실제로 있는지는 따로).
+
+    체험·도서관 테넌트(#134, ``try_tenant.forces_platform_key``)는 자기 Provider가 있어도 플랫폼 키 경로다."""
+    if _platform_default_enabled():
+        return False
+    return not config.llm_provider_type or ignores_tenant_provider(config)
+
+
+def ignores_tenant_provider(config: TenantConfig) -> bool:
+    """테넌트가 넣은 Provider(LLM·임베딩)를 무시해야 하는 테넌트인가(체험·도서관, ADR-0030)."""
+    from apps.tenants import try_tenant
+
+    return try_tenant.forces_platform_key(config.tenant_id)
 
 
 def remaining(config: TenantConfig) -> int:
