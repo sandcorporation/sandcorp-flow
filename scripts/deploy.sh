@@ -6,7 +6,8 @@
 # 전제(A1 호스트에 1회 준비):
 #   - docker + compose v2 + `docker rollout` 플러그인(https://github.com/wowu/docker-rollout)
 #   - `docker login ghcr.io`(read:packages PAT) — pull 인증, ~/.docker/config.json에 영속
-#   - 이 repo가 /opt/sandcorp-flow에 clone돼 있고 Jenkins가 release 브랜치의 SHA로 reset --hard 한 뒤 부른다
+#   - 배포 디렉터리 = Jenkins 잡 워크스페이스(SCM 체크아웃이 release SHA에 맞춘 뒤 `cd $WORKSPACE`에서 부른다).
+#     호스트에 /home/jenkins/agent/workspace → /var/jenkins_home/workspace 심볼릭 링크 전제(상대 bind mount). docs/deployment.md
 #   - .env(SECRET_KEY·DB_PASSWORD·ALLOWED_HOSTS 등, 이름은 .env.prod.example) 호스트에 상주(이미지·git 제외)
 #   - docker-compose.prod.oracle.yml(이미지 GHCR 참조 + ${IMAGE_TAG} 핀)
 #

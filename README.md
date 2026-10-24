@@ -221,7 +221,7 @@ Operator 비밀번호 로그인은 없다(#21). 관리 화면 Operator 로그인
 실서버(**oracle A1**, arm64·CPU 전용)는 **무중단 롤링**으로 배포한다 — sub에서 GitHub Actions가
 arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브랜치 웹훅을 받아 `docker rollout`으로
 교체한다. NPM(Nginx Proxy Manager)이 공개 TLS를 종단한다. 운영 주소는 `https://flow.sandcorp.co.kr`,
-배포 경로는 `/opt/sandcorp-flow`, compose 프로젝트는 `sandcorp-flow-prod`다. 이 스택은 공유 박스에서
+배포 경로는 Jenkins 잡 `sandcorp-flow`의 워크스페이스(호스트 `/var/jenkins_home/workspace/sandcorp-flow`), compose 프로젝트는 `sandcorp-flow-prod`다. 이 스택은 공유 박스에서
 도므로 서비스마다 메모리 상한을 둔다(합계 약 3.2G, 표는 deployment.md). 서버 쪽 설정(DNS·NPM·Jenkins
 잡·운영 `.env`)은 deployment.md의 「서버 쪽 할 일」 체크리스트를 따른다.
 
