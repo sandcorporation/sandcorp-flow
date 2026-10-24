@@ -250,11 +250,12 @@ def test_list_tenants_returns_active_memberships_with_roles(signer: Signer) -> N
 
     body = call(mcp_token(signer, scope="flow.read"), "list_tenants")
 
+    ids = {m.tenant.slug: str(m.tenant_id) for m in Membership.objects.select_related("tenant")}
     assert body["result"]["isError"] is False
     assert body["result"]["structuredContent"] == {
         "tenants": [
-            {"slug": "acme", "name": "acme corp", "role": "admin", "can_edit": True},
-            {"slug": "beta", "name": "beta corp", "role": "member", "can_edit": False},
+            {"id": ids["acme"], "slug": "acme", "name": "acme corp", "role": "admin", "can_edit": True},
+            {"id": ids["beta"], "slug": "beta", "name": "beta corp", "role": "member", "can_edit": False},
         ]
     }
 
@@ -295,6 +296,35 @@ def test_someone_elses_tenant_is_not_found(signer: Signer, write_tool: str) -> N
     member_of(make_tenant("other"), Membership.ROLE_ADMIN, sub="m_01JB2Z3Y4X5W6V7T8S9R0Q1P2Z")
 
     body = call(mcp_token(signer), write_tool, {"tenant": "other"})
+
+    assert body["result"]["isError"] is True
+    assert "tenant_not_found" in tool_text(body)
+
+
+@pytest.mark.django_db
+def test_slugless_tenant_can_be_chosen_by_id(signer: Signer, write_tool: str) -> None:
+    """slug는 공개 챗봇 URL용이라 null일 수 있다(#119) — tenant 인자는 id(UUID)도 받는다."""
+    noslug = make_tenant(None)
+    member_of(noslug, Membership.ROLE_ADMIN)
+    member_of(make_tenant("acme"), Membership.ROLE_ADMIN)
+
+    by_id = call(mcp_token(signer), write_tool, {"tenant": str(noslug.id), "text": "hi"})
+    by_slug = call(mcp_token(signer), write_tool, {"tenant": "ACME", "text": "hi"})
+    missing = call(mcp_token(signer), write_tool)
+
+    assert by_id["result"]["isError"] is False
+    assert by_id["result"]["structuredContent"] == {"tenant": None, "text": "hi"}
+    assert by_slug["result"]["structuredContent"]["tenant"] == "acme"
+    assert "tenant_required" in tool_text(missing) and str(noslug.id) in tool_text(missing)
+
+
+@pytest.mark.django_db
+def test_someone_elses_tenant_id_is_not_found(signer: Signer, write_tool: str) -> None:
+    member_of(make_tenant("acme"), Membership.ROLE_ADMIN)
+    other = make_tenant(None)
+    member_of(other, Membership.ROLE_ADMIN, sub="m_01JB2Z3Y4X5W6V7T8S9R0Q1P2Z")
+
+    body = call(mcp_token(signer), write_tool, {"tenant": str(other.id)})
 
     assert body["result"]["isError"] is True
     assert "tenant_not_found" in tool_text(body)

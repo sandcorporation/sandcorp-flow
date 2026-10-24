@@ -2,7 +2,7 @@
 
 - `caller_memberships(token, issuer)` : 토큰 `(iss, sub)` → User → 활성 멤버십(멤버십·테넌트 모두 활성).
                                         대표(acct 없음)도 같다 — Operator 권한은 MCP에 없다.
-- `resolve_membership(memberships, slug)` : `tenant` 인자 해석. 하나면 생략 가능, 없거나 남의 테넌트면 `ToolError`.
+- `resolve_membership(memberships, slug)` : `tenant` 인자(slug 또는 tenant id) 해석. 하나면 생략 가능, 없거나 남의 테넌트면 `ToolError`.
 - `can_edit(membership)` / `require_editor(membership)` : Admin만 편집·배포.
 """
 
@@ -23,7 +23,7 @@ class TenantArgs(BaseModel):
 
     tenant: str | None = Field(
         default=None,
-        description="테넌트 slug(list_tenants로 확인). 멤버십이 하나면 생략한다.",
+        description="테넌트 slug 또는 id(list_tenants로 확인; slug 없는 테넌트는 id로). 멤버십이 하나면 생략한다.",
     )
 
 
@@ -40,11 +40,14 @@ def resolve_membership(memberships: list[Membership], slug: str | None) -> Membe
     if slug is None:
         if len(memberships) == 1:
             return memberships[0]
-        slugs = ", ".join(m.tenant.slug or "(slug 없음)" for m in memberships)
-        raise ToolError("tenant_required", f"멤버십이 여럿입니다. tenant 인자로 하나를 고르세요: {slugs}")
+        names = ", ".join(m.tenant.slug or f"(slug 없음, id {m.tenant_id})" for m in memberships)
+        raise ToolError(
+            "tenant_required",
+            f"멤버십이 여럿입니다. tenant 인자로 하나를 고르세요(slug가 없는 테넌트는 id로): {names}",
+        )
     wanted = slug.strip().lower()
-    for membership in memberships:
-        if (membership.tenant.slug or "").lower() == wanted:
+    for membership in memberships:  # slug 또는 id(UUID) — 둘 다 내 멤버십 안에서만 찾는다
+        if wanted in ((membership.tenant.slug or "").lower(), str(membership.tenant_id).lower()):
             return membership
     # 없는 테넌트와 남의 테넌트를 구분하지 않는다(존재 여부를 흘리지 않음).
     raise ToolError("tenant_not_found", f"'{slug}'는 내 멤버십 테넌트가 아닙니다. list_tenants로 확인하세요.")
