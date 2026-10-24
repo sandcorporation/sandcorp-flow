@@ -20,7 +20,10 @@ const GRAPH: FlowGraph = {
 }
 
 // d3-drag 가 mousedown 의 event.view 를 읽는데 user-event 는 그것을 채우지 않는다 — 노드 선택은 click 만 보낸다.
-async function pick(text: string) { fireEvent.click(await screen.findByText(text)) }
+async function pick(text: string) {
+  const card = (await screen.findAllByText(text)).map((el) => el.closest('[data-node-id]')).find(Boolean)!
+  fireEvent.click(card)
+}
 
 function renderEditor() {
   return render(

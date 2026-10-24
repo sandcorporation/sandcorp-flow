@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import {
   Background, BackgroundVariant, Controls, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, applyNodeChanges,
   useReactFlow, type Connection, type Edge, type Node, type NodeChange, type NodeProps,
@@ -74,33 +74,55 @@ export type FlowCanvasProps = {
   onConnect: (from: string, handle: string, to: string) => void
   onDelete: (nodeIds: string[], edgesToCut: { from: string; handle: string }[]) => void
   onDropKind: (kind: string, position: { x: number; y: number }) => void
+  /** 지금 보이는 캔버스에서 다른 노드와 겹치지 않는 빈 자리를 돌려주는 함수를 여기에 채운다(노드 목록의 눌러서 더하기용). */
+  spotRef?: MutableRefObject<(() => { x: number; y: number }) | null>
 }
 
 function Inner(p: FlowCanvasProps) {
   const { graph, errors, selectedId, readOnly } = p
   const rf = useReactFlow()
-  const [rfNodes, setRfNodes] = useState<Node<CardData>[]>([])
+  const wrap = useRef<HTMLDivElement>(null)
+  const fitOnMount = useRef(graph.nodes.length > 0) // 빈 흐름에 첫 노드를 더할 때 화면이 튀지 않게, 처음부터 노드가 있을 때만 맞춘다
+  const nodesRef = useRef(graph.nodes)
+  nodesRef.current = graph.nodes
+  useEffect(() => {
+    if (!p.spotRef) return
+    p.spotRef.current = () => {
+      const r = wrap.current?.getBoundingClientRect()
+      const tl = rf.screenToFlowPosition({ x: (r?.left ?? 0) + 24, y: (r?.top ?? 0) + 24 })
+      const br = rf.screenToFlowPosition({ x: (r?.right ?? 600) - 24, y: (r?.bottom ?? 400) - 24 })
+      const W = 210, H = 130 // 카드 180×(78~) + 여백
+      const hit = (x: number, y: number) => nodesRef.current.some((n) => Math.abs(n.position.x - x) < W - 20 && Math.abs(n.position.y - y) < H - 30)
+      for (let y = Math.round(tl.y); y + H <= br.y; y += H) {
+        for (let x = Math.round(tl.x); x + W <= br.x; x += W) if (!hit(x, y)) return { x, y }
+      }
+      const k = nodesRef.current.length
+      return { x: Math.round(tl.x) + (k % 6) * 30, y: Math.round(tl.y) + (k % 6) * 30 }
+    }
+  }, [p.spotRef, rf])
   const byNode = useMemo(() => errorsByNode(errors), [errors])
   const path = useMemo(() => (selectedId ? pathTo(graph, selectedId) : { nodes: new Set<string>(), edges: new Set<string>() }), [graph, selectedId])
   const activeNodes = p.activeNodeIds ?? path.nodes
   const activeEdges = p.activeEdgeKeys ?? path.edges
 
   // 그래프(저장된 모양)가 바뀌면 카드 데이터를 새로 만들되, 측정값·끌고 있는 위치는 이어 간다.
+  const build = (prev: Node<CardData>[]): Node<CardData>[] =>
+    graph.nodes.map((n) => {
+      const old = prev.find((x) => x.id === n.id)
+      return {
+        ...(old ?? {}),
+        id: n.id,
+        type: 'flow',
+        position: old?.dragging ? old.position : n.position,
+        draggable: !readOnly,
+        selected: n.id === selectedId,
+        data: { node: n, errors: byNode.get(n.id) ?? [], active: activeNodes.has(n.id) && p.activeNodeIds !== undefined, selected: n.id === selectedId, readOnly },
+      }
+    })
+  const [rfNodes, setRfNodes] = useState<Node<CardData>[]>(() => build([])) // 첫 그림부터 노드가 있어야 맞춤 보기가 맞게 계산된다
   useEffect(() => {
-    setRfNodes((prev) =>
-      graph.nodes.map((n) => {
-        const old = prev.find((x) => x.id === n.id)
-        return {
-          ...(old ?? {}),
-          id: n.id,
-          type: 'flow',
-          position: old?.dragging ? old.position : n.position,
-          draggable: !readOnly,
-          selected: n.id === selectedId,
-          data: { node: n, errors: byNode.get(n.id) ?? [], active: activeNodes.has(n.id) && p.activeNodeIds !== undefined, selected: n.id === selectedId, readOnly },
-        }
-      }),
-    )
+    setRfNodes(build)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph, byNode, selectedId, readOnly, activeNodes, p.activeNodeIds])
 
   const edges: Edge[] = useMemo(
@@ -136,6 +158,7 @@ function Inner(p: FlowCanvasProps) {
 
   return (
     <div
+      ref={wrap}
       className="h-full w-full"
       onDragOver={(e) => { if (!readOnly) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' } }}
       onDrop={(e) => {
@@ -163,9 +186,8 @@ function Inner(p: FlowCanvasProps) {
         nodesConnectable={!readOnly}
         elementsSelectable
         deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
-        fitView
-        fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-        minZoom={0.3}
+        onInit={() => { if (fitOnMount.current) setTimeout(() => rf.fitView({ padding: 0.15, maxZoom: 1 }), 50) }}
+        minZoom={0.1}
         colorMode="system"
       >
         <Background variant={BackgroundVariant.Lines} gap={24} color="hsl(var(--flow-grid))" />

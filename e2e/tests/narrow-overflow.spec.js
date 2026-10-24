@@ -88,6 +88,7 @@ async function overflowing(page) {
     if (de.scrollWidth > de.clientWidth) out.push(`html ${de.scrollWidth}>${de.clientWidth}`)
     for (const el of document.body.querySelectorAll('*')) {
       if (el.closest('svg')) continue // 차트 글자는 svg 안에서 따로 그려진다
+      if (el.closest('.react-flow')) continue // 편집기 캔버스 안은 이동·확대되는 좌표계 — 자르는 컨테이너(overflow-hidden)가 폭을 막고, 그 바깥은 문서 검사가 본다(#29)
       if (el.scrollWidth > el.clientWidth && el.clientWidth > 0 && getComputedStyle(el).display !== 'inline') {
         const r = el.getBoundingClientRect()
         if (r.width === 0 || getComputedStyle(el).visibility === 'hidden') continue

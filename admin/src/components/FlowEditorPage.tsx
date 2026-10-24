@@ -32,6 +32,8 @@ export default function FlowEditorPage() {
   const graphRef = useRef(graph)
   graphRef.current = graph
   const queue = useRef<Promise<void>>(Promise.resolve())
+  const pending = useRef(0) // 보냈거나 줄 서 있는 저장 묶음 수 — 0이 돼야 「저장됨」
+  const spotRef = useRef<(() => { x: number; y: number }) | null>(null)
 
   const load = useCallback(async () => {
     const r = await appsFlowsApiFlowsGet(id)
@@ -50,14 +52,17 @@ export default function FlowEditorPage() {
   const commit = useCallback((ops: PatchOp[]) => {
     if (readOnly || ops.length === 0) return
     setGraph((g) => applyOps(g, ops))
+    pending.current += 1
     setSave({ state: 'saving', message: '' })
     queue.current = queue.current.then(async () => {
       try {
         const r = await appsFlowsApiFlowsPatchDraft(id, { ops } as unknown as DraftPatchIn)
         setErrors(r.data.errors as FlowError[])
-        setSave({ state: 'saved', message: '' })
+        pending.current -= 1
+        if (pending.current === 0) setSave((cur) => (cur.state === 'failed' ? cur : { state: 'saved', message: '' }))
       } catch (err) {
         const body = err instanceof HttpError ? (err.body as { detail?: string } | undefined) : undefined
+        pending.current -= 1
         await load().catch(() => {})
         setSave({ state: 'failed', message: `저장하지 못했습니다${body?.detail ? `: ${body.detail}` : '.'} 서버의 초안으로 다시 맞췄습니다.` })
       }
@@ -66,8 +71,7 @@ export default function FlowEditorPage() {
 
   const addNode = (kind: string, at?: { x: number; y: number }) => {
     const g = graphRef.current
-    const slot = g.nodes.length
-    const position = at ?? { x: 40 + (slot % 4) * 240, y: 40 + Math.floor(slot / 4) * 150 }
+    const position = at ?? spotRef.current?.() ?? { x: 40 + (g.nodes.length % 4) * 240, y: 40 }
     const n = newNode(g, kind, position)
     commit([{ op: 'upsert_node', id: n.id, kind: n.kind, code: n.code, name: n.name, position: n.position, config: n.config }])
     setSelectedId(n.id)
@@ -132,6 +136,7 @@ export default function FlowEditorPage() {
             errors={errors}
             selectedId={selectedId}
             readOnly={readOnly}
+            spotRef={spotRef}
             onSelect={setSelectedId}
             onMoved={(nid, position) => commit([{ op: 'upsert_node', id: nid, position }])}
             onConnect={(from, handle, to) => commit([{ op: 'connect', from, to, handle }])}
