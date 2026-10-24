@@ -45,6 +45,8 @@ class FlowState(ChatState):
     - ``steps``·``step_limit_exceeded``: 한 턴 노드 상한(``MAX_STEPS_PER_TURN``).
     - ``rag_searched``: 이 턴에 지식 검색을 했는가(원문 폴백은 검색을 한 턴에만).
     - ``trace``: 이 턴에 지난 노드들.
+    - ``node_instructions``: 지금 도는 AI 답변 노드의 ``instructions``(프롬프트 끝에 실린다). 노드마다 핸들러가 넣는다.
+    - ``label``·``fields``·``confidence``: AI 분류·추출 노드의 결과(#25). 조건 노드가 읽는다.
     """
 
     hitl_enabled: bool
@@ -55,6 +57,10 @@ class FlowState(ChatState):
     step_limit_exceeded: bool
     rag_searched: bool
     trace: list[TraceEntry]
+    node_instructions: str
+    label: str
+    confidence: float
+    fields: dict[str, object]
 
 
 StateUpdate = Mapping[str, object]

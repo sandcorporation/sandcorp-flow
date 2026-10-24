@@ -90,7 +90,7 @@ def test_unreachable_node():
 
 def test_condition_branch_without_edge_is_empty_branch():
     data = basic()
-    data["nodes"].append(node("c", "condition", "N-04", {"branches": [{"name": "yes", "when": "x"}]}))
+    data["nodes"].append(node("c", "condition", "N-04", {"branches": [{"name": "yes", "when": "confidence > 0.5"}]}))
     data["edges"] = [{"from": "s", "to": "c"}, {"from": "c", "to": "k", "handle": "yes"}, {"from": "k", "to": "a"}]
     errors = validate_flow(data)
     assert ("c", "empty_branch") in codes(errors)

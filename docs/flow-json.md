@@ -34,20 +34,44 @@ HTTP 도구 보안은 [ADR-0029](adr/0029-http-tool-node-security.md). 용어는
 
 ## 노드 종류와 config
 
-지금은 종류마다 **자리**(최소 필드)만 있다. 세부는 각 노드 티켓이 채운다.
+종류마다 config 모양이 다르다. 모르는 필드는 거부한다. (가드레일·HTTP 도구는 아직 모양만 있고 실행 핸들러가 없다.)
 
 | kind | 이름 | config | 나가는 갈래 |
 |---|---|---|---|
 | `start` | 시작 | `{}` | `next` |
 | `ai_answer` | AI 답변 | `instructions: str = ""`, `await_reply: bool = false` | `next`, `handoff`(선택 — AI가 사람 넘김이 필요하다고 판단할 때만 이 선으로) |
-| `condition` | 조건 | `branches: [{name, when}]`(1개 이상, 이름 유일, `else`·`next` 예약) | 각 `name` + `else` — **모두 선 필수** |
+| `condition` | 조건 | `branches: [{name, when}]`(1개 이상, 이름 유일, `else`·`next` 예약). `when`은 아래 「when 식」 | 각 `name` + `else` — **모두 선 필수** |
 | `handoff` | 사람 넘김 | `reason: str = ""` | 없음 |
 | `knowledge_search` | 지식 검색 | `top_k: int = 5`(1~20) | `next` |
-| `ai_classify` | AI 분류·추출 | `instructions: str = ""`, `labels: [str]`(1개 이상) | `next` |
+| `ai_classify` | AI 분류·추출 | `instructions: str = ""`, `labels: [str] = []`(분류), `fields: [{name, description = "", type = "string"\|"number"\|"boolean"}] = []`(추출) — **둘 중 하나는 있어야** | `next` |
 | `guardrail` | 가드레일 | `rules: ["banned_words" \| "pii" \| "price_promise"]`(1개 이상), `action: "block" \| "rewrite" = "rewrite"` | `next` |
 | `http_tool` | HTTP 도구 | `method`(GET·POST·PUT·PATCH·DELETE), `url`(https만, user@host 금지), `headers: {str: str}`, `body_template: str \| null` | `next` |
 
-`next` 갈래는 선이 없어도 된다 — 거기서 턴이 끝난다. AI 답변의 `handoff` 갈래도 선택이다 — 선이 있고 테넌트가 사람 넘김을 켰고 상담시간일 때만 AI가 넘김을 판단하고(넘김 판단이 든 답변 스키마), 선이 없으면 넘김 없는 답변 스키마로 묻는다. `condition.branches[].when` 식의 문법은 조건 노드 티켓이 정한다.
+`next` 갈래는 선이 없어도 된다 — 거기서 턴이 끝난다. AI 답변의 `handoff` 갈래도 선택이다 — 선이 있고 테넌트가 사람 넘김을 켰고 상담시간일 때만 AI가 넘김을 판단하고(넘김 판단이 든 답변 스키마), 선이 없으면 넘김 없는 답변 스키마로 묻는다. AI 답변의 `instructions`는 시스템 프롬프트 맨 끝 「이 단계의 지침」으로 실린다(그 노드의 호출에만). **사람 넘김이 결정된 턴에는 모델이 쓴 답을 방문자에게 흘리지도 저장하지도 않는다** — 넘김 판단(`needs_hitl`)이 답(`response`)보다 먼저 나오는 스키마라, 넘기기로 했으면 그때 답을 막고 넘김 안내만 보인다.
+
+### AI 분류·추출 결과
+
+노드는 기존 챗과 같은 Provider(체험 차감 포함)로 구조화 출력을 받아 흐름 상태에 쓴다.
+
+| 상태 키 | 값 |
+|---|---|
+| `label` | 고른 라벨(`labels`가 없으면 `""`) |
+| `fields` | `{필드 이름: 값}` — 못 뽑은 필드(null·빈 문자열)는 `null`. `false`·`0`은 누락이 아니다 |
+| `confidence` | 확신도 0~1(범위 밖은 잘라냄). 호출이 실패하면 `label ""`·`confidence 0`으로 이어 가고 판단 기록 reason에 실패를 적는다 |
+
+판단 기록(record)에는 입력·출력(`label`/`fields`/`confidence`)·`missing`(못 뽑은 필드 이름들)·reason이 남는다. 상태는 대화에 걸쳐 유지되고, 분류 노드를 다시 지날 때마다 덮어쓴다.
+
+### when 식
+
+조건 노드는 갈래를 **위에서부터** 계산해 처음 참인 `name` 갈래로, 하나도 없으면 `else`로 간다. 식은 Python 식의 작은 부분집합이다(`eval` 없이 직접 계산). 저장할 때 문법을 검사한다 — 오류는 `invalid_config`.
+
+- 이름: `label`, `confidence`, `fields`(`fields.budget`), `user_message`. 그 밖의 이름은 오류.
+- 값: `'문자열'`, 숫자, `true`/`false`/`null`, 목록 `['a', 'b']`.
+- 비교: `==` `!=` `<` `<=` `>` `>=`. 포함: `'환불' in user_message`, `label in ['a', 'b']`, `not in`.
+- 결합: `and` `or` `not` 괄호.
+- 값이 없으면(분류 전·필드 누락) `null`로 읽는다. `<` `<=` `>` `>=`와 `in`은 `null`이 끼면 거짓이고 오류를 내지 않는다.
+
+예) 확신도가 낮으면 사람에게: `confidence < 0.5`. 판단 기록에는 계산한 갈래들(`checked`)과 고른 갈래·이유(`'식'이(가) 참이라 '갈래' 갈래로`)가 남는다.
 
 ### 비밀은 참조만
 
@@ -111,6 +135,10 @@ N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
 전문은 `backend/apps/flows/examples/sandcorp_home.json`. 핵심 부분:
 
 ```json
+{"id": "classify", "kind": "ai_classify", "code": "N-02", "name": "의도 분류",
+ "config": {"instructions": "방문자 의도를 분류하고, 요구사항이 다 모였는지 함께 판단한다.",
+            "labels": ["project_inquiry", "human_request", "other"],
+            "fields": [{"name": "requirements_complete", "type": "boolean", "description": "목적·규모·기한이 모두 나왔으면 true"}]}},
 {"id": "route", "kind": "condition", "code": "N-03", "name": "의도에 따라",
  "config": {"branches": [{"name": "inquiry", "when": "label == 'project_inquiry'"},
                          {"name": "human", "when": "label == 'human_request' or confidence < 0.5"}]}},
