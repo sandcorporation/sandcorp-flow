@@ -101,7 +101,7 @@ describe('ConfigTab — 비밀·허용 도메인', () => {
     expect(screen.getByText('a.example.com')).toBeInTheDocument()
     expect(screen.queryByLabelText('비밀 값')).toBeNull()
     expect(screen.queryByRole('button', { name: /삭제|값 바꾸기|추가|비밀 저장/ })).toBeNull()
-    expect(screen.getByText(/관리자만/)).toBeInTheDocument()
+    expect(screen.getAllByText(/관리자만/)).toHaveLength(2)
   })
 
   it('쓰기가 403 이면 「권한이 없습니다.」를 보인다', async () => {
