@@ -8,6 +8,8 @@ celery>=5.3,<6.0
 taskiq>=0.11,<0.13
 taskiq-redis>=1.0,<2.0
 python-jose[cryptography]>=3.3,<4.0
+# sandcorp-auth Resource Token(EdDSA/Ed25519) 검증 — 규칙 문서가 PyJWT 기준(#20)
+PyJWT[crypto]>=2.9,<3.0
 langchain>=0.3,<1.0
 langgraph>=0.2,<1.0
 langchain-openai>=0.2,<1.0

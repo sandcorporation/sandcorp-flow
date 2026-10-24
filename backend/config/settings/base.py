@@ -129,6 +129,14 @@ GRAPH_EXTRACTION_MODEL = os.environ.get("GRAPH_EXTRACTION_MODEL", OPEN_ROUTER_DE
 # JWT signing key (derived from SECRET_KEY)
 JWT_SIGNING_KEY = SECRET_KEY
 
+# sandcorp-auth Resource Token 검증(ADR-0028, #20). 규칙: sandcorp-auth docs/resource-server-token-validation.md
+AUTH_ISSUER = os.environ.get("AUTH_ISSUER", "https://auth.sandcorp.co.kr")
+AUTH_JWKS_URL = os.environ.get("AUTH_JWKS_URL", f"{AUTH_ISSUER}/.well-known/jwks.json")
+# 이 서비스의 리소스(`aud`). 사이트 원점(메타데이터 주소)은 여기서 뽑는다.
+AUTH_RESOURCE = os.environ.get("AUTH_RESOURCE", "https://flow.sandcorp.co.kr/api")
+# 대표 계정 username. 비어 있으면 대표 토큰(acct 없음)은 모두 거부된다.
+AUTH_OWNER_SUB = os.environ.get("AUTH_OWNER_SUB", "")
+
 # CORS
 CORS_ALLOW_ALL_ORIGINS = True
 
