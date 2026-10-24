@@ -581,9 +581,9 @@ export default function ConfigTab() {
               <p className="text-xs text-muted-foreground">서버 연동용 비밀 키예요. 재발급 즉시 기존 KEY는 무효화되니 서버 설정을 바로 업데이트해야 합니다.</p>
             </div>
             {newKey ? (
-              <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
+              <Card className="border-primary bg-primary/15">
                 <CardContent className="space-y-2 pt-5">
-                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">새 API KEY (지금만 표시됩니다. 반드시 복사하세요.)</p>
+                  <p className="text-xs font-semibold text-foreground">새 API KEY (지금만 표시됩니다. 반드시 복사하세요.)</p>
                   <code className="block break-all text-sm">{newKey}</code>
                   <div className="flex gap-2">
                     <Button size="sm" onClick={() => navigator.clipboard.writeText(newKey)}>복사</Button>

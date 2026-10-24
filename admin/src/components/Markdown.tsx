@@ -17,7 +17,7 @@ function safeUrl(url: string): string {
 const components: Components = {
   a: ({ href, children }) => (
     <a href={href || undefined} target="_blank" rel="noopener noreferrer nofollow"
-       className="break-words text-sky-600 underline dark:text-sky-400">{children}</a>
+       className="break-words text-foreground underline decoration-primary decoration-2 underline-offset-2">{children}</a>
   ),
   img: () => null,
   p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
@@ -34,10 +34,10 @@ const components: Components = {
     const block = /language-/.test(className || '') || String(children).includes('\n')
     return block
       ? <code className="font-mono text-[0.85em]">{children}</code>
-      : <code className="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.85em] dark:bg-white/10">{children}</code>
+      : <code className="rounded-sm bg-foreground/10 px-1 py-0.5 font-mono text-[0.85em]">{children}</code>
   },
   pre: ({ children }) => (
-    <pre className="my-1.5 overflow-x-auto rounded-md bg-black/10 p-2.5 dark:bg-white/10">{children}</pre>
+    <pre className="my-1.5 overflow-x-auto rounded-md bg-foreground/10 p-2.5 font-mono">{children}</pre>
   ),
   blockquote: ({ children }) => (
     <blockquote className="my-1.5 border-l-2 border-muted-foreground/40 pl-2 text-muted-foreground">{children}</blockquote>

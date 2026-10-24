@@ -38,13 +38,13 @@ export default function TrialBanner() {
       className={cn(
         'mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2 text-sm break-keep',
         msg.tone === 'warn'
-          ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200'
+          ? 'border-primary bg-primary/15 text-foreground'
           : 'border-border bg-muted/50 text-muted-foreground',
       )}
     >
       <span className="min-w-0 flex-1">{msg.text}</span>
       {isAdmin ? (
-        <Link to="/tenant/config?section=ai" className="shrink-0 font-medium text-primary underline underline-offset-4">
+        <Link to="/tenant/config?section=ai" className="shrink-0 font-medium text-foreground underline decoration-primary decoration-2 underline-offset-4">
           LLM 키 넣기
         </Link>
       ) : (

@@ -58,7 +58,7 @@ export default function TenantOnboarding({ onCreated }: { onCreated: (who: strin
   if (expired) {
     return (
       <div className="space-y-3 text-sm leading-relaxed" data-testid="tenant-onboarding">
-        <p role="alert" className="text-red-600 dark:text-red-400">로그인이 만료되었습니다. 다시 로그인하세요.</p>
+        <p role="alert" className="text-destructive">로그인이 만료되었습니다. 다시 로그인하세요.</p>
         <Button asChild className="w-full"><a href={memberLoginUrl()}>sandcorp 계정으로 로그인</a></Button>
       </div>
     )
@@ -85,11 +85,11 @@ export default function TenantOnboarding({ onCreated }: { onCreated: (who: strin
         </div>
         <p className="text-xs text-muted-foreground">손님이 챗봇을 여는 주소입니다. 한글·영문·숫자와 하이픈(-)을 쓸 수 있어요.</p>
       </div>
-      {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p role="alert" className="text-destructive">{error}</p>}
       <Button type="submit" className="w-full" disabled={busy || !name.trim() || !slug.trim()}>
         {busy ? '만드는 중…' : '조직 만들기'}
       </Button>
-      <a className="inline-block text-primary underline underline-offset-4" href={ACCOUNT_URL} target="_blank" rel="noreferrer">
+      <a className="inline-block text-foreground underline decoration-primary decoration-2 underline-offset-4" href={ACCOUNT_URL} target="_blank" rel="noreferrer">
         내 계정
       </a>
     </form>

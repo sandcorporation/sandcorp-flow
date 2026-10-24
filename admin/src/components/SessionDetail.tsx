@@ -9,7 +9,7 @@ const ROLE_LABEL: Record<string, string> = { user: 'Visitor', assistant: 'AI', h
 const ROLE_BUBBLE: Record<string, string> = {
   user: 'self-end bg-primary text-primary-foreground',
   assistant: 'self-start bg-muted text-foreground',
-  human_agent: 'self-start bg-violet-500 text-white',
+  human_agent: 'self-start bg-alarm text-destructive-foreground',
 }
 
 // 한 턴의 실행 추적 — 질문과 답변 사이에 끼워 인과를 보여준다(원인→결과). 실행 노드 흐름은 항상

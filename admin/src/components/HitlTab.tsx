@@ -13,7 +13,7 @@ import Markdown from './Markdown'
 const STATUS_LABEL: Record<string, string> = { pending: '대기 중', claimed: '진행 중', resolved: '완료' }
 const STATUS_VARIANT: Record<string, 'destructive' | 'default' | 'success'> = { pending: 'destructive', claimed: 'default', resolved: 'success' }
 const ROLE_LABEL: Record<string, string> = { user: 'Visitor', assistant: 'AI', human_agent: '상담원' }
-const ROLE_BUBBLE: Record<string, string> = { user: 'self-start bg-muted', assistant: 'self-end bg-sky-100 dark:bg-sky-900/40', human_agent: 'self-end bg-emerald-100 dark:bg-emerald-900/40' }
+const ROLE_BUBBLE: Record<string, string> = { user: 'self-start bg-muted', assistant: 'self-end bg-raised border border-line-soft', human_agent: 'self-end bg-ok/15 border border-ok/50' }
 
 type ChatMsg = { id?: string; role: string; content: string; created_at?: string }
 

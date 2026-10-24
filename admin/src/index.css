@@ -2,52 +2,151 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 산업용 HMI 테마(ADR-0026). 기준: docs/design/agents-industrial.css.
+   Flow 전용 토큰은 전부 `--flow-` 접두 — sandcorp-design 공용 토큰과 이름이 겹치지 않는다.
+   값은 "H S% L%" 세 값(색이 필요한 곳에서 hsl(var(--flow-x))). 시안 변수와 1:1:
+     --flow-bg 바탕 · surface 면 · sunken 가라앉은 면 · raised 올린 면 · line/line-soft 선 · grid 모눈
+     --flow-ink 강조 글자 · text 본문 · muted 보조 글자 · accent 호박색(주 버튼·실행 경로) · accent-ink 호박색 위 글자
+     --flow-run 실행 중 · ok 정상 녹색 · alarm 사람 넘김 적색 · hazard 가드레일 경고띠 황 · head/head-ink 머리 막대
+     --flow-hover hover 면 · alarm-ink 적색 위 글자 · radius 모서리(2px) · font-sans/cond/mono
+   shadcn식 이름(--background 등)은 아래에서 --flow-* 로 파생한다(대응표는 PR 본문). */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    --flow-bg: 90 5.6% 78.8%;
+    --flow-surface: 84 7.7% 87.3%;
+    --flow-sunken: 90 6.8% 82.7%;
+    --flow-raised: 84 12.8% 92.4%;
+    --flow-line: 97.5 4.2% 62.4%;
+    --flow-line-soft: 90 5.6% 71.8%;
+    --flow-grid: 94.3 5.4% 74.7%;
+    --flow-ink: 120 5.3% 7.5%;
+    --flow-text: 90 8.8% 13.3%;
+    --flow-muted: 105 4.6% 34.1%;
+    --flow-accent: 41.3 100% 47.1%;
+    --flow-accent-ink: 120 5.3% 7.5%;
+    --flow-run: 41.3 100% 47.1%;
+    --flow-ok: 122.3 45.3% 33.7%;
+    --flow-alarm: 0 66.4% 46.7%;
+    --flow-alarm-ink: 0 0% 100%;
+    --flow-hazard: 48.1 100% 47.5%;
+    --flow-head: 120 4.1% 23.7%;
+    --flow-head-ink: 84 12.8% 92.4%;
+    --flow-hover: 90 6.8% 82.7%;
+
+    --flow-radius: 2px;
+    --flow-font-sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    --flow-font-cond: "IBM Plex Sans Condensed", "IBM Plex Sans KR", "Arial Narrow", sans-serif;
+    --flow-font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+    /* shadcn식 이름 — Flow 토큰에서 파생 */
+    --background: var(--flow-bg);
+    --foreground: var(--flow-text);
+    --card: var(--flow-surface);
+    --card-foreground: var(--flow-ink);
+    --primary: var(--flow-accent);
+    --primary-foreground: var(--flow-accent-ink);
+    --secondary: var(--flow-raised);
+    --secondary-foreground: var(--flow-ink);
+    --muted: var(--flow-sunken);
+    --muted-foreground: var(--flow-muted);
+    --accent: var(--flow-hover);
+    --accent-foreground: var(--flow-ink);
+    --destructive: var(--flow-alarm);
+    --destructive-foreground: var(--flow-alarm-ink);
+    --border: var(--flow-line);
+    --input: var(--flow-line);
+    --ring: var(--flow-accent);
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    color-scheme: dark;
+    --flow-bg: 120 3.6% 11%;
+    --flow-surface: 120 4% 14.7%;
+    --flow-sunken: 120 4.2% 9.4%;
+    --flow-raised: 120 4.3% 18%;
+    --flow-line: 110 4.2% 28.2%;
+    --flow-line-soft: 108 4.7% 21%;
+    --flow-grid: 120 3.8% 15.5%;
+    --flow-ink: 80 13% 91%;
+    --flow-text: 86.7 8.3% 78.6%;
+    --flow-muted: 100 4.1% 56.7%;
+    --flow-accent: 41.3 100% 47.1%;
+    --flow-accent-ink: 120 5.3% 7.5%;
+    --flow-run: 41.6 90.9% 57.1%;
+    --flow-ok: 122.6 39.3% 54.1%;
+    --flow-alarm: 1.1 83.2% 62.5%;
+    --flow-alarm-ink: 120 5.3% 7.5%;
+    --flow-hazard: 48.1 100% 47.5%;
+    --flow-head: 120 4.5% 21.8%;
+    --flow-head-ink: 80 13% 91%;
+    --flow-hover: 120 4.3% 18%;
   }
 
   * {
     @apply border-border;
   }
+  html,
+  body {
+    height: 100%;
+  }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--flow-font-sans);
+    font-size: 13.5px;
+    line-height: 1.45;
+    word-break: keep-all;
+  }
+  button {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid hsl(var(--flow-accent));
+    outline-offset: 1px;
+  }
+}
+
+@layer components {
+  /* 섹션 라벨: Plex Sans Condensed, 넓은 자간, 아래 가는 선 (시안 .group h4) */
+  .hmi-label {
+    font-family: var(--flow-font-cond);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: hsl(var(--flow-muted));
+  }
+  /* 판단 기록·ID·수치: 모노 */
+  .hmi-code {
+    font-family: var(--flow-font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.02em;
+  }
+  /* 가드레일 황·흑 경고띠 (시안 .node.guard .kind) — 노드 표시는 #29 */
+  .hazard-stripe {
+    background: repeating-linear-gradient(-45deg, hsl(var(--flow-hazard)) 0 8px, #121412 8px 16px);
+  }
+  /* 상태 램프 */
+  .lamp {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+    background: hsl(var(--flow-muted) / 0.5);
+  }
+  .lamp-ok {
+    background: hsl(var(--flow-ok));
+  }
+  .lamp-run {
+    background: hsl(var(--flow-run));
+    box-shadow: 0 0 0 3px hsl(var(--flow-run) / 0.35);
+  }
+  .lamp-alarm {
+    background: hsl(var(--flow-alarm));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
   }
 }
