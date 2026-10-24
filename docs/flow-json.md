@@ -34,7 +34,7 @@ HTTP 도구 보안은 [ADR-0029](adr/0029-http-tool-node-security.md). 용어는
 
 ## 노드 종류와 config
 
-종류마다 config 모양이 다르다. 모르는 필드는 거부한다. (가드레일·HTTP 도구는 아직 모양만 있고 실행 핸들러가 없다.)
+종류마다 config 모양이 다르다. 모르는 필드는 거부한다. (HTTP 도구는 아직 모양만 있고 실행 핸들러가 없다 — M3.)
 
 | kind | 이름 | config | 나가는 갈래 |
 |---|---|---|---|
@@ -44,10 +44,20 @@ HTTP 도구 보안은 [ADR-0029](adr/0029-http-tool-node-security.md). 용어는
 | `handoff` | 사람 넘김 | `reason: str = ""` | 없음 |
 | `knowledge_search` | 지식 검색 | `top_k: int = 5`(1~20) | `next` |
 | `ai_classify` | AI 분류·추출 | `instructions: str = ""`, `labels: [str] = []`(분류), `fields: [{name, description = "", type = "string"\|"number"\|"boolean"}] = []`(추출) — **둘 중 하나는 있어야** | `next` |
-| `guardrail` | 가드레일 | `rules: ["banned_words" \| "pii" \| "price_promise"]`(1개 이상), `action: "block" \| "rewrite" = "rewrite"` | `next` |
+| `guardrail` | 가드레일 | `rules: ["banned_words" \| "pii" \| "price_promise"]`(1개 이상, 중복 불가), `action: "block" \| "rewrite" \| "mask" = "rewrite"`, `target: "output" \| "input" = "output"`, `banned_words: [str] = []`(`banned_words` 규칙이면 1개 이상), `block_message: str`(기본 「죄송합니다. 해당 내용은 안내해 드릴 수 없습니다.」). `price_promise`와 `mask`는 함께 못 쓴다. 자세한 동작은 아래 「가드레일」 | `next` |
 | `http_tool` | HTTP 도구 | `method`(GET·POST·PUT·PATCH·DELETE), `url`(https만, user@host 금지), `headers: {str: str}`, `body_template: str \| null` | `next` |
 
 `next` 갈래는 선이 없어도 된다 — 거기서 턴이 끝난다. AI 답변의 `handoff` 갈래도 선택이다 — 선이 있고 테넌트가 사람 넘김을 켰고 상담시간일 때만 AI가 넘김을 판단하고(넘김 판단이 든 답변 스키마), 선이 없으면 넘김 없는 답변 스키마로 묻는다. AI 답변의 `instructions`는 시스템 프롬프트 맨 끝 「이 단계의 지침」으로 실린다(그 노드의 호출에만). **사람 넘김이 결정된 턴에는 모델이 쓴 답을 방문자에게 흘리지도 저장하지도 않는다** — 넘김 판단(`needs_hitl`)이 답(`response`)보다 먼저 나오는 스키마라, 넘기기로 했으면 그때 답을 막고 넘김 안내만 보인다.
+
+### 가드레일
+
+`target`의 글을 `rules`로 검사한다 — `output`: 직전 AI 답변(나가는 말), `input`: 방문자 입력(들어오는 말).
+
+- **규칙**: `banned_words`(금지어 목록, 대소문자 무시 부분 일치)와 `pii`(한국 전화번호·주민등록번호·카드번호(Luhn 검사)·이메일)는 결정적 코드다. `price_promise`(가격·기간·결과를 확정·약속하는가)는 LLM이 판정한다 — 판정이 실패하면 통과시키지 않고 걸린 것으로 본다.
+- **처리**: `block`은 `block_message`로 바꾼다. `mask`는 걸린 부분만 가린다(금지어는 `●`, 개인정보는 `[전화번호 가림]`). `rewrite`는 LLM으로 고쳐 쓰고, 고친 글에 결정적 규칙이 남거나 호출이 실패하면 `block_message`로 막는다. 걸리지 않으면 글을 그대로 둔다.
+- **들어오는 말**: 가리기·다시 쓰기는 모델과 대화 기록이 보는 `user_message`를 바꾼다(원본 메시지 행은 이미 저장돼 있다). 막으면 `block_message`로 답하고 턴이 끝난다 — 뒤의 노드는 돌지 않는다.
+- **스트리밍**: 바로 뒤에 `target: "output"` 가드레일이 붙은 AI 답변은 답을 토큰으로 흘리지 않고 모아 두었다가, 가드레일이 통과시킨(또는 바꾼) 글을 한 번에 내보낸다. 막힌 원문이 먼저 새지 않게 하려는 것이다. 이 때문에 `await_reply` AI 답변 바로 뒤에는 출력 가드레일을 못 붙인다(`guardrail_after_await_reply`). AI 답변이 아닌 노드를 사이에 두면 답은 이미 나간 뒤라 저장되는 글만 바뀌고 판단 기록에 `late`가 남는다.
+- **판단 기록**: `record`에 `target`·`rules`·`hits`(걸린 규칙과 종류 — 걸린 원문은 남기지 않는다)·`action`·`reason`. LLM을 부르면 노드 토큰·비용에 잡힌다.
 
 ### AI 분류·추출 결과
 

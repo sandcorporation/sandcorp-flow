@@ -6,6 +6,8 @@
   만들지 않는다 — 기존 함수가 ContextVar의 ``chat_provider``를 꺼내 쓴다.
 - AI 분류·추출: ``apps.flows.classify`` — 같은 Provider 경로로 구조화 출력을 받아 상태의 ``label``·``fields``·``confidence``에 쓴다.
 - 조건: ``when`` 식(``apps.flows.expr``)을 위에서부터 계산해 처음 참인 갈래로, 없으면 ``else``.
+- 가드레일: ``apps.flows.guardrail`` — 직전 AI 답변(나가는 말)이나 방문자 입력(들어오는 말)을 검사해 막기·다시 쓰기·가리기.
+  뒤에 출력 가드레일이 붙은 AI 답변은 답을 스트림에 흘리지 않고 모아 두었다가(``stream_held``) 가드레일이 통과시킨 글을 내보낸다.
 - 사람 넘김: ``create_escalation_node``(``hitl_enabled``가 거짓이면 넘기지 않고 턴을 끝낸다.
   ``dry_run``(시험 한 턴)이면 넘긴 것으로만 적고 Escalation을 만들지 않는다).
 """
@@ -15,12 +17,14 @@ from __future__ import annotations
 from typing import cast
 
 from apps.agent.nodes import (
+    publish_answer,
     call_llm_plain,
     call_llm_structured,
     create_escalation_node,
     local_search_node,
     source_search_node,
 )
+from apps.flows import guardrail as checks
 from apps.flows.classify import classify as run_classify
 from apps.flows.contract import FlowState, NodeContext, NodeOutcome, register
 from apps.flows.expr import compile_when
@@ -31,6 +35,7 @@ from apps.flows.schema import (
     AiAnswerConfig,
     AiClassifyConfig,
     ConditionConfig,
+    GuardrailConfig,
     HandoffConfig,
     KnowledgeSearchConfig,
     NodeKind,
@@ -60,7 +65,7 @@ async def ai_answer(state: FlowState, ctx: NodeContext) -> NodeOutcome:
     can_hand_off = state.get("hitl_enabled", False) and HANDOFF_HANDLE in ctx.outgoing
     call = call_llm_structured if can_hand_off else call_llm_plain
 
-    working: dict[str, object] = {**state, "node_instructions": config.instructions}
+    working: dict[str, object] = {**state, "node_instructions": config.instructions, "hold_stream": ctx.hold_stream}
     update: dict[str, object] = await call(working)
     source_fallback = False
     if state.get("rag_searched") and not update.get("context_sufficient", True) and not state.get("source_text_tried"):
@@ -70,6 +75,7 @@ async def ai_answer(state: FlowState, ctx: NodeContext) -> NodeOutcome:
         working.update(added)
         update = {**added, **await call(working)}
 
+    update = {**update, "stream_held": ctx.hold_stream}
     record: dict[str, object] = {
         "input": state.get("user_message", ""), "output": update.get("assistant_response", ""),
         "source_fallback": source_fallback,
@@ -148,3 +154,66 @@ async def handoff(state: FlowState, ctx: NodeContext) -> NodeOutcome:
     return NodeOutcome(update={**update, "needs_hitl": True, "hitl_reason": working.get("hitl_reason", "")},
                        handle=None, saved=True,
                        record={"reason": f"넘김: {working.get('hitl_reason') or '이유 없음'}"})
+
+
+@register(NodeKind.GUARDRAIL)
+async def guardrail(state: FlowState, ctx: NodeContext) -> NodeOutcome:
+    config = cast(GuardrailConfig, ctx.node.config)
+    incoming = config.target == "input"
+    text = state.get("user_message", "") if incoming else state.get("assistant_response", "")
+    held = bool(state.get("stream_held", False)) and not incoming
+    sid = str(state["session_id"])
+
+    async def finish(new_text: str, record: dict[str, object], *, end_turn: bool = False) -> NodeOutcome:
+        """처리 결과를 상태에 쓰고, 모아 둔 답이면 이제 방문자 스트림에 내보낸다."""
+        if incoming:
+            update: dict[str, object] = {"user_message": new_text}
+            if end_turn:  # 막힌 입력: 정해 둔 문구로 답하고 턴을 끝낸다. 막힌 원문은 대화 기록에도 남기지 않는다
+                await publish_answer(sid, config.block_message)
+                update = {"user_message": "(차단된 입력)", "assistant_response": config.block_message}
+            return NodeOutcome(update=update, handle=None if end_turn else DEFAULT_HANDLE, record=record)
+        if held and new_text:
+            await publish_answer(sid, new_text)
+        return NodeOutcome(update={"assistant_response": new_text, "stream_held": False}, record=record)
+
+    if not text.strip():
+        return await finish(text, {"target": config.target, "hits": [], "reason": "검사할 글이 없어 통과"})
+
+    hits: list[dict[str, str]] = checks.deterministic_hits(text, list(config.rules), config.banned_words)
+    judge_failed = False
+    if "price_promise" in config.rules:
+        try:
+            verdict = await checks.judge_price_promise(text)
+            if verdict.violates:
+                hits.append({"rule": "price_promise", "reason": verdict.reason})
+        except Exception as exc:  # noqa: BLE001 — 판정을 못 하면 통과시키지 않는다(닫힌 쪽으로)
+            judge_failed = True
+            hits.append({"rule": "price_promise", "reason": f"판정 실패({type(exc).__name__})"})
+
+    record: dict[str, object] = {"target": config.target, "rules": list(config.rules), "hits": hits}
+    if not hits:
+        return await finish(text, {**record, "reason": "걸린 규칙 없음 — 그대로 통과"})
+    record["action"] = config.action
+    caught = ", ".join(sorted({str(h["rule"]) for h in hits}))
+    if judge_failed:
+        record["judge_failed"] = True
+        caught += "(가격 약속 판정 실패 — 통과시키지 않음)"
+    if not held and not incoming:
+        record["late"] = True  # 이 답은 이미 방문자에게 나갔다 — 저장된 글만 바뀐다
+
+    if config.action == "mask":
+        return await finish(checks.mask(text, list(config.rules), config.banned_words),
+                            {**record, "reason": f"{caught}에 걸려 걸린 부분을 가림"})
+    if config.action == "rewrite":
+        try:
+            rewritten = await checks.rewrite(text, list(config.rules), config.banned_words, incoming=incoming)
+        except Exception as exc:  # noqa: BLE001 — 고쳐 쓰지 못하면 원문을 내보내지 않고 막는다
+            return await finish(config.block_message, {
+                **record, "action": "block",
+                "reason": f"{caught}에 걸림 — 다시 쓰기 실패({type(exc).__name__})로 막음"}, end_turn=incoming)
+        if rewritten and not checks.deterministic_hits(rewritten, list(config.rules), config.banned_words):
+            return await finish(rewritten, {**record, "reason": f"{caught}에 걸려 LLM으로 다시 씀"})
+        return await finish(config.block_message, {
+            **record, "action": "block", "reason": f"{caught}에 걸림 — 다시 쓴 결과에도 규칙이 남거나 비어 막음"},
+            end_turn=incoming)
+    return await finish(config.block_message, {**record, "reason": f"{caught}에 걸려 막음"}, end_turn=incoming)

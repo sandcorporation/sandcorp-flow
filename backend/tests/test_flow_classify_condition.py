@@ -183,8 +183,8 @@ async def test_classify_failure_does_not_break_the_turn_and_falls_to_else(tenant
 
 
 @pytest.mark.django_db(transaction=True)
-async def test_example_flow_runs_one_turn_up_to_the_nodes_without_handlers(tenant_with_key, fake_chat_llm):
-    """예제 ①: 분류·조건 핸들러가 생겨 가드레일·HTTP 노드 앞까지 한 턴에 돈다."""
+async def test_example_flow_runs_one_turn_up_to_the_http_node(tenant_with_key, fake_chat_llm):
+    """예제 ①: 분류·조건·가드레일 핸들러가 있어 HTTP 노드(M3, #34) 앞까지 한 턴에 돈다."""
     import json
     from pathlib import Path
 
@@ -194,16 +194,16 @@ async def test_example_flow_runs_one_turn_up_to_the_nodes_without_handlers(tenan
     graph = json.loads((Path(__file__).parent.parent / "apps/flows/examples/sandcorp_home.json").read_text())
     with pytest.raises(UnsupportedNodeKind) as exc:
         compile_flow(graph)
-    assert "ai_classify" not in str(exc.value) and "condition" not in str(exc.value)  # 남은 건 가드레일·HTTP뿐
+    assert "guardrail" not in str(exc.value) and "http_tool" in str(exc.value)  # 남은 건 HTTP뿐
 
-    # 가드레일·HTTP 노드(#26/#34)를 빼고 같은 분기를 돈다
-    trimmed = {"nodes": [n for n in graph["nodes"] if n["kind"] not in ("guardrail", "http_tool")],
-               "edges": [e for e in graph["edges"]
-                         if not {e["from"], e["to"]} & {"guard", "submit"}]}
+    # HTTP 노드(#34)만 빼고 같은 분기를 돈다 — 가격 약속 판정은 걸리지 않게 둔다
+    trimmed = {"nodes": [n for n in graph["nodes"] if n["kind"] != "http_tool"],
+               "edges": [e for e in graph["edges"] if "submit" not in {e["from"], e["to"]}]}
+    fake_chat_llm.by_schema["GuardrailVerdict"] = lambda m, schema: schema(violates=False)
     _classifier(fake_chat_llm, label="project_inquiry", confidence=0.9,
                 fields={"requirements_complete": True})
     result, _ = await _turn(tenant, trimmed, "쇼핑몰 만들고 싶어요")
-    assert [t["node_id"] for t in result["trace"]] == ["start", "classify", "route", "enough", "cases", "draft"]
+    assert [t["node_id"] for t in result["trace"]] == ["start", "classify", "route", "enough", "cases", "draft", "guard"]
 
     _classifier(fake_chat_llm, label="project_inquiry", confidence=0.9, fields={"requirements_complete": False})
     result, _ = await _turn(tenant, trimmed, "쇼핑몰 만들고 싶어요")
