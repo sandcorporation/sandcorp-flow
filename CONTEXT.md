@@ -1,14 +1,16 @@
-# Domain Glossary
+# Domain Glossary — Sandcorp Flow
+
+Sandcorp Flow(`flow.sandcorp.co.kr`)는 옛 Embed Chat을 넓힌 셀프 가입 SaaS다. 테넌트가 상담 **흐름(Flow)** 을 그려 시험·배포하고, 위젯에서 방문자가 그 흐름과 대화한다(ADR-0026). 아래 「Flow」 절이 새 용어이고, 나머지 절은 재사용하는 엔진의 용어다.
 
 ## Actors
 
 **Operator**
-이 챗봇 플랫폼 자체를 운영하는 팀. 어드민 페이지 최상위 권한 보유. Tenant 계정 생성/정지, 전체 현황 모니터링 담당.
+플랫폼 자체를 운영하는 쪽(대표). 어드민 페이지 최상위 권한 보유. Tenant 정지, 전체 현황 모니터링 담당. **sandcorp-auth에서 받은 대표 토큰의 Flow 리소스 `admin` 스코프가 곧 Operator 권한**이다(ADR-0028). Flow 안에 Operator 비밀번호는 두지 않는다(기존 Django `Operator` 비밀번호 로그인은 걷어낼 대상).
 
 **Tenant**
 챗봇을 자기 사이트에 embed해서 쓰는 B2B 계약 고객사. 자기 RAG Knowledge Base, Visitor Memory를 어드민 페이지에서 직접 관리. `Tenant.name`은 표시명이자 **전역 unique한 조직 로그인 식별자**(어드민 로그인 시 `name + username`으로 조직을 특정한다 — 대소문자·공백 무관 충돌 처리). 공개 챗봇 URL용 Slug와는 별개다(name=로그인, slug=공개 URL).
 
-**TenantAgent**
+**TenantAgent** _(자체 계정 부분은 걷어낼 대상 — ADR-0028)_
 Tenant 조직 소속의 개별 상담원 계정. 고유한 username/password를 갖고, Tenant 어드민 UI에 개인 자격으로 로그인한다. HITL `EscalationClaim.claimed_by` 식별자로 사용되어 누가 어떤 세션을 담당하는지 추적한다. TENANT_KEY(서버사이드 시크릿)와 구분되며, TenantAgent는 조직 내 여러 명이 존재할 수 있다. 각 TenantAgent는 하나의 **Role**(Tenant Admin / Tenant Member)을 가진다.
 
 **Tenant Admin / Tenant Member**
@@ -38,7 +40,7 @@ _Avoid_: EmbedToken(per-session 단기 토큰 — 폐지됨); 토큰(해시는 �
 **TENANT_KEY**
 Tenant를 식별하는 서버사이드 전용 시크릿. 절대 브라우저에 노출되지 않음. 두 가지 용도로만 사용: (1) Tenant 서버가 Identity Verification HMAC API를 호출할 때, (2) TenantAgent 계정을 API로 생성할 때. 어드민 UI 로그인에는 사용하지 않음.
 
-**TenantAgent 자격증명**
+**TenantAgent 자격증명** _(걷어낼 대상 — ADR-0028. 새로 만들거나 넓히지 않는다. 고객 로그인은 sandcorp-auth 다중 사용자화 뒤 External Identity로 바뀐다)_
 TenantAgent가 어드민 UI에 로그인할 때 사용하는 `tenant_name + username + password`. Tenant는 **공개 Self-Signup**으로 직접 가입한다 — 조직 이름(unique)·username·password를 입력하면 Tenant와 그 조직의 **첫 Tenant Admin** TenantAgent가 생성된다(Operator 개입 없음). 이후 팀원(Tenant Member 등) 계정은 Tenant Admin이 어드민 UI "팀원" 탭에서, 또는 TENANT_KEY로 인증된 API로 생성한다(username + 임시 password). 로그인 성공 시 Access Token + Refresh Token을 발급받는다. (Operator가 Tenant를 직접 프로비저닝하는 경로도 공존한다.)
 
 **Access Token**
@@ -161,3 +163,76 @@ Escalation이 `pending` 또는 `claimed` 상태인 동안 ChatSession이 처하�
 
 **HumanTurn**
 HITL 모드에서 Tenant 상담원이 Visitor에게 보내는 메시지. ChatMessage와 동일한 구조이나 `role`이 `human_agent`로 저장됨. Visitor 위젯에서는 TenantConfig의 `agent_display_name`으로 표시됨.
+
+## Identity (sandcorp-auth)
+
+**External Identity**
+Flow 사용자의 신원. sandcorp-auth가 발급한 액세스 토큰의 `(iss, sub)` 쌍이며 Flow 사용자 행의 유일 키다. Flow는 비밀번호를 갖지 않는다. 표시 이름은 캐시일 뿐 신원이 아니다(ADR-0028).
+_Avoid_: username·tenant_name을 신원으로 쓰기, 「계정」(Flow에는 자체 계정이 없다)
+
+**Membership**
+External Identity와 Tenant의 연결과 그 역할(Tenant Admin / Tenant Member). 테넌트 역할은 sandcorp-auth 스코프가 아니라 Flow 안의 이 행으로 관리하며, 권한 비트 가드와 「마지막 Admin 보호」를 그대로 따른다.
+_Avoid_: 스코프로 역할 표현
+
+**Resource Token**
+Flow API가 받는 sandcorp-auth 액세스 토큰(`aud` = Flow 리소스). 검증 규칙은 sandcorp-auth `docs/resource-server-token-validation.md`를 그대로 따른다. 관리 화면은 로그인 콜백에서 한 번 검증한 뒤 Flow 자기 세션(Access/Refresh)으로 돈다.
+
+## Flow
+
+**Flow**
+테넌트가 편집기에서 그리는 상담 흐름. 노드와 선으로 이뤄지며, 하나의 초안과 여러 Flow Version을 가진다. 위젯(공개 slug)은 테넌트가 정한 Flow의 배포 중 버전으로 돈다.
+_Avoid_: 시나리오, 봇, 워크플로(Workflow는 다른 제품 용어)
+
+**Flow Version**
+Flow를 굳힌, **바뀌지 않는** JSON(노드·선·노드 설정). 저장 뒤 고치지 않는다. ChatSession은 시작할 때의 버전에 고정되어 끝까지 그 버전으로 돈다(ADR-0027).
+
+**Draft**
+Flow마다 하나 있는 고칠 수 있는 작업본. 편집과 시험 대화는 초안에 대해 한다. 「배포」가 초안을 새 Flow Version으로 굳힌다.
+_Avoid_: 임시 저장본
+
+**Deployment / Rollback**
+배포는 Flow의 「배포 중 버전」을 정하는 동작이다. 배포 절차는 **초안 → 시험 → 배포**. 되돌리기는 이전 버전을 배포 중으로 바꾸는 한 동작이다.
+
+**Deploy Request**
+테넌트 설정 「배포에 관리자 승인 필요」가 켜졌을 때만 생기는 단계. 배포 권한이 없는 멤버가 요청하고, 권한 있는 멤버가 승인하면 배포된다.
+
+**Executor**
+대화 턴마다 Flow Version JSON을 LangGraph StateGraph로 해석해 돌리는 실행기. 체크포인트·HITL·SSE는 기존 것을 재사용한다.
+_Avoid_: 컴파일러(코드를 만들지 않는다)
+
+**Node / Node Kind / Node Handler**
+노드는 흐름의 한 단계, Node Kind는 그 종류, Node Handler는 종류마다 하나인 파이썬 핸들러다. 첫판 종류: **시작**, **AI 답변**, **조건**, **사람 넘김**, **지식 검색**(GraphRAG), **AI 분류·추출**(확신도를 함께 냄), **가드레일**, **HTTP 도구**. 편집기에서 노드는 N-코드(예: N-03)를 단다.
+
+**Guardrail**
+금지어·개인정보·가격 약속 같은 표현을 막거나 다시 쓰는 노드. 편집기에서는 황·흑 경고띠로 표시한다.
+
+**Confidence**
+AI 분류·추출 노드가 결과와 함께 내는 확신도(0~1). 조건 노드가 이 값으로 분기할 수 있다.
+
+**Decision Trace**
+판단 기록. 한 턴에서 노드마다 입력·출력·분기 이유·토큰·비용·걸린 시간을 남긴 기록. 시험 대화와 운영 대화가 같은 형식이며, 비밀 값은 가린다. 편집기에서 모노 글꼴로 보인다.
+_Avoid_: 로그(운영 로그와 다르다), 트레이스(Langfuse와 혼동)
+
+**Test Chat**
+편집기 오른쪽에서 초안에 대해 하는 시험 대화. 판단 기록(토큰·비용)을 함께 보여 준다. 실제 사람 넘김 알림은 보내지 않는다.
+
+**HTTP Tool**
+흐름에서 외부 HTTPS API를 부르는 노드. 테넌트의 **Domain Allowlist**에 있는 호스트만, 해석 뒤 사설·루프백·링크로컬·메타데이터 IP 차단, 리다이렉트마다 재검사, 5초·256KB 상한(ADR-0029).
+
+**Tenant Secret**
+HTTP 도구 등에서 쓰는 테넌트 비밀 값. 암호화해 저장하고, 흐름 JSON에는 `{{secret.이름}}` 참조만 둔다. 조회는 이름만 되고 값은 쓰기 전용이다.
+
+## Plans & Trial
+
+**Platform Key**
+플랫폼이 비용을 내는 LLM 키. 체험 한도와 `/try`에서만 쓴다. 그 밖에는 테넌트 Provider(BYOK)를 쓴다.
+
+**Trial Quota**
+가입한 테넌트에게 주는, 플랫폼 키로 도는 체험 한도(예: 대화 200턴). 넘으면 테넌트가 자기 LLM Provider 키를 넣어야 흐름이 돈다.
+_Avoid_: 무료 플랜(결제·요금제는 다음 판)
+
+**Try Session**
+로그인 없이 `/try`에서 「고쳐 보기」를 누르면 브라우저 세션에 생기는 예제 흐름 사본. 편집과 시험 대화만 되고 배포는 안 되며 24시간 뒤 지운다. 제한: Haiku급 플랫폼 키, 세션당 20턴, IP당 하루 3세션, 전체 하루 비용 $5(넘으면 「내일 다시」), HTTP 도구는 가짜 API만, 지식 검색은 정해 둔 지식 묶음만, 문서 업로드·실제 사람 넘김 알림 금지. 「이 흐름으로 가입」으로 새 테넌트에 옮긴다.
+
+**Template Flow**
+체험 시작 템플릿 겸 소개 페이지 사례로 쓰는 예제 흐름: ① Sandcorp 홈 상담 에이전트, ② 쇼핑몰 배송·반품 상담, ③ 학원 수강 상담·레벨 테스트 예약.
