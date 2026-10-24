@@ -14,6 +14,7 @@ import {
 } from './generated/endpoints/operator/operator'
 import {
   appsTenantsApiGetConfig,
+  appsTenantsApiGetTrial,
   appsTenantsApiUpdateConfig,
   appsTenantsApiResetTenantKey,
   appsTenantsApiUpdateSlug,
@@ -36,6 +37,7 @@ import {
 import {
   appsTenantsApiMemberTenants,
   appsTenantsApiMemberSelectTenant,
+  appsTenantsApiMemberCreateTenant,
 } from './generated/endpoints/auth/auth'
 import {
   appsUsageApiTenantUsage,
@@ -124,6 +126,33 @@ export async function selectTenant(tenantId: string) {
   const data = (await appsTenantsApiMemberSelectTenant({ tenant_id: tenantId })).data as { access_token: string }
   setAccess('agent', data.access_token)
   return data
+}
+// 온보딩(#41): 조직을 만들고 첫 Admin 세션을 연다. 거절(400/409/429)이면 서버 문구를 담은 OnboardingError.
+export class OnboardingError extends Error {
+  constructor(message: string, public reason?: string) {
+    super(message)
+    this.name = 'OnboardingError'
+  }
+}
+export async function createOrganization(name: string, slug: string) {
+  try {
+    const data = (await appsTenantsApiMemberCreateTenant({ name, slug })).data as {
+      tenant_id: string; tenant_name: string; access_token: string
+    }
+    setAccess('agent', data.access_token)
+    return data
+  } catch (e) {
+    if (e instanceof HttpError) {
+      const body = (e.body ?? {}) as { detail?: string; reason?: string }
+      if (e.status === 401) throw new OnboardingError('로그인이 만료되었습니다. 다시 로그인하세요.', 'expired')
+      throw new OnboardingError(body.detail || '조직을 만들지 못했습니다. 다시 시도하세요.', body.reason)
+    }
+    throw e
+  }
+}
+export type TrialState = 'byok' | 'trial' | 'exhausted' | 'unavailable' | 'platform_default'
+export async function getTrial() {
+  return (await appsTenantsApiGetTrial()).data as { state: TrialState; remaining: number; limit: number }
 }
 export async function agentLogout() {
   await appsTenantsApiMemberLogout()

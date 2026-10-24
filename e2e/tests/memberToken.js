@@ -15,10 +15,25 @@ const inviteeToken = () => read('invitee_token')
 /** 초대 원문을 수락 대역에 넘긴다(sandcorp-auth 로그인 → 콜백의 accept_invite 자리). */
 const dropInvite = (raw) => fs.writeFileSync(path.join(DIR, 'invite_token'), raw)
 
+/** 멤버십 없는 새 사용자의 콜백 표(member_ticket)를 가져간다 — 가져가면 시드가 다음 사람 것을 채운다(#41). */
+async function takeOnboardingTicket(timeoutMs = 15000) {
+  const file = path.join(DIR, 'onboarding_ticket')
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    if (fs.existsSync(file)) {
+      const raw = fs.readFileSync(file, 'utf8').trim()
+      fs.unlinkSync(file)
+      if (raw) return raw
+    }
+    await new Promise((r) => setTimeout(r, 300))
+  }
+  throw new Error('onboarding_ticket이 시드되지 않았습니다(api-e2e 로그 확인)')
+}
+
 /** 관리 화면을 고객(멤버)으로 연 상태로 만든다(access는 sessionStorage `agent_access`, ADR-0013). */
 async function openMemberSession(page, adminUrl, token, route = 'tenant') {
   await page.addInitScript((t) => sessionStorage.setItem('agent_access', t), token)
   await page.goto(`${adminUrl}/admin-ui/${route}`)
 }
 
-module.exports = { memberToken, inviteeToken, dropInvite, openMemberSession }
+module.exports = { memberToken, inviteeToken, dropInvite, openMemberSession, takeOnboardingTicket }

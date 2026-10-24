@@ -19,6 +19,7 @@ export default function DashboardLayout({
   onSwitch,
   onLogout,
   onLogoutAll,
+  banner,
 }: {
   brand: string
   navItems: NavItem[]
@@ -27,6 +28,7 @@ export default function DashboardLayout({
   onSwitch?: () => void  // 다른 조직으로 들어가기
   onLogout: () => void
   onLogoutAll: () => void
+  banner?: ReactNode  // 본문 위 안내(체험 한도 등, #41)
 }) {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground md:flex-row">
@@ -74,6 +76,7 @@ export default function DashboardLayout({
           </Button>
         </header>
         <main className="flex-1 overflow-auto p-4 md:p-6">
+          {banner}
           <Outlet />
         </main>
       </div>

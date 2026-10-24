@@ -14,7 +14,8 @@ import type {
   ResetKeyOut,
   SlugIn,
   TenantConfigIn,
-  TenantConfigOut
+  TenantConfigOut,
+  TrialOut
 } from '../../model';
 
 import { customInstance } from '../../../mutator';
@@ -258,6 +259,42 @@ export const appsTenantsApiUpdateSlug = async (slugIn: SlugIn, options?: Request
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
       slugIn,)
+  }
+);}
+
+
+/**
+ * 체험 한도 상태(#41) — 관리 화면 배너·요금 화면이 읽는다.
+ * @summary Get Trial
+ */
+export type appsTenantsApiGetTrialResponse200 = {
+  data: TrialOut
+  status: 200
+}
+    
+export type appsTenantsApiGetTrialResponseSuccess = (appsTenantsApiGetTrialResponse200) & {
+  headers: Headers;
+};
+;
+
+export type appsTenantsApiGetTrialResponse = (appsTenantsApiGetTrialResponseSuccess)
+
+export const getAppsTenantsApiGetTrialUrl = () => {
+
+
+  
+
+  return `/api/tenant/trial/`
+}
+
+export const appsTenantsApiGetTrial = async ( options?: RequestInit): Promise<appsTenantsApiGetTrialResponse> => {
+  
+  return customInstance<appsTenantsApiGetTrialResponse>(getAppsTenantsApiGetTrialUrl(),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
   }
 );}
 

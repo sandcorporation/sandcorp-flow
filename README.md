@@ -175,6 +175,10 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 | `OLLAMA_BASE_URL` | Ollama URL(dev 기본 임베딩) | `http://ollama:11434` |
 | `OLLAMA_EMBED_MODEL` | dev 기본 임베딩 모델 | `bge-m3` |
 | `PLATFORM_DEFAULT_PROVIDERS_ENABLED` | 플랫폼 기본 Provider 폴백(OpenRouter LLM + ollama 임베딩). **dev만 `true`**, prod(GPU 없음)는 `false` → Tenant가 LLM·Embedding Provider 설정 필수. `dev.py`/`prod.py`에서 명시(env 아님) | `True`(dev)/`False`(prod) |
+| `PLATFORM_OPENAI_API_KEY` | 플랫폼 OpenAI 키(체험 한도, #41·ADR-0026). 자기 LLM Provider가 없는 prod 테넌트가 남은 체험 턴 동안 쓴다. 비면 그 테넌트의 챗은 방문자에게 「상담 준비 중」으로 멈춘다 | (운영 env에만) |
+| `PLATFORM_LLM_MODEL` / `PLATFORM_EMBED_MODEL` | 체험 테넌트의 챗·추출 모델 / 임베딩(OpenAI `dimensions`로 `embed_dim`에 맞춤) | `gpt-4o-mini` / `text-embedding-3-small`(기본) |
+| `TRIAL_TURNS` | 새 조직의 체험 턴(1턴 = 방문자 메시지 하나) | `200`(기본) |
+| `TENANT_CREATE_LIMIT_PER_USER` / `ONBOARDING_RATE_LIMIT_PER_HOUR` / `TRUSTED_PROXY_COUNT` | 온보딩 남용 방지: 계정당 조직 수 / IP당 시간당 시도 / XFF 프록시 단수 | `3` / `10` / `1`(prod `2`) |
 | `CHAT_RATE_LIMIT_PER_VISITOR` / `CHAT_RATE_LIMIT_PER_TENANT` | 공개 URL 레이트리밋(분당) | `20` / `300` |
 | `OCR_MAX_PAGES` | 스캔 PDF의 vision OCR 페이지 상한(비용 통제) | `30` |
 | `DEBUG` | 디버그 모드 | `False`(운영) |
@@ -237,7 +241,9 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 ## 7. 사용 흐름
 
 ### 고객 로그인·Tenant 발급 (#40)
-- **로그인**: 고객은 sandcorp-auth 계정으로 로그인합니다(`/admin-ui/tenant` → **sandcorp 계정으로 로그인**). Flow에는 비밀번호가 없습니다. 콜백은 속한 조직(Membership)이 하나면 바로 그 조직 화면을, 여럿이면 **조직 선택**을, 없으면 「조직 만들기는 준비 중」 안내(`TenantOnboarding`, 조직 만들기 온보딩은 #41)를 보여줍니다. 콜백 거절(`?login_error=`)은 사유별 문구로 안내하고, 상단 바에는 조직 이름·내 이름·**내 계정**(`https://auth.sandcorp.co.kr/account`)·**조직 바꾸기**가 있습니다.
+- **로그인**: 고객은 sandcorp-auth 계정으로 로그인합니다(`/admin-ui/tenant` → **sandcorp 계정으로 로그인**). Flow에는 비밀번호가 없습니다. 콜백은 속한 조직(Membership)이 하나면 바로 그 조직 화면을, 여럿이면 **조직 선택**을, 없으면 **조직 만들기**(#41)(`TenantOnboarding`, 조직 만들기 온보딩은 #41)를 보여줍니다. 콜백 거절(`?login_error=`)은 사유별 문구로 안내하고, 상단 바에는 조직 이름·내 이름·**내 계정**(`https://auth.sandcorp.co.kr/account`)·**조직 바꾸기**가 있습니다.
+- **조직 만들기(온보딩, #41)**: 속한 조직이 없는 사람은 조직 이름과 공개 주소(`/chatbot/<slug>`, 이름에서 제안)를 넣어 조직을 만들고, 첫 관리자로 바로 들어갑니다. 계정당 조직 수(`TENANT_CREATE_LIMIT_PER_USER`)와 IP당 시도 수에 상한이 있습니다. 새 조직은 기존 챗 설정 그대로 시작합니다(기본 흐름은 #23).
+- **체험 한도(#41, ADR-0026)**: 자기 LLM 키가 없는 조직은 플랫폼 OpenAI 키로 방문자 대화 `TRIAL_TURNS`(기본 200)턴을 체험합니다(문서 임베딩·자료 정리 포함, 스캔 OCR 제외). 관리 화면 상단 배너가 남은 턴을 보이고, 다 쓰면 「설정에서 LLM 키를 넣어 주세요」로 바뀝니다. 방문자에게는 한도·키 이야기 없이 「상담 준비 중」 문구만 갑니다. 키를 넣으면 한도와 무관하게 자기 키(BYOK)로 돕니다. 설정의 **요금** 탭은 「요금제 준비 중」과 체험 상태를 보입니다.
 - **Operator 프로비저닝**: Operator로 로그인 → **Tenant 추가** → `TENANT_KEY`와 **첫 Admin 초대 링크**가 **1회** 표시. 링크를 고객에게 직접 전달하면, 고객이 그 링크로 로그인해 Admin이 됩니다. `TENANT_KEY`는 해시만 저장(분실 시 재발급), HMAC 신원검증 API·break-glass에만 사용(브라우저 비노출).
 
 ### 권한 (Tenant Admin / Tenant Member)
@@ -267,6 +273,8 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 |------------|------|------|
 | `GET /api/auth/authorize` · `GET /api/auth/authorize/member[?invite=]` · `GET /api/auth/callback` | 없음(브라우저 이동) | 관리 화면 로그인(sandcorp-auth) — Operator 진입 / 고객 진입, 콜백 공통 |
 | `GET /api/auth/member/tenants` · `POST /api/auth/member/select` | `member_ticket` 쿠키 | 콜백 뒤 조직 목록·선택(테넌트 세션 열기) |
+| `POST /api/auth/member/tenants` | `member_ticket` 쿠키 | 온보딩: 조직 만들기 → 첫 Admin 세션(400 형식·409 중복/상한·429 IP 상한) |
+| `GET /api/tenant/trial/` | 멤버 | 체험 상태 `byok`·`trial`·`exhausted`·`unavailable`·`platform_default` + 남은 턴 |
 | `POST /api/auth/webhook` | HMAC 서명(`X-Sandcorp-Signature`) | sandcorp-auth 탈퇴 웹훅 `user.deleted` — 사용자·멤버십·세션 삭제(ADR-0028 「탈퇴」) |
 | `POST /api/operator/auth/refresh` · `logout` · `logout-all` | Refresh 쿠키 / Operator | Flow 세션 회전·폐기 |
 | `POST /api/operator/tenants/` | Operator | Tenant 생성(+ 첫 Admin 초대 링크) |

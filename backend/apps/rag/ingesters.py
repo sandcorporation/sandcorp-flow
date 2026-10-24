@@ -28,16 +28,20 @@ def get_embeddings(texts: List[str], provider=None) -> List[List[float]]:
     import httpx
     from django.conf import settings
 
+    payload: dict[str, object] = {"input": texts}
     if provider is None:
         base_url = f"{settings.OLLAMA_BASE_URL}/v1"
         model = settings.OLLAMA_EMBED_MODEL
         api_key = "ollama"
     else:
         base_url, model, api_key = provider.base_url, provider.model, (provider.api_key or "x")
+        if provider.send_dimensions:
+            payload["dimensions"] = provider.dim
+    payload["model"] = model
 
     resp = httpx.post(
         f"{base_url}/embeddings",
-        json={"model": model, "input": texts},
+        json=payload,
         headers={"Authorization": f"Bearer {api_key}"},
         timeout=getattr(settings, "OLLAMA_TIMEOUT", 60.0),
     )
