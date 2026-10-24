@@ -81,6 +81,17 @@ describe('편집기 왼쪽 — 버전 이력', () => {
     expect(rows[0].textContent).toContain('문구 다듬음')
   })
 
+  it('중복 가드로 새 버전이 안 생기면 적은 메모를 지우지 않는다(다음 저장에 쓴다)', async () => {
+    fakeFlowsApi({ graph: DRAFT, versions: V, duplicateVersion: true })
+    renderEditor()
+    const p = await panel()
+    const memo = (await p.findByLabelText('버전 메모')) as HTMLInputElement
+    await userEvent.type(memo, '환불 문구 다듬음')
+    await userEvent.click(p.getByRole('button', { name: '버전 저장' }))
+    expect(await p.findByText(/마지막 버전과 같아/)).toBeTruthy()
+    expect(memo.value).toBe('환불 문구 다듬음')
+  })
+
   it('검증 오류로 버전 저장이 거절되면 이유를 보인다', async () => {
     fakeFlowsApi({ graph: DRAFT, versions: V, errors: [{ node_id: 'ai1', code: 'x', message: '지시문이 비었습니다' }] })
     renderEditor()
@@ -170,6 +181,19 @@ describe('배포 승인 옵션이 켜진 조직', () => {
     await userEvent.click(await p.findByRole('button', { name: '거절' }))
     await waitFor(() => expect(posts(fake, '/reject/')).toHaveLength(1))
     await waitFor(() => expect(p.queryByText(/승인 대기/)).toBeNull())
+  })
+
+  it('요청을 올린 뒤 거절돼 요청이 닫히면 「배포를 요청했습니다」 안내가 사라진다', async () => {
+    fakeFlowsApi({ graph: DRAFT, versions: V, deployedVersion: 1, requiresApproval: true, me: { name: '나', email: 'me@x.kr' } })
+    renderEditor()
+    const p = await panel()
+    await userEvent.click(await p.findByRole('button', { name: 'v2 배포 요청' }))
+    await userEvent.click(p.getByRole('button', { name: '그래도 배포 요청' }))
+    expect(await p.findByText(/v2 배포를 요청했습니다/)).toBeTruthy()
+    await p.findByText(/v2 승인 대기/)
+    await userEvent.click(p.getByRole('button', { name: '거절' }))
+    await waitFor(() => expect(p.queryByText(/승인 대기/)).toBeNull())
+    expect(p.queryByText(/배포를 요청했습니다/)).toBeNull()
   })
 })
 
