@@ -4,7 +4,7 @@
 추후 per-member 세분화를 도입해도 엔드포인트 가드 지점은 불변이다.
 
 - Admin = 전체 권한
-- Member = 전체 − ADMIN_ONLY(조직 단위 3종 + 흐름 편집·배포·승인 3종)
+- Member = 전체 − ADMIN_ONLY(조직 단위 3종 + 흐름 편집·배포·승인 3종 + 비밀·허용 도메인 2종)
 - Tenant(=TENANT_KEY 인증 주체) = Admin 등가(break-glass·프로그램 프로비저닝 유지)
 """
 
@@ -22,7 +22,14 @@ FLOW_EDIT = "flow.edit"          # 흐름 만들기·이름·초안·버전 저�
 FLOW_DEPLOY = "flow.deploy"      # 배포·되돌리기·배포 요청
 FLOW_APPROVE = "flow.approve"    # 배포 요청 승인/거절 + 「배포에 승인 필요」 설정
 
-ADMIN_ONLY = frozenset({AGENTS_MANAGE, TENANT_KEY_ROTATE, SLUG_CHANGE, FLOW_EDIT, FLOW_DEPLOY, FLOW_APPROVE})
+# HTTP 도구(#33, ADR-0029) — 비밀은 외부 API 자격 증명이고 허용 도메인은 서버가 나가는 길을 넓힌다. 흐름 편집과 같은
+# 무게라 Admin 전용. Member는 비밀 이름·도메인 목록 읽기만(값은 누구에게도 안 보인다).
+SECRETS_MANAGE = "secrets.manage"    # 비밀 만들기·값 교체·지우기
+DOMAINS_MANAGE = "domains.manage"    # 허용 도메인 더하기·지우기
+
+ADMIN_ONLY = frozenset({
+    AGENTS_MANAGE, TENANT_KEY_ROTATE, SLUG_CHANGE, FLOW_EDIT, FLOW_DEPLOY, FLOW_APPROVE, SECRETS_MANAGE, DOMAINS_MANAGE,
+})
 
 
 def has_permission(subject, perm: str) -> bool:

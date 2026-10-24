@@ -437,6 +437,44 @@
         "title": "DocumentPatchIn",
         "type": "object"
       },
+      "DomainIn": {
+        "properties": {
+          "pattern": {
+            "title": "Pattern",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pattern"
+        ],
+        "title": "DomainIn",
+        "type": "object"
+      },
+      "DomainOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "pattern": {
+            "title": "Pattern",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "pattern",
+          "created_at"
+        ],
+        "title": "DomainOut",
+        "type": "object"
+      },
       "DraftOut": {
         "properties": {
           "errors": {
@@ -1423,6 +1461,44 @@
           "created"
         ],
         "title": "SaveVersionOut",
+        "type": "object"
+      },
+      "SecretIn": {
+        "properties": {
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "SecretIn",
+        "type": "object"
+      },
+      "SecretOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SecretOut",
         "type": "object"
       },
       "SelectTenantIn": {
@@ -3238,6 +3314,103 @@
         "summary": "Operator Usage",
         "tags": [
           "usage"
+        ]
+      }
+    },
+    "/api/tenant/allowed-domains/": {
+      "get": {
+        "operationId": "apps_tenants_secrets_api_list_domains",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DomainOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "List Domains",
+        "tags": [
+          "tenant-allowed-domains"
+        ]
+      },
+      "post": {
+        "operationId": "apps_tenants_secrets_api_add_domain",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomainIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainOut"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Add Domain",
+        "tags": [
+          "tenant-allowed-domains"
+        ]
+      }
+    },
+    "/api/tenant/allowed-domains/{domain_id}": {
+      "delete": {
+        "operationId": "apps_tenants_secrets_api_delete_domain",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Domain Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Delete Domain",
+        "tags": [
+          "tenant-allowed-domains"
         ]
       }
     },
@@ -5239,6 +5412,112 @@
         "summary": "Reset Tenant Key",
         "tags": [
           "tenant"
+        ]
+      }
+    },
+    "/api/tenant/secrets/": {
+      "get": {
+        "operationId": "apps_tenants_secrets_api_list_secrets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SecretOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "List Secrets",
+        "tags": [
+          "tenant-secrets"
+        ]
+      }
+    },
+    "/api/tenant/secrets/{name}": {
+      "delete": {
+        "operationId": "apps_tenants_secrets_api_delete_secret",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Delete Secret",
+        "tags": [
+          "tenant-secrets"
+        ]
+      },
+      "put": {
+        "operationId": "apps_tenants_secrets_api_put_secret",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Put Secret",
+        "tags": [
+          "tenant-secrets"
         ]
       }
     },
