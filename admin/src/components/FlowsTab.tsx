@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus } from 'lucide-react'
-import { appsFlowsApiDeployRequestsList, appsFlowsApiFlowsCreate, appsFlowsApiFlowsList } from '../generated/endpoints/flows/flows'
+import { Archive, Plus } from 'lucide-react'
+import { appsFlowsApiDeployRequestsList, appsFlowsApiFlowsArchive, appsFlowsApiFlowsCreate, appsFlowsApiFlowsList } from '../generated/endpoints/flows/flows'
 import { appsTenantsApiMemberMe } from '../generated/endpoints/tenant-members/tenant-members'
 import type { DeployRequestOut, FlowOut } from '../generated/model'
 import DeployRequestCard, { type Me } from './DeployRequestCard'
@@ -16,7 +16,7 @@ import { useIsAdmin } from '../lib/useAgentRole'
 
 const fmt = (iso: string) => new Date(iso).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })
 
-/** 흐름 목록 + 새 흐름. 쓰기(만들기)는 flow.edit 가 있는 Admin 만 보인다. */
+/** 흐름 목록 + 새 흐름 + 보관. 쓰기(만들기·보관)는 flow.edit 가 있는 Admin 만 보인다. */
 export default function FlowsTab() {
   const canEdit = useIsAdmin()
   const navigate = useNavigate()
@@ -24,6 +24,7 @@ export default function FlowsTab() {
   const [name, setName] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [confirmId, setConfirmId] = useState<string | null>(null)
 
   const [requests, setRequests] = useState<DeployRequestOut[]>([])
   const [me, setMe] = useState<Me>(null)
@@ -49,6 +50,21 @@ export default function FlowsTab() {
       const body = err instanceof HttpError ? (err.body as { detail?: string } | undefined) : undefined
       setError(body?.detail ?? '흐름을 만들지 못했습니다.')
     } finally {
+      setBusy(false)
+    }
+  }
+
+  const archive = async (id: string) => {
+    setBusy(true)
+    setError('')
+    try {
+      await appsFlowsApiFlowsArchive(id)
+      setFlows((cur) => cur && cur.filter((f) => f.id !== id))
+    } catch (err) {
+      const body = err instanceof HttpError ? (err.body as { detail?: string } | undefined) : undefined
+      setError(body?.detail ?? '흐름을 보관하지 못했습니다.')
+    } finally {
+      setConfirmId(null)
       setBusy(false)
     }
   }
@@ -85,7 +101,7 @@ export default function FlowsTab() {
       <Card>
         <CardContent className="p-0">
           <Table>
-            <TableHeader><TableRow><TableHead>이름</TableHead><TableHead>배포</TableHead><TableHead>수정</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>이름</TableHead><TableHead>배포</TableHead><TableHead>수정</TableHead>{canEdit && <TableHead><span className="sr-only">보관</span></TableHead>}</TableRow></TableHeader>
             <TableBody>
               {flows?.map((f) => (
                 <TableRow key={f.id}>
@@ -95,9 +111,22 @@ export default function FlowsTab() {
                     {f.has_pending_request && <Badge variant="secondary" className="ml-1">승인 대기</Badge>}
                   </TableCell>
                   <TableCell className="hmi-code text-muted-foreground">{fmt(f.updated_at)}</TableCell>
+                  {canEdit && (
+                    <TableCell className="text-right">
+                      {f.is_public ? null : confirmId === f.id ? (
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <span className="text-xs text-muted-foreground">보관하면 목록에서 사라집니다. 대화 기록은 남습니다.</span>
+                          <Button type="button" size="sm" variant="destructive" disabled={busy} aria-label="보관 확인" onClick={() => archive(f.id)}>보관</Button>
+                          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setConfirmId(null)}>취소</Button>
+                        </div>
+                      ) : (
+                        <Button type="button" size="sm" variant="outline" aria-label={`${f.name} 보관`} onClick={() => setConfirmId(f.id)}><Archive className="h-4 w-4" />보관</Button>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
-              {flows && flows.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">아직 흐름이 없습니다.</TableCell></TableRow>}
+              {flows && flows.length === 0 && <TableRow><TableCell colSpan={canEdit ? 4 : 3} className="text-center text-muted-foreground">아직 흐름이 없습니다.</TableCell></TableRow>}
             </TableBody>
           </Table>
         </CardContent>
