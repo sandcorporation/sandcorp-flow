@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { currentAgentRole } from '../api'
-import { appsFlowsApiFlowsCreate, appsFlowsApiFlowsList } from '../generated/endpoints/flows/flows'
-import type { FlowOut } from '../generated/model'
+import { appsFlowsApiDeployRequestsList, appsFlowsApiFlowsCreate, appsFlowsApiFlowsList } from '../generated/endpoints/flows/flows'
+import { appsTenantsApiMemberMe } from '../generated/endpoints/tenant-members/tenant-members'
+import type { DeployRequestOut, FlowOut } from '../generated/model'
+import DeployRequestCard, { type Me } from './DeployRequestCard'
 import { HttpError } from '../mutator'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -23,8 +25,16 @@ export default function FlowsTab() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
+  const [requests, setRequests] = useState<DeployRequestOut[]>([])
+  const [me, setMe] = useState<Me>(null)
+
+  const loadAll = () => {
     appsFlowsApiFlowsList().then((r) => setFlows(r.data as unknown as FlowOut[])).catch(() => setError('흐름 목록을 불러오지 못했습니다.'))
+    appsFlowsApiDeployRequestsList({ status: 'pending' }).then((r) => setRequests(r.data as unknown as DeployRequestOut[])).catch(() => {})
+  }
+  useEffect(() => {
+    loadAll()
+    appsTenantsApiMemberMe().then((r) => { const m = r.data as unknown as { name: string; email: string }; setMe({ name: m.name ?? '', email: m.email ?? '' }) }).catch(() => {})
   }, [])
 
   const create = async (e: React.FormEvent) => {
@@ -64,6 +74,14 @@ export default function FlowsTab() {
         </Card>
       )}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {requests.length > 0 && (
+        <section aria-label="배포 요청" className="space-y-2">
+          <h2 className="hmi-label">배포 요청 · 승인 대기 {requests.length}건</h2>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {requests.map((r) => <DeployRequestCard key={r.id} request={r} showFlow canApprove={canEdit} me={me} onDecided={loadAll} />)}
+          </div>
+        </section>
+      )}
       <Card>
         <CardContent className="p-0">
           <Table>

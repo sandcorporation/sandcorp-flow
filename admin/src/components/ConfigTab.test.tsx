@@ -473,3 +473,28 @@ describe('ConfigTab — 역할 게이팅 (issue 210)', () => {
     expect(screen.queryByRole('button', { name: '저장' })).toBeNull()
   })
 })
+
+describe('ConfigTab — 배포 승인 옵션', () => {
+  it('Admin 이 「배포에 관리자 승인 필요」를 켜고 저장하면 설정에 실린다', async () => {
+    renderConfig('deploy')
+    const box = await screen.findByLabelText('배포에 관리자 승인 필요')
+    expect(box).not.toBeChecked()
+    await userEvent.click(box)
+    await save()
+    await waitFor(() => expect(api.updateTenantConfig).toHaveBeenCalled())
+    expect(vi.mocked(api.updateTenantConfig).mock.calls[0][0]).toMatchObject({ deploy_requires_approval: true })
+  })
+
+  it('켜진 상태로 열면 체크돼 있다', async () => {
+    mockConfig({ deploy_requires_approval: true })
+    renderConfig('deploy')
+    expect(await screen.findByLabelText('배포에 관리자 승인 필요')).toBeChecked()
+  })
+
+  it('Admin 이 아니면 끄고 이유를 보인다', async () => {
+    vi.mocked(api.currentAgentRole).mockReturnValue('member')
+    renderConfig('deploy')
+    expect(await screen.findByLabelText('배포에 관리자 승인 필요')).toBeDisabled()
+    expect(screen.getByText(/관리자만 바꿀 수 있습니다/)).toBeInTheDocument()
+  })
+})

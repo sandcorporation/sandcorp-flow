@@ -1,10 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import * as api from '../api'
 import FlowsTab from './FlowsTab'
-import { fakeFlowsApi } from '../flowsFakeApi'
+import { fakeFlowsApi, type FakeRequest } from '../flowsFakeApi'
 
 vi.mock('../api', () => ({ currentAgentRole: vi.fn() }))
 
@@ -50,5 +50,46 @@ describe('FlowsTab — 흐름 목록', () => {
     renderList()
     await screen.findByRole('link', { name: '기본 흐름' })
     expect(screen.queryByLabelText('새 흐름 이름')).toBeNull()
+  })
+})
+
+const REQ = (o: Partial<FakeRequest> = {}): FakeRequest => ({ id: 'r1', flow_id: 'f1', flow_name: '기본 흐름', version: 2, status: 'pending', requested_by_name: '박둘째', decided_by_name: null, decided_at: null, decision_note: '', created_at: '2026-10-02T11:00:00Z', ...o })
+
+describe('FlowsTab — 배포 요청', () => {
+  const me = { name: '나', email: 'me@x.kr' }
+  it('승인 대기 요청이 있으면 흐름 이름·버전·요청자와 함께 목록으로 보이고, 승인하면 사라진다', async () => {
+    const fake = fakeFlowsApi({ graph: { nodes: [], edges: [] }, requests: [REQ()], me })
+    renderList()
+    const region = within(await screen.findByRole('region', { name: '배포 요청' }))
+    expect(await region.findByText(/기본 흐름 v2 승인 대기/)).toBeInTheDocument()
+    expect(region.getByText(/박둘째 요청/)).toBeInTheDocument()
+    await userEvent.click(region.getByRole('button', { name: '승인' }))
+    await waitFor(() => expect(fake.calls.some((c) => c.path.endsWith('/r1/approve/'))).toBe(true))
+    await waitFor(() => expect(screen.queryByText(/v2 승인 대기/)).toBeNull())
+  })
+
+  it('본인 요청은 승인이 꺼지고 이유가 보인다', async () => {
+    fakeFlowsApi({ graph: { nodes: [], edges: [] }, requests: [REQ({ requested_by_name: '나' })], me })
+    renderList()
+    const region = within(await screen.findByRole('region', { name: '배포 요청' }))
+    expect(await region.findByRole('button', { name: '승인' })).toBeDisabled()
+    expect(region.getByText(/다른 관리자가 승인/)).toBeInTheDocument()
+  })
+
+  it('대기 요청이 없으면 구획을 숨긴다', async () => {
+    fakeFlowsApi({ graph: { nodes: [], edges: [] }, me })
+    renderList()
+    await screen.findByText('기본 흐름')
+    expect(screen.queryByRole('region', { name: '배포 요청' })).toBeNull()
+  })
+
+  it('Member 는 요청을 볼 수 있지만 승인·거절은 꺼진다', async () => {
+    vi.mocked(api.currentAgentRole).mockReturnValue('member')
+    fakeFlowsApi({ graph: { nodes: [], edges: [] }, requests: [REQ()], me })
+    renderList()
+    const region = within(await screen.findByRole('region', { name: '배포 요청' }))
+    expect(await region.findByRole('button', { name: '승인' })).toBeDisabled()
+    expect(region.getByRole('button', { name: '거절' })).toBeDisabled()
+    expect(region.getByText(/관리자만/)).toBeInTheDocument()
   })
 })

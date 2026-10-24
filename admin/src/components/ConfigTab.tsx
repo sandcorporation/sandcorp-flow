@@ -32,6 +32,7 @@ const SECTIONS = [
   { id: 'general', label: '일반', intro: '봇이 손님에게 어떻게 보이고 말하는지 정합니다.' },
   { id: 'ai', label: 'AI 모델', intro: '챗봇을 움직이는 AI 엔진을 고릅니다. 가장 기술적인 부분이라, 모르면 담당 개발자와 함께 설정하세요.' },
   { id: 'handoff', label: '상담 전환', intro: 'AI가 답하기 어려울 때 사람 상담원에게 넘기는 방식을 정합니다.' },
+  { id: 'deploy', label: '배포', intro: '흐름을 방문자 대화에 내보내는 절차를 정합니다.' },
   { id: 'security', label: '공개 URL·보안', intro: '챗봇 공개 주소와 접근 보안을 관리합니다.' },
   { id: 'billing', label: '요금', intro: '요금제와 이 조직의 체험 상태를 봅니다.' },
 ]
@@ -529,6 +530,19 @@ export default function ConfigTab() {
 
       {/* ── 공개 URL·보안 ─────────────────────────────────── */}
       {section === 'billing' && <PricingSection />}
+
+      {/* ── 배포 절차(ADR-0027) ───────────────────────────── */}
+      {section === 'deploy' && (
+        <div className="space-y-2">
+          <label className={`flex items-center gap-2 text-sm ${isAdmin ? 'cursor-pointer' : 'opacity-60'}`}>
+            <input type="checkbox" className="h-4 w-4 rounded border-input" disabled={!isAdmin} checked={!!config.deploy_requires_approval}
+              onChange={e => setConfig(c => ({ ...c, deploy_requires_approval: e.target.checked }))} />
+            배포에 관리자 승인 필요
+          </label>
+          <p className={hint}>켜면 「배포」가 「배포 요청」으로 바뀌고, 요청한 사람이 아닌 다른 관리자가 승인해야 방문자 대화에 적용됩니다. 되돌리기는 승인 없이 바로 됩니다.</p>
+          {!isAdmin && <p className={hint}>이 설정은 관리자만 바꿀 수 있습니다.</p>}
+        </div>
+      )}
 
       {section === 'security' && (
         <div className="space-y-6">
