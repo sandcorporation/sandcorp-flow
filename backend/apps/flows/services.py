@@ -133,7 +133,7 @@ def flow_detail(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> FlowDetail:
     flow = get_flow(tenant_id, flow_id)
     graph = _draft_graph(flow)
     versions = list(FlowVersion.objects.for_tenant(tenant_id).filter(flow=flow).order_by("number"))
-    return FlowDetail(flow=flow, draft=DraftResult(graph, validate_flow(graph)), versions=versions)
+    return FlowDetail(flow=flow, draft=DraftResult(graph, validate_for_tenant(tenant_id, graph)), versions=versions)
 
 
 def get_version(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, number: int) -> FlowVersion:
@@ -187,7 +187,7 @@ def save_draft(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, graph: JSON) -> D
         draft = _locked_draft(flow)
         draft.graph = graph
         draft.save(update_fields=["graph", "updated_at"])
-    return DraftResult(graph, validate_flow(graph))
+    return DraftResult(graph, validate_for_tenant(tenant_id, graph))
 
 
 # ── 패치 ─────────────────────────────────────────────────────────────────────
@@ -309,10 +309,38 @@ def patch_draft(
         graph = apply_ops(draft.graph, ops)
         draft.graph = graph
         draft.save(update_fields=["graph", "updated_at"])
-    return DraftResult(graph, validate_flow(graph))
+    return DraftResult(graph, validate_for_tenant(tenant_id, graph))
 
 
 # ── 버전 저장·배포·되돌리기 ──────────────────────────────────────────────────
+
+
+def validate_for_tenant(tenant_id: uuid.UUID, graph: JSON) -> list[FlowError]:
+    """스키마 검증(``validate_flow``) + 이 테넌트에 없는 ``{{secret.이름}}`` 참조(``unknown_secret``, #33).
+
+    비밀 참조는 테넌트마다 다르므로 스키마가 아니라 여기서 본다. 스키마 오류가 있으면 그것만 돌려준다.
+    """
+    from apps.tenants.tenant_secrets import secret_names, secret_refs
+
+    errors = validate_flow(graph)
+    if errors:
+        return errors
+    nodes = graph.get("nodes") if isinstance(graph, dict) else None
+    known: set[str] | None = None
+    for node in nodes if isinstance(nodes, list) else []:
+        refs = secret_refs(node)
+        if not refs:
+            continue
+        if known is None:
+            known = secret_names(tenant_id)
+        node_id = node.get("id") if isinstance(node, dict) else None
+        for name in sorted(refs - known):
+            errors.append(FlowError(
+                node_id if isinstance(node_id, str) else None,
+                "unknown_secret",
+                f"비밀 '{name}'이(가) 등록돼 있지 않습니다(설정 → 비밀에서 먼저 등록하세요).",
+            ))
+    return errors
 
 
 def unsupported_node_errors(graph: JSON) -> list[FlowError]:
@@ -359,7 +387,7 @@ def save_version(
     with transaction.atomic():
         Flow.objects.select_for_update().only("id").get(pk=flow.pk)  # 번호 경쟁 막기
         graph = _draft_graph(flow)
-        errors = validate_flow(graph)
+        errors = validate_for_tenant(tenant_id, graph)
         if errors:
             raise FlowInvalid("초안이 검증을 통과하지 못해 버전으로 저장할 수 없습니다.", errors)
         last = FlowVersion.objects.filter(flow=flow).order_by("-number").first()
@@ -524,7 +552,7 @@ def _prepare_test_turn(
 
     flow = get_flow(tenant_id, flow_id)
     graph = _draft_graph(flow)
-    errors = validate_flow(graph) or unsupported_node_errors(graph)
+    errors = validate_for_tenant(tenant_id, graph) or unsupported_node_errors(graph)
     if errors:
         return graph, errors, None, False
 
