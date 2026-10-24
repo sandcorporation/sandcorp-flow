@@ -238,7 +238,7 @@ def apply_ops(graph: JSON, ops: list[UpsertNode | DeleteNode | Connect | Disconn
     """
     nodes, edges = _graph_lists(graph)
     for index, op in enumerate(ops):
-        ids = {n.get("id") for n in nodes}
+        ids = {node_id for n in nodes if isinstance(node_id := n.get("id"), str)}
         match op:
             case UpsertNode():
                 fields: JSONObject = {}
@@ -377,10 +377,6 @@ class TestTurnResult:
     session_id: uuid.UUID | None = None
     handoff: bool = False
     note: str = ""
-
-    @property
-    def as_errors(self) -> list[JSONObject]:
-        return [{**e.as_dict()} for e in self.errors]
 
 
 TEST_VISITOR_PREFIX = "flow-test:"
