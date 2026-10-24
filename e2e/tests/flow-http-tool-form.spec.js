@@ -77,6 +77,8 @@ test.describe('HTTP 도구 노드 폼 — 실제 스택 (#123)', () => {
     await page.getByLabel('응답 경로').fill('$.data.status')
     await page.getByLabel('응답 경로').blur()
     await expect(page.getByRole('status').filter({ hasText: '초안 저장됨' })).toBeVisible()
+    await page.getByLabel('주소(https)').scrollIntoViewIfNeeded()
+    await warn.scrollIntoViewIfNeeded()
     await shot(page, 'http-warn-light')
 
     // 다른 탭에서 도메인·비밀을 등록하고 돌아오면(포커스) 경고가 사라진다
@@ -106,6 +108,8 @@ test.describe('HTTP 도구 노드 폼 — 실제 스택 (#123)', () => {
     await page.reload()
     await page.locator('[data-node-id="http_tool_1"]').click()
     await expect(page.getByLabel('응답 경로')).toBeVisible()
+    await page.getByLabel('메서드').scrollIntoViewIfNeeded()
+    await page.getByLabel('응답 경로').scrollIntoViewIfNeeded()
     await shot(page, 'http-form-dark')
     await page.evaluate(() => localStorage.setItem('admin_theme', 'light'))
 
@@ -118,6 +122,7 @@ test.describe('HTTP 도구 노드 폼 — 실제 스택 (#123)', () => {
     await expect(page.getByRole('status').filter({ hasText: '허용 도메인에 없습니다' })).toBeVisible()
     await page.getByLabel('응답 경로').scrollIntoViewIfNeeded()
     expect(await overflowing(page)).toEqual([])
+    await page.getByRole('status').filter({ hasText: '허용 도메인에 없습니다' }).scrollIntoViewIfNeeded()
     await shot(page, 'http-form-390')
     await api.dispose()
   })
