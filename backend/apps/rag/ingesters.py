@@ -25,8 +25,9 @@ def get_embeddings(texts: List[str], provider=None) -> List[List[float]]:
     provider 미지정 시 플랫폼 기본(로컬 ollama /v1)을 쓴다. prod에선 Tenant가
     Embedding Provider를 설정해야 한다(폴백 없음 — embedding_provider 참조).
     """
-    import httpx
     from django.conf import settings
+
+    from apps.core.safe_http import guarded_http_client, platform_http_client
 
     payload: dict[str, object] = {"input": texts}
     if provider is None:
@@ -39,14 +40,14 @@ def get_embeddings(texts: List[str], provider=None) -> List[List[float]]:
             payload["dimensions"] = provider.dim
     payload["model"] = model
 
-    resp = httpx.post(
-        f"{base_url}/embeddings",
-        json=payload,
-        headers={"Authorization": f"Bearer {api_key}"},
-        timeout=getattr(settings, "OLLAMA_TIMEOUT", 60.0),
-    )
-    resp.raise_for_status()
-    body = resp.json()
+    # 테넌트가 고른 Provider면 base_url로 가는 연결마다 해석·IP 검사(#108).
+    # provider 없음·type=""은 플랫폼 고정 주소(dev ollama)다.
+    timeout = getattr(settings, "OLLAMA_TIMEOUT", 60.0)
+    tenant_chosen = provider is not None and bool(provider.type)
+    with (guarded_http_client(timeout) if tenant_chosen else platform_http_client(timeout)) as client:
+        resp = client.post(f"{base_url}/embeddings", json=payload, headers={"Authorization": f"Bearer {api_key}"})
+        resp.raise_for_status()
+        body = resp.json()
 
     # 임베딩은 httpx 직접 호출이라 langchain 콜백이 못 잡는다 — 두 sink(TokenUsage DB + Langfuse
     # generation)를 응답 usage에서 수동 기록한다(LLM이 콜백으로 둘 다 다는 것과 대칭, issue 203).

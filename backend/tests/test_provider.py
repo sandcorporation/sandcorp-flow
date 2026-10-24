@@ -1,5 +1,7 @@
 import pytest
 
+from tests.provider_http_fake import patch_provider_http
+
 
 # ── Issue 92: 키 암호화 deep module ───────────────────────────────────────────
 
@@ -56,7 +58,7 @@ def test_llm_provider_config_key_encrypted_and_masked(client, tenant_admin_token
         status_code = 200
         def json(self): return {"data": [{"id": "gpt-4o-mini"}]}
         def raise_for_status(self): pass
-    monkeypatch.setattr(provider_models.httpx, "get", lambda *a, **k: _Resp())
+    patch_provider_http(monkeypatch, get=lambda *a, **k: _Resp())
 
     tenant, _ = tenant_with_key
     r = client.patch(

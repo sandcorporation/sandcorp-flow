@@ -5,6 +5,8 @@ client로 교체해 발행 payload를 검증한다(CLAUDE.md). TokenUsage(DB)는
 """
 import pytest
 
+from tests.provider_http_fake import patch_provider_http
+
 
 class _FakeGenCtx:
     def __enter__(self):
@@ -112,7 +114,7 @@ def test_get_embeddings_emits_both_sinks(monkeypatch, tenant_with_key):
         def json(self):
             return {"data": [{"embedding": [0.1]}], "usage": {"prompt_tokens": 5, "total_tokens": 5}}
 
-    monkeypatch.setattr(httpx, "post", lambda *a, **k: _Resp())
+    patch_provider_http(monkeypatch, post=lambda *a, **k: _Resp())
     fake = _FakeLangfuse()
     monkeypatch.setattr(langfuse_client, "get_langfuse_client", lambda: fake)
 
@@ -144,7 +146,7 @@ def test_validate_embed_probe_records_both_sinks(monkeypatch, tenant_with_key):
     from apps.usage.models import TokenUsage
 
     tenant, _ = tenant_with_key
-    monkeypatch.setattr(provider_models.httpx, "post", lambda *a, **k: _ProbeResp())
+    patch_provider_http(monkeypatch, post=lambda *a, **k: _ProbeResp())
     fake = _FakeLangfuse()
     monkeypatch.setattr(langfuse_client, "get_langfuse_client", lambda: fake)
 
@@ -160,7 +162,7 @@ def test_validate_embed_without_tenant_does_not_record(monkeypatch):
     from apps.agent import provider_models
     from apps.usage import langfuse_client
 
-    monkeypatch.setattr(provider_models.httpx, "post", lambda *a, **k: _ProbeResp())
+    patch_provider_http(monkeypatch, post=lambda *a, **k: _ProbeResp())
     fake = _FakeLangfuse()
     monkeypatch.setattr(langfuse_client, "get_langfuse_client", lambda: fake)
 
