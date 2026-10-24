@@ -141,12 +141,14 @@ AUTH_CLIENT_ID = os.environ.get("AUTH_CLIENT_ID", "")
 AUTH_CLIENT_SECRET = os.environ.get("AUTH_CLIENT_SECRET", "")
 # sandcorp-auth에 등록한 값과 문자 하나까지 같아야 한다.
 AUTH_REDIRECT_URI = os.environ.get(
-    "AUTH_REDIRECT_URI", "https://flow.sandcorp.co.kr/api/operator/auth/callback"
+    "AUTH_REDIRECT_URI", "https://flow.sandcorp.co.kr/api/auth/callback"
 )
 AUTH_AUTHORIZE_URL = os.environ.get("AUTH_AUTHORIZE_URL", f"{AUTH_ISSUER}/authorize")
 AUTH_TOKEN_URL = os.environ.get("AUTH_TOKEN_URL", f"{AUTH_ISSUER}/token")
 # 콜백이 끝나면 돌아갈 관리 화면(거절이면 ?login_error=<사유>를 붙인다).
 AUTH_LOGIN_REDIRECT = os.environ.get("AUTH_LOGIN_REDIRECT", "/admin-ui/operator")
+# 탈퇴 웹훅(/api/auth/webhook) 서명 비밀 — 이름만 잡아 둔다. 구현은 별도 티켓.
+AUTH_WEBHOOK_SECRET = os.environ.get("AUTH_WEBHOOK_SECRET", "")
 
 # CORS
 CORS_ALLOW_ALL_ORIGINS = True

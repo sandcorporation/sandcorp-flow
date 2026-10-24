@@ -21,7 +21,7 @@ from resource_token_fakes import FLOW, ISSUER, MEMBER_SUB, OWNER, Signer
 
 CLIENT_ID = "flow-admin"
 CLIENT_SECRET = "flow-admin-secret"
-REDIRECT_URI = "https://flow.sandcorp.co.kr/api/operator/auth/callback"
+REDIRECT_URI = "https://flow.sandcorp.co.kr/api/auth/callback"
 AUTHORIZE_URL = f"{ISSUER}/authorize"
 TOKEN_URL = f"{ISSUER}/token"
 

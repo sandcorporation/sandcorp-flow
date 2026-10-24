@@ -77,7 +77,7 @@ const BASE: string = import.meta.env.VITE_API_BASE || ''
 // Operator 로그인은 sandcorp-auth(#21): 백엔드 /authorize로 이동 → sandcorp-auth → 백엔드 콜백이
 // Refresh 쿠키를 심고 /admin-ui/operator로 돌려보낸다. access는 App 부팅의 silent refresh가 받는다.
 // 거절이면 ?login_error=<사유>가 붙어 돌아온다(OperatorLogin이 거절 화면을 보여 준다).
-export const OPERATOR_LOGIN_PATH = '/api/operator/auth/authorize'
+export const OPERATOR_LOGIN_PATH = '/api/auth/authorize'
 export function startOperatorLogin() {
   window.location.assign(`${BASE}${OPERATOR_LOGIN_PATH}`)
 }

@@ -195,7 +195,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
    - [ ] `cp .env.prod.example .env` 후 아래 필수 키를 채운다. 파일 권한 600.
    - [ ] `docker login ghcr.io`(Jenkins 실행 유저, `read:packages` PAT) 확인. 이미지 이름은 `sandcorp-flow-{api,admin,widget}`.
    - [ ] `docker rollout` 플러그인이 Jenkins 컨테이너에 있는지 확인(이미 다른 잡이 쓰면 생략).
-3. **운영 `.env` 필수 키**(이름만): `DJANGO_SETTINGS_MODULE=config.settings.prod`, `SECRET_KEY`(생성 후 **영구 고정**), `ALLOWED_HOSTS`(`flow.sandcorp.co.kr,127.0.0.1,localhost`), `CSRF_TRUSTED_ORIGINS`(`https://flow.sandcorp.co.kr`), `DB_HOST`·`DB_PORT`·`DB_NAME=sandcorp_flow`·`DB_USER`·`DB_PASSWORD`, `REDIS_URL`, `EVENTS_TOPIC`, `NGINX_PORT`. `AUTH_OWNER_SUB=farrar142`(#20). `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`·`AUTH_REDIRECT_URI`(#21, 7번). 이후 티켓이 더할 이름: `PLATFORM_*`(#39).
+3. **운영 `.env` 필수 키**(이름만): `DJANGO_SETTINGS_MODULE=config.settings.prod`, `SECRET_KEY`(생성 후 **영구 고정**), `ALLOWED_HOSTS`(`flow.sandcorp.co.kr,127.0.0.1,localhost`), `CSRF_TRUSTED_ORIGINS`(`https://flow.sandcorp.co.kr`), `DB_HOST`·`DB_PORT`·`DB_NAME=sandcorp_flow`·`DB_USER`·`DB_PASSWORD`, `REDIS_URL`, `EVENTS_TOPIC`, `NGINX_PORT`. `AUTH_OWNER_SUB=farrar142`(#20). `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`·`AUTH_REDIRECT_URI`·`AUTH_WEBHOOK_SECRET`(#21, 7번). 이후 티켓이 더할 이름: `PLATFORM_*`(#39).
 4. **NGINX_PORT 정하기**: 박스에서 비어 있는 호스트 포트(`ss -ltn`)를 골라 `.env`에 쓴다. Oracle 보안목록에는 열지 않는다.
 5. **NPM**: Proxy Host `flow.sandcorp.co.kr` → Forward `<A1 호스트>:<NGINX_PORT>`(http), Websockets 켬, SSL Let's Encrypt + Force SSL, Advanced 칸에 `proxy_buffering off; proxy_request_buffering off; proxy_read_timeout 3600s;`(SSE).
 6. **Jenkins 잡**: 위 「Jenkins」 절의 freestyle 잡을 이 저장소용으로 새로 만든다(SCM `git@github.com:sandcorporation/sandcorp-flow.git`, 브랜치 `*/release`, Clean before checkout 끔, GitHub hook trigger, Execute shell은 위 스크립트에서 `DEPLOY_DIR=/opt/sandcorp-flow`). 저장소 쪽 GitHub 웹훅(Settings → Webhooks)에 Jenkins `/github-webhook/` 주소, 이벤트는 push.
@@ -203,13 +203,14 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
    - [ ] **리소스**: sandcorp-auth에 Flow 리소스 `https://flow.sandcorp.co.kr/api`(스코프 `admin`·`login`)가 등록돼 있는지 확인한다. 토큰의 `aud`가 이 값과 정확히 같아야 한다(끝 `/` 없음).
    - [ ] **운영 `.env`**(#20): `AUTH_OWNER_SUB=farrar142`(대표 username). `AUTH_ISSUER`(기본 `https://auth.sandcorp.co.kr`)·`AUTH_JWKS_URL`(기본 `<AUTH_ISSUER>/.well-known/jwks.json`)·`AUTH_RESOURCE`(기본 `https://flow.sandcorp.co.kr/api`)는 기본값이면 적지 않는다. `AUTH_OWNER_SUB`가 비면 대표 토큰이 모두 401이다.
    - [ ] **확인**: `curl -s https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource`가 `resource`=`https://flow.sandcorp.co.kr/api`인 JSON을 돌려주고, `curl -sI https://flow.sandcorp.co.kr/api/operator/tenants/`가 401 + `WWW-Authenticate: Bearer resource_metadata="https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource"`인지 본다(nginx `location = /.well-known/oauth-protected-resource`가 api로 넘긴다).
-   - [ ] **관리 화면 로그인 클라이언트**(#21, sandcorp-auth 규칙 문서 7절): sandcorp-auth에 아래대로 등록한다.
-     - 종류: **기밀(confidential) 클라이언트**, 토큰 엔드포인트 인증 `client_secret_basic`, 인가 코드 + PKCE(S256).
-     - 리디렉션 URI: `https://flow.sandcorp.co.kr/api/operator/auth/callback`(끝 `/` 없음, 문자 하나까지 일치).
-     - 리소스: `https://flow.sandcorp.co.kr/api`, 이 클라이언트가 받을 스코프 `admin`·`login`.
-     - 요청 스코프: `openid profile email login`(Flow가 `/authorize`에 `resource=https://flow.sandcorp.co.kr/api`와 함께 보낸다).
-     - 「일반 사용자 허용」을 켠다(`allows_members=True`): `manage.py clients members --client-id <id> --allow`. 일반 사용자는 지금은 거절 화면으로 가고(#40에서 연다), 대표만 Operator 세션을 받는다.
-   - [ ] **운영 `.env`**(#21): 발급받은 `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`, `AUTH_REDIRECT_URI=https://flow.sandcorp.co.kr/api/operator/auth/callback`. `AUTH_AUTHORIZE_URL`(기본 `<AUTH_ISSUER>/authorize`)·`AUTH_TOKEN_URL`(기본 `<AUTH_ISSUER>/token`)·`AUTH_LOGIN_REDIRECT`(기본 `/admin-ui/operator`)는 기본값이면 적지 않는다. 비어 있으면 로그인 버튼이 「설정되지 않음」 거절 화면으로 간다.
+   - [ ] **로그인 클라이언트**(#21, sandcorp-auth 규칙 문서 7절) — 아래 순서대로 한다.
+     1. **기밀(confidential) 클라이언트 등록**: 토큰 엔드포인트 인증 `client_secret_basic`, 인가 코드 + PKCE(S256).
+        - 리디렉션 URI: `https://flow.sandcorp.co.kr/api/auth/callback`(끝 `/` 없음, 문자 하나까지 일치). Operator 전용이 아니라 일반 사용자(#40)도 같은 콜백을 쓴다.
+        - 리소스: `https://flow.sandcorp.co.kr/api`, 이 클라이언트가 받을 스코프 `admin`·`login`.
+        - 요청 스코프: `openid profile email login`(Flow가 `/authorize`에 `resource=https://flow.sandcorp.co.kr/api`와 함께 보낸다).
+        - 「일반 사용자 허용」(`allows_members=True`): `manage.py clients members --client-id <id> --allow`. 일반 사용자는 지금은 거절 화면으로 가고(#40에서 연다), 대표만 Operator 세션을 받는다.
+     2. **탈퇴 웹훅 비밀 발급**: `manage.py clients webhook --client-id <id> --url https://flow.sandcorp.co.kr/api/auth/webhook`. 웹훅 수신부는 별도 티켓이다(지금 Flow엔 그 경로가 없다) — 비밀만 받아 둔다.
+     3. **운영 `.env`에 넣기**: `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`(1에서 발급), `AUTH_REDIRECT_URI=https://flow.sandcorp.co.kr/api/auth/callback`, `AUTH_WEBHOOK_SECRET`(2에서 발급). `AUTH_AUTHORIZE_URL`(기본 `<AUTH_ISSUER>/authorize`)·`AUTH_TOKEN_URL`(기본 `<AUTH_ISSUER>/token`)·`AUTH_LOGIN_REDIRECT`(기본 `/admin-ui/operator`)는 기본값이면 적지 않는다. 클라이언트 값이 비면 로그인 버튼이 「설정되지 않음」 거절 화면으로 간다.
    - [ ] **확인**: `https://flow.sandcorp.co.kr/admin-ui/operator` → 「sandcorp 계정으로 로그인」 → sandcorp-auth 로그인·동의 → Tenants 화면. 대표가 아닌 계정이면 「로그인할 수 없습니다」.
 8. **첫 배포 확인**: `main` push → Actions 3개 이미지 빌드 → `release` 갱신 → Jenkins 실행. 끝나면 `curl -sI https://flow.sandcorp.co.kr/api/health`가 200, `https://flow.sandcorp.co.kr/admin-ui/`가 열리는지, `docker compose -f docker-compose.prod.oracle.yml ps`에서 전부 Up/healthy인지, `docker stats --no-stream`이 위 상한 안인지 본다.
 9. **Operator 계정**: 만들 것이 없다. Operator 비밀번호 로그인은 없고(#21), 7번 등록을 마친 뒤 대표 계정으로 관리 화면에 로그인하면 첫 로그인 때 Flow 쪽 사용자·Operator 행이 생긴다. `createsuperuser`는 쓰지 않는다.

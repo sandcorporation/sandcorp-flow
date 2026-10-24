@@ -23,6 +23,8 @@ from apps.tenants.operator_login import (
 operator_router = Router(tags=["operator"])
 tenant_router = Router(tags=["tenant"], auth=tenant_agent_auth)
 agent_router = Router(tags=["tenant-agents"])
+# sandcorp-auth 로그인(/api/auth/*). Operator 전용이 아니다 — 일반 사용자(#40)도 같은 콜백을 쓴다.
+auth_router = Router(tags=["auth"])
 
 
 class LoginOut(Schema):
@@ -348,11 +350,11 @@ def change_password(request, body: ChangePasswordIn):
     return 200, {"detail": "비밀번호가 변경되었습니다."}
 
 
-# ── Operator 로그인: sandcorp-auth 기밀 클라이언트(ADR-0028, #21) ────────────────
+# ── 로그인: sandcorp-auth 기밀 클라이언트(ADR-0028, #21). 지금은 대표(Operator)만 세션을 받는다 ──
 # 브라우저 이동(302)이라 생성 클라이언트에 넣지 않는다. 시도(state·PKCE·nonce)는 서명된 httpOnly
 # 쿠키에 맡긴다 — 인가 서버에서 돌아오는 교차 사이트 GET에도 실려야 하므로 SameSite=Lax.
 LOGIN_ATTEMPT_COOKIE = "op_login"
-LOGIN_ATTEMPT_COOKIE_PATH = "/api/operator/auth/callback"
+LOGIN_ATTEMPT_COOKIE_PATH = "/api/auth/callback"
 
 
 def _login_redirect(reason: str | None = None) -> HttpResponseRedirect:
@@ -364,7 +366,7 @@ def _login_redirect(reason: str | None = None) -> HttpResponseRedirect:
     return response
 
 
-@operator_router.get("/auth/authorize", auth=None, include_in_schema=False)
+@auth_router.get("/authorize", auth=None, include_in_schema=False)
 def operator_authorize(request):
     try:
         url, attempt = start_login()
@@ -383,7 +385,7 @@ def operator_authorize(request):
     return response
 
 
-@operator_router.get("/auth/callback", auth=None, include_in_schema=False)
+@auth_router.get("/callback", auth=None, include_in_schema=False)
 def operator_callback(request):
     attempt = LoginAttempt.loads(request.COOKIES.get(LOGIN_ATTEMPT_COOKIE))
     try:
@@ -391,6 +393,7 @@ def operator_callback(request):
     except LoginRejected as exc:
         return _login_redirect(exc.reason)
     response = _login_redirect()
+    # Refresh 쿠키 경로는 /api/operator/auth(refresh·logout만 받는다). 콜백 응답에서 심어도 된다.
     set_refresh_cookie(response, operator, issue_session(operator))
     return response
 

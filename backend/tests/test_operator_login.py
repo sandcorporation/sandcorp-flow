@@ -70,13 +70,13 @@ def flow_client(settings, signer: Signer, clock: FrozenClock):
 
 
 def start(client: Client) -> str:
-    response = client.get("/api/operator/auth/authorize")
+    response = client.get("/api/auth/authorize")
     assert response.status_code == 302
     return response["Location"]
 
 
 def callback(client: Client, query: dict[str, str]):
-    return client.get("/api/operator/auth/callback", query)
+    return client.get("/api/auth/callback", query)
 
 
 def rejected_with(response) -> str | None:
@@ -96,7 +96,7 @@ def refresh_access(client: Client):
 @pytest.mark.django_db
 def test_authorize_redirects_to_sandcorp_auth_with_pkce_state_and_nonce() -> None:
     client = Client()
-    response = client.get("/api/operator/auth/authorize")
+    response = client.get("/api/auth/authorize")
 
     assert response.status_code == 302
     location = urlsplit(response["Location"])
@@ -115,7 +115,7 @@ def test_authorize_redirects_to_sandcorp_auth_with_pkce_state_and_nonce() -> Non
     attempt = response.cookies["op_login"]
     assert attempt["httponly"]
     assert attempt["samesite"].lower() == "lax"  # 인가 서버에서 돌아오는 교차 사이트 GET에 실린다
-    assert attempt["path"] == "/api/operator/auth/callback"
+    assert attempt["path"] == "/api/auth/callback"
 
 
 @pytest.mark.django_db
@@ -133,7 +133,7 @@ def test_each_login_attempt_gets_fresh_state_and_verifier() -> None:
 def test_login_is_refused_until_the_client_is_registered(settings) -> None:
     settings.AUTH_CLIENT_SECRET = ""
 
-    response = Client().get("/api/operator/auth/authorize")
+    response = Client().get("/api/auth/authorize")
 
     assert rejected_with(response) == "config"
 

@@ -27,7 +27,7 @@ describe('로그인 토큰 부수효과', () => {
     try {
       globalThis.fetch = vi.fn()
       startOperatorLogin()
-      expect(assign).toHaveBeenCalledWith('/api/operator/auth/authorize')
+      expect(assign).toHaveBeenCalledWith('/api/auth/authorize')
       expect(globalThis.fetch).not.toHaveBeenCalled()
       expect(getAccess('operator')).toBeNull()
     } finally {

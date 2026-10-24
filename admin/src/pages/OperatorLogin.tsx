@@ -2,7 +2,7 @@ import { useSearchParams } from 'react-router-dom'
 import { startOperatorLogin } from '../api'
 import { s } from '../styles'
 
-// 백엔드 콜백(/api/operator/auth/callback)이 거절하면 ?login_error=<사유>로 돌려보낸다(#21).
+// 백엔드 콜백(/api/auth/callback)이 거절하면 ?login_error=<사유>로 돌려보낸다(#21).
 const REJECTION: Record<string, string> = {
   member: 'Operator 화면은 대표 계정만 들어올 수 있습니다. 일반 사용자 로그인은 아직 열리지 않았습니다.',
   admin: '이 계정에는 Flow 관리(admin) 권한이 없습니다. sandcorp-auth에서 Flow 리소스의 admin 스코프를 확인하세요.',
@@ -21,7 +21,8 @@ export default function OperatorLogin() {
 
   return (
     <div style={s.center}>
-      <div style={s.card}>
+      {/* 카드가 흰 배경 고정이라 다크 테마에서도 글자색을 카드 쪽에 묶는다(HMI 테마 #27 전까지). */}
+      <div style={{ ...s.card, color: '#1a202c', wordBreak: 'keep-all' }}>
         {reason ? (
           <>
             <h2 style={s.title}>로그인할 수 없습니다</h2>
