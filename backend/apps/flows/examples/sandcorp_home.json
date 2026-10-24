@@ -22,7 +22,7 @@
     {"id": "submit", "kind": "http_tool", "code": "N-09", "name": "문의 접수", "position": {"x": 1680, "y": -120},
      "config": {"method": "POST", "url": "https://api.sandcorp.co.kr/inquiries",
                 "headers": {"Authorization": "Bearer {{secret.inquiry_api_key}}"},
-                "body_template": "{\"summary\": \"{{state.summary}}\"}"}},
+                "body_template": "{\"summary\": \"{{state.user_message}}\", \"label\": \"{{state.label}}\"}"}},
     {"id": "handoff", "kind": "handoff", "code": "N-10", "name": "사람 넘김", "position": {"x": 720, "y": 120},
      "config": {"reason": "방문자가 사람을 원하거나 의도가 불확실함"}},
     {"id": "general", "kind": "ai_answer", "code": "N-11", "name": "일반 답변", "position": {"x": 720, "y": 0},

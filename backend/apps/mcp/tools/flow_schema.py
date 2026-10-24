@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from apps.flows.schema import (
     MAX_STEPS_PER_TURN,
@@ -31,6 +31,12 @@ RULES = [
     f"실행기는 한 턴에 노드를 {MAX_STEPS_PER_TURN}개까지만 실행한다.",
     "config의 모르는 필드는 거부한다. http_tool의 인증 계열 헤더 값에는 원문 키 대신 {{secret.이름}} 참조만 쓴다"
     "(예: 'Bearer {{secret.api_key}}'). url에는 비밀 참조를 넣을 수 없고 https만 된다.",
+    "http_tool 틀 참조: {{secret.이름}}(headers·body_template), {{state.user_message}}·{{state.label}}·"
+    "{{state.confidence}}·{{state.fields.이름}}(url 경로·쿼리, body_template). url의 호스트는 고정 글이어야 하고 "
+    "상태 값은 한 조각으로 퍼센트 인코딩된다. 본문에는 JSON 문자열 안쪽으로 이스케이프돼 들어간다. headers에는 상태 값을 못 쓴다. "
+    "save {이름: '$.a.b[0]'}로 응답 JSON 값을 fields.이름에 저장한다(없으면 null). 2xx면 next, 허용 목록 밖·사설 IP·"
+    "시간 초과(5초)·크기 초과(256KB)·HTTP 4xx/5xx·JSON 아님·비밀을 실은 요청의 다른 호스트 리다이렉트는 error 갈래"
+    "(선택, 선이 없으면 턴 끝). 판단 기록 record.error에 이유 코드가 남는다. 호출할 호스트는 테넌트 허용 도메인에 있어야 한다.",
     "검증 오류는 {node_id, code, message} 목록으로 온다. node_id가 null이면 흐름 전체 오류.",
 ]
 
@@ -40,9 +46,9 @@ class NoArgs(BaseModel):
 
 
 def _handles(model: type[NodeConfig]) -> list[str]:
-    try:
-        return list(model().handles())
-    except ValidationError:  # 기본값으로 못 만드는 config(조건 노드) — 갈래가 config에 달렸다
+    try:  # 검증 없이 지어 갈래만 읽는다(url처럼 필수 필드가 있어도 갈래는 고정인 노드)
+        return list(model.model_construct().handles())
+    except AttributeError:  # 갈래가 config에 달린 노드(조건 노드의 branches)
         return ["<branches[].name 각각>", ELSE_HANDLE]
 
 

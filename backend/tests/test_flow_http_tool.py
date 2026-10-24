@@ -159,6 +159,8 @@ def _flow(http_config: dict, *, error_edge: bool = True, after: dict | None = No
     edges = [{"from": "s", "to": "h"}, {"from": "h", "to": "ok"}]
     if error_edge:
         edges.append({"from": "h", "to": "failed", "handle": "error"})
+    elif after is None:
+        nodes.pop()  # 실패 갈래가 없으면 failed 노드도 없다(도달 불가)
     if after is not None:
         nodes.append(_node("c", "condition", 5, after))
         edges = [{"from": "s", "to": "h"}, {"from": "h", "to": "c"},
