@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
+import { compactTokens, trendDots } from '@/lib/usageChart'
 import { tenantUsage } from '../api'
 import type { TenantUsageOut } from '../generated/model'
 import { Card, CardContent } from '@/components/ui/card'
@@ -68,8 +69,8 @@ export default function TenantUsageTab() {
               </Table>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={data.by_call_type}>
-                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="call_type" tickFormatter={(v: string) => (v.length > 8 ? `${v.slice(0, 8)}…` : v)} /><YAxis /><Tooltip wrapperStyle={TOOLTIP_WRAP} contentStyle={TOOLTIP_BOX} />
-                  <Bar dataKey="total_tokens" fill="hsl(var(--flow-accent))" radius={[2, 2, 0, 0]} />
+                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="call_type" tickFormatter={(v: string) => (v.length > 8 ? `${v.slice(0, 8)}…` : v)} /><YAxis tickFormatter={compactTokens} /><Tooltip wrapperStyle={TOOLTIP_WRAP} contentStyle={TOOLTIP_BOX} />
+                  <Bar dataKey="total_tokens" isAnimationActive={false} fill="hsl(var(--flow-accent))" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -82,8 +83,8 @@ export default function TenantUsageTab() {
               <div className="text-sm font-semibold">일별 추이</div>
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={data.daily}>
-                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><Tooltip wrapperStyle={TOOLTIP_WRAP} contentStyle={TOOLTIP_BOX} />
-                  <Line type="monotone" dataKey="total_tokens" stroke="hsl(var(--flow-accent))" strokeWidth={2} dot={false} />
+                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis tickFormatter={compactTokens} /><Tooltip wrapperStyle={TOOLTIP_WRAP} contentStyle={TOOLTIP_BOX} />
+                  <Line type="monotone" dataKey="total_tokens" stroke="hsl(var(--flow-accent))" strokeWidth={2} dot={trendDots(data.daily.length)} isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
