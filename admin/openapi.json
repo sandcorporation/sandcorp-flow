@@ -624,6 +624,47 @@
         "title": "MessageIn",
         "type": "object"
       },
+      "OnboardingIn": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "slug"
+        ],
+        "title": "OnboardingIn",
+        "type": "object"
+      },
+      "OnboardingOut": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "tenant_name": {
+            "title": "Tenant Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "tenant_name",
+          "access_token"
+        ],
+        "title": "OnboardingOut",
+        "type": "object"
+      },
       "OperatorUsageOut": {
         "properties": {
           "by_tenant": {
@@ -1463,6 +1504,36 @@
         "title": "TenantUsageOut",
         "type": "object"
       },
+      "TrialOut": {
+        "properties": {
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "remaining": {
+            "title": "Remaining",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "byok",
+              "trial",
+              "exhausted",
+              "unavailable",
+              "platform_default"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "remaining",
+          "limit"
+        ],
+        "title": "TrialOut",
+        "type": "object"
+      },
       "UrlsIn": {
         "properties": {
           "urls": {
@@ -1667,6 +1738,85 @@
           }
         },
         "summary": "Member Tenants",
+        "tags": [
+          "auth"
+        ]
+      },
+      "post": {
+        "description": "온보딩(#41): 표(`member_ticket`)를 가진 member가 조직을 만들고 첫 Admin으로 바로 세션을 연다.",
+        "operationId": "apps_tenants_api_member_create_tenant",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Member Create Tenant",
         "tags": [
           "auth"
         ]
@@ -3719,6 +3869,34 @@
           }
         ],
         "summary": "Update Slug",
+        "tags": [
+          "tenant"
+        ]
+      }
+    },
+    "/api/tenant/trial/": {
+      "get": {
+        "description": "체험 한도 상태(#41) — 관리 화면 배너·요금 화면이 읽는다.",
+        "operationId": "apps_tenants_api_get_trial",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrialOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberAuth": []
+          }
+        ],
+        "summary": "Get Trial",
         "tags": [
           "tenant"
         ]

@@ -5,11 +5,17 @@
  * OpenAPI spec version: 1.0.0
  */
 import type {
+  AppsTenantsApiMemberCreateTenant400,
+  AppsTenantsApiMemberCreateTenant401,
+  AppsTenantsApiMemberCreateTenant409,
+  AppsTenantsApiMemberCreateTenant429,
   AppsTenantsApiMemberSelectTenant401,
   AppsTenantsApiMemberSelectTenant403,
   AppsTenantsApiMemberTenants401,
   LoginOut,
   MemberTicketOut,
+  OnboardingIn,
+  OnboardingOut,
   SelectTenantIn
 } from '../../model';
 
@@ -103,6 +109,65 @@ export const appsTenantsApiMemberTenants = async ( options?: RequestInit): Promi
     method: 'GET'
     
     
+  }
+);}
+
+
+/**
+ * 온보딩(#41): 표(`member_ticket`)를 가진 member가 조직을 만들고 첫 Admin으로 바로 세션을 연다.
+ * @summary Member Create Tenant
+ */
+export type appsTenantsApiMemberCreateTenantResponse201 = {
+  data: OnboardingOut
+  status: 201
+}
+
+export type appsTenantsApiMemberCreateTenantResponse400 = {
+  data: AppsTenantsApiMemberCreateTenant400
+  status: 400
+}
+
+export type appsTenantsApiMemberCreateTenantResponse401 = {
+  data: AppsTenantsApiMemberCreateTenant401
+  status: 401
+}
+
+export type appsTenantsApiMemberCreateTenantResponse409 = {
+  data: AppsTenantsApiMemberCreateTenant409
+  status: 409
+}
+
+export type appsTenantsApiMemberCreateTenantResponse429 = {
+  data: AppsTenantsApiMemberCreateTenant429
+  status: 429
+}
+    
+export type appsTenantsApiMemberCreateTenantResponseSuccess = (appsTenantsApiMemberCreateTenantResponse201) & {
+  headers: Headers;
+};
+export type appsTenantsApiMemberCreateTenantResponseError = (appsTenantsApiMemberCreateTenantResponse400 | appsTenantsApiMemberCreateTenantResponse401 | appsTenantsApiMemberCreateTenantResponse409 | appsTenantsApiMemberCreateTenantResponse429) & {
+  headers: Headers;
+};
+
+export type appsTenantsApiMemberCreateTenantResponse = (appsTenantsApiMemberCreateTenantResponseSuccess | appsTenantsApiMemberCreateTenantResponseError)
+
+export const getAppsTenantsApiMemberCreateTenantUrl = () => {
+
+
+  
+
+  return `/api/auth/member/tenants`
+}
+
+export const appsTenantsApiMemberCreateTenant = async (onboardingIn: OnboardingIn, options?: RequestInit): Promise<appsTenantsApiMemberCreateTenantResponse> => {
+  
+  return customInstance<appsTenantsApiMemberCreateTenantResponse>(getAppsTenantsApiMemberCreateTenantUrl(),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      onboardingIn,)
   }
 );}
 

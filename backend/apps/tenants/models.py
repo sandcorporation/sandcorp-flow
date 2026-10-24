@@ -51,6 +51,13 @@ class Operator(AbstractUser):
         db_table = "operators"
 
 
+def default_trial_turns() -> int:
+    """새 Tenant(그리고 0009 마이그레이션 때 기존 Tenant)에 주는 체험 턴 수(#41, 설정 TRIAL_TURNS)."""
+    from django.conf import settings
+
+    return settings.TRIAL_TURNS
+
+
 class TenantManager(models.Manager):
     def create_with_key(self, name: str, raw_key: str) -> "Tenant":
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
@@ -68,6 +75,13 @@ class Tenant(models.Model):
     tenant_key_hash = models.CharField(max_length=64, unique=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # 체험 한도(Trial Quota, ADR-0026): 자기 LLM Provider가 없을 때 플랫폼 키로 돌 수 있는 남은 방문자 턴.
+    # 차감은 apps.tenants.trial.admit_turn의 조건부 UPDATE로만 한다(음수 없음).
+    trial_turns_remaining = models.PositiveIntegerField(default=default_trial_turns)
+    # 온보딩으로 이 조직을 만든 사람(사용자당 생성 상한용). Operator가 만든 조직은 비어 있다.
+    created_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="created_tenants"
+    )
 
     # 커스텀 매니저를 명시 주석해 django-types의 기본 Manager 추론을 덮어쓴다(create_with_key 인식).
     objects: "TenantManager" = TenantManager()

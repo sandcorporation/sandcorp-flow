@@ -112,6 +112,23 @@ OPEN_ROUTER_BASE_URL = os.environ.get("OPEN_ROUTER_BASE_URL", "https://openroute
 # base 기본은 안전하게 False(미설정 환경에서 실수로 플랫폼 비용을 떠안지 않도록).
 PLATFORM_DEFAULT_PROVIDERS_ENABLED = False
 
+# 플랫폼 키(ADR-0026 「플랫폼 키는 OpenAI 하나」)와 체험 한도(Trial Quota, #41).
+# 자기 LLM Provider가 없는 테넌트는 체험 턴이 남아 있는 동안만 플랫폼 OpenAI 키로 돈다.
+# dev(PLATFORM_DEFAULT_PROVIDERS_ENABLED=True)는 이 경로를 타지 않고 기존 fake-llm/ollama 폴백을 쓴다.
+# 키가 비어 있으면 체험 테넌트의 챗은 방문자에게 정중한 문구로 멈추고 관리 화면이 「준비되지 않음」을 알린다.
+PLATFORM_OPENAI_API_KEY = os.environ.get("PLATFORM_OPENAI_API_KEY", "")
+PLATFORM_OPENAI_BASE_URL = os.environ.get("PLATFORM_OPENAI_BASE_URL", "https://api.openai.com/v1")
+PLATFORM_LLM_MODEL = os.environ.get("PLATFORM_LLM_MODEL", "gpt-4o-mini")
+# 차원은 OpenAI `dimensions` 인자로 테넌트 embed_dim(기본 1024)에 맞춘다 — 인덱스·재구축 규칙 그대로.
+PLATFORM_EMBED_MODEL = os.environ.get("PLATFORM_EMBED_MODEL", "text-embedding-3-small")
+TRIAL_TURNS = int(os.environ.get("TRIAL_TURNS", "200"))
+
+# 온보딩(member가 조직을 만든다, #41) 남용 방지: 사용자당 만들 수 있는 조직 수, IP당 시간당 시도 수.
+TENANT_CREATE_LIMIT_PER_USER = int(os.environ.get("TENANT_CREATE_LIMIT_PER_USER", "3"))
+ONBOARDING_RATE_LIMIT_PER_HOUR = int(os.environ.get("ONBOARDING_RATE_LIMIT_PER_HOUR", "10"))
+# X-Forwarded-For를 덧붙이는 우리 프록시 단수(클라이언트 IP 판정). 운영은 NPM→nginx 2단(prod.py).
+TRUSTED_PROXY_COUNT = int(os.environ.get("TRUSTED_PROXY_COUNT", "1"))
+
 # 챗 응답 토큰 스트리밍(PRD-chat-token-streaming) 킬스위치. 기본 on — 답변을 토큰 델타로 실시간
 # 흘린다. off면 현행 one-shot(complete_structured)으로 동작한다. provider가 부분 구조화 스트리밍을
 # 불안정하게 처리할 때 ops가 전면 끌 수 있는 안전판.

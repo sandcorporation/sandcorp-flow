@@ -202,7 +202,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
    - [x] 워크스페이스에 `cp .env.prod.example .env` 후 아래 필수 키를 채운다. 파일 권한 600.
    - [ ] `docker login ghcr.io`(Jenkins 실행 유저, `read:packages` PAT) 확인. 이미지 이름은 `sandcorp-flow-{api,admin,widget}`.
    - [x] `docker rollout` 플러그인을 에이전트 `/root/.docker/cli-plugins/docker-rollout`에 설치, 확인은 `docker rollout --help | grep 'Rollout new Compose'`(exit 0만 보면 오판).
-3. [x] **운영 `.env` 필수 키**(16개 투입, `NGINX_PORT=18095`)(이름만): `DJANGO_SETTINGS_MODULE=config.settings.prod`, `SECRET_KEY`(생성 후 **영구 고정**), `ALLOWED_HOSTS`(`flow.sandcorp.co.kr,127.0.0.1,localhost`), `CSRF_TRUSTED_ORIGINS`(`https://flow.sandcorp.co.kr`), `DB_HOST`·`DB_PORT`·`DB_NAME=sandcorp_flow`·`DB_USER`·`DB_PASSWORD`, `REDIS_URL`, `EVENTS_TOPIC`, `NGINX_PORT`. `AUTH_OWNER_SUB=farrar142`(#20). `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`·`AUTH_REDIRECT_URI`·`AUTH_WEBHOOK_SECRET`(#21, 7번). 이후 티켓이 더할 이름: `PLATFORM_*`(#39).
+3. [x] **운영 `.env` 필수 키**(16개 투입, `NGINX_PORT=18095`)(이름만): `DJANGO_SETTINGS_MODULE=config.settings.prod`, `SECRET_KEY`(생성 후 **영구 고정**), `ALLOWED_HOSTS`(`flow.sandcorp.co.kr,127.0.0.1,localhost`), `CSRF_TRUSTED_ORIGINS`(`https://flow.sandcorp.co.kr`), `DB_HOST`·`DB_PORT`·`DB_NAME=sandcorp_flow`·`DB_USER`·`DB_PASSWORD`, `REDIS_URL`, `EVENTS_TOPIC`, `NGINX_PORT`. `AUTH_OWNER_SUB=farrar142`(#20). `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`·`AUTH_REDIRECT_URI`·`AUTH_WEBHOOK_SECRET`(#21, 7번). 플랫폼 키·체험 한도 이름은 10번.
 4. [x] **NGINX_PORT 정하기**(18095): 박스에서 비어 있는 호스트 포트(`ss -ltn`)를 골라 `.env`에 쓴다. Oracle 보안목록에는 열지 않는다.
 5. [x] **NPM**(NPMplus 호스트 19·인증서 27, `flow.sandcorp.co.kr` → `172.17.0.1:18095`): Proxy Host `flow.sandcorp.co.kr` → Forward `<A1 호스트>:<NGINX_PORT>`(http), Websockets 켬, SSL Let's Encrypt + Force SSL, Advanced 칸에 `proxy_buffering off; proxy_request_buffering off; proxy_read_timeout 3600s;`(SSE).
 6. [x] **Jenkins 잡** `sandcorp-flow`: 위 「Jenkins」 절의 freestyle 잡(SCM `git@github.com:sandcorporation/sandcorp-flow.git`, 브랜치 `*/release`, Clean before checkout 끔, GitHub hook trigger, Execute shell은 위 스크립트 — `cd $WORKSPACE`, fetch/reset 없음). 저장소 쪽 GitHub 웹훅(Settings → Webhooks)에 Jenkins `/github-webhook/` 주소, 이벤트는 push.
@@ -221,6 +221,20 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
    - [ ] **확인**: `https://flow.sandcorp.co.kr/admin-ui/operator` → 「sandcorp 계정으로 로그인」 → sandcorp-auth 로그인·동의 → Tenants 화면. 대표가 아닌 계정이면 「로그인할 수 없습니다」.
 8. [x] **첫 배포 확인**(2026-10-24 Jenkins build 3, deb7835 — `/api/health`·`/admin-ui/` 200, 보호 리소스 메타데이터·401 헤더 정상, 컨테이너 12개 Up, 메모리 약 0.95G): `main` push → Actions 3개 이미지 빌드 → `release` 갱신(release 잡도 self-hosted `arm64-builder` 러너 — 비공개 저장소라 GitHub 호스팅 러너는 과금 막힘) → Jenkins 실행. 끝나면 `curl -sI https://flow.sandcorp.co.kr/api/health`가 200, `https://flow.sandcorp.co.kr/admin-ui/`가 열리는지, `docker compose -f docker-compose.prod.oracle.yml ps`에서 전부 Up/healthy인지, `docker stats --no-stream`이 위 상한 안인지 본다.
 9. **Operator 계정**: 만들 것이 없다. Operator 비밀번호 로그인은 없고(#21), 7번 등록을 마친 뒤 대표 계정으로 관리 화면에 로그인하면 첫 로그인 때 Flow 쪽 사용자·Operator 행이 생긴다. `createsuperuser`는 쓰지 않는다.
+10. [ ] **플랫폼 키·체험 한도**(#41, ADR-0026) — 운영 `.env`에 넣고 재배포한다. 표의 권장값은 코드 기본값과 같다(키 말고는 적지 않아도 같다).
+
+    | 이름 | 권장 기본값 | 설명 |
+    |---|---|---|
+    | `PLATFORM_OPENAI_API_KEY` | (값은 대장 보관) | 플랫폼 OpenAI 키. 비면 Provider 없는 테넌트의 챗이 방문자에게 「상담 준비 중」으로 멈추고 관리 화면이 「플랫폼 체험이 준비되지 않았습니다」를 보인다(서버 오류 없음). |
+    | `PLATFORM_LLM_MODEL` | `gpt-4o-mini` | 체험 테넌트의 챗·자료 정리 모델. |
+    | `PLATFORM_EMBED_MODEL` | `text-embedding-3-small` | 체험 테넌트의 임베딩. 본래 1536차원이지만 OpenAI `dimensions` 인자로 테넌트 `embed_dim`(기본 1024)에 맞춰 보낸다 — 인덱스 차원·「Provider 바꾸면 재임베딩」 규칙이 그대로다. |
+    | `TRIAL_TURNS` | `200` | 새 조직이 받는 체험 턴(1턴 = 방문자 메시지 하나). 0009 마이그레이션 때 기존 조직도 이 값을 받는다. |
+    | `PLATFORM_OPENAI_BASE_URL` | `https://api.openai.com/v1` | 바꿀 일 없음(시험·프록시용). |
+    | `TENANT_CREATE_LIMIT_PER_USER` | `3` | 온보딩에서 한 계정이 만들 수 있는 조직 수. |
+    | `ONBOARDING_RATE_LIMIT_PER_HOUR` | `10` | 온보딩 시도 IP당 시간당 상한. |
+    | `TRUSTED_PROXY_COUNT` | `2`(prod 기본) | X-Forwarded-For를 덧붙이는 프록시 단수(NPM→nginx). 프록시 구성이 바뀔 때만. |
+
+    확인: Provider 없는 시험 조직의 위젯에서 한 마디 → 답이 오고 관리 화면 상단 「체험 중 — 남은 대화」가 1 줄어든다.
 
 ## 관련 문서
 - [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md) — 무중단 롤링 설계·기각안

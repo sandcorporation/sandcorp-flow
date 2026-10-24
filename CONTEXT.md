@@ -226,7 +226,7 @@ HTTP 도구 등에서 쓰는 테넌트 비밀 값. 암호화해 저장하고, �
 플랫폼(대표)이 비용을 내는 **OpenAI** 키 하나. 체험 한도, `/try`, 「Sandcorp」 테넌트(sandcorp.co.kr 홈 위젯)만 이 키를 쓴다. 모델은 설정값(`PLATFORM_LLM_MODEL`, 기본 gpt-4o-mini급 저가 모델)이다. 플랫폼은 Anthropic 등 다른 공급자 키를 두지 않는다. 그 밖의 테넌트는 자기 Provider(BYOK)를 쓴다.
 
 **Trial Quota**
-가입한 테넌트에게 주는, 플랫폼 키로 도는 체험 한도(예: 대화 200턴). 넘으면 테넌트가 자기 LLM Provider 키를 넣어야 흐름이 돈다.
+가입한 테넌트에게 주는, 플랫폼 키로 도는 체험 한도(`TRIAL_TURNS`, 기본 200턴 — 1턴은 방문자 메시지 하나). 자기 LLM Provider가 없을 때만 쓰고, 다 쓰면 방문자에게는 「상담 준비 중」 문구만 보이며 테넌트가 자기 LLM Provider 키를 넣어야 흐름이 돈다.
 _Avoid_: 무료 플랜(결제·요금제는 다음 판)
 
 **Try Session**

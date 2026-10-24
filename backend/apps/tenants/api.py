@@ -1,5 +1,5 @@
 import secrets
-from typing import List
+from typing import List, Literal
 from ninja import Router, Schema
 from urllib.parse import urlencode
 from django.conf import settings
@@ -487,6 +487,43 @@ def member_select_tenant(request, body: SelectTenantIn, response: HttpResponse):
     return 200, {"access_token": create_member_access_token(membership)}
 
 
+class OnboardingIn(Schema):
+    name: str
+    slug: str
+
+
+class OnboardingOut(Schema):
+    tenant_id: str
+    tenant_name: str
+    access_token: str
+
+
+@auth_router.post(
+    "/member/tenants", response={201: OnboardingOut, 400: dict, 401: dict, 409: dict, 429: dict}, auth=None
+)
+def member_create_tenant(request, body: OnboardingIn, response: HttpResponse):
+    """온보딩(#41): 표(`member_ticket`)를 가진 member가 조직을 만들고 첫 Admin으로 바로 세션을 연다."""
+    from apps.tenants import onboarding
+
+    user = read_member_ticket(request.COOKIES.get(MEMBER_TICKET_COOKIE))
+    if user is None:
+        return 401, {"detail": "로그인이 필요합니다."}
+    if not onboarding.allow_attempt(onboarding.client_ip(request)):
+        return 429, {"detail": "잠시 후 다시 시도해 주세요."}
+    try:
+        membership = onboarding.create_tenant_for(user, body.name, body.slug)
+    except onboarding.OnboardingRejected as exc:
+        status = 409 if exc.reason in ("name_taken", "slug_taken", "limit_reached") else 400
+        return status, {"detail": exc.message, "reason": exc.reason}
+    set_refresh_cookie(response, membership, issue_session(membership))
+    response.delete_cookie(MEMBER_TICKET_COOKIE, path=MEMBER_TICKET_COOKIE_PATH)
+    return 201, {
+        "tenant_id": str(membership.tenant_id),
+        "tenant_name": membership.tenant.name,
+        "access_token": create_member_access_token(membership),
+    }
+
+
 @operator_router.post("/auth/refresh", response={200: LoginOut, 401: dict}, auth=None)
 def operator_refresh(request, response: HttpResponse):
     raw = request.COOKIES.get(cookie_name(OPERATOR))
@@ -598,6 +635,21 @@ def _config_out(config):
             settings, "PLATFORM_DEFAULT_PROVIDERS_ENABLED", False
         ),
     }
+
+
+class TrialOut(Schema):
+    state: Literal["byok", "trial", "exhausted", "unavailable", "platform_default"]
+    remaining: int
+    limit: int
+
+
+@tenant_router.get("/trial/", response=TrialOut)
+def get_trial(request):
+    """체험 한도 상태(#41) — 관리 화면 배너·요금 화면이 읽는다."""
+    from apps.tenants import trial
+
+    config = request.auth.tenant.config
+    return {"state": trial.trial_state(config), "remaining": trial.remaining(config), "limit": settings.TRIAL_TURNS}
 
 
 @tenant_router.get("/config/", response=TenantConfigOut)

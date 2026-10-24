@@ -28,6 +28,8 @@ class EmbeddingProvider:
     model: str
     dim: int = 1024
     api_key: str = ""
+    # True면 /embeddings에 `dimensions`를 실어 보낸다(플랫폼 OpenAI 키 — 차원을 embed_dim에 맞춤, #41).
+    send_dimensions: bool = False
 
 
 def build_llm_client(provider: LLMProvider):
@@ -65,17 +67,30 @@ def _provider_from_config(config, model: str) -> LLMProvider:
         )
     from django.conf import settings
 
-    if not getattr(settings, "PLATFORM_DEFAULT_PROVIDERS_ENABLED", False):
-        raise ValueError("LLM Provider가 설정되지 않았습니다 (프로덕션은 Tenant 설정 필수)")
-    return LLMProvider(
-        type="", model=model,
-        base_url=settings.OPEN_ROUTER_BASE_URL, api_key=settings.OPEN_ROUTER_API_KEY,
-    )
+    if getattr(settings, "PLATFORM_DEFAULT_PROVIDERS_ENABLED", False):
+        return LLMProvider(
+            type="", model=model,
+            base_url=settings.OPEN_ROUTER_BASE_URL, api_key=settings.OPEN_ROUTER_API_KEY,
+        )
+    raise ValueError("LLM Provider가 설정되지 않았습니다 (프로덕션은 Tenant 설정 필수)")
+
+
+def _platform_trial_llm(config, *, require_turns: bool) -> LLMProvider | None:
+    """체험 테넌트(자기 Provider 없음, prod)면 플랫폼 키 LLM. 모델은 테넌트 model_id가 아니라
+    PLATFORM_LLM_MODEL이다(테넌트 model_id는 다른 공급자 이름일 수 있다). 챗은 턴을 chat_task에서
+    미리 차감하므로 남은 턴을 다시 보지 않고, 자료 정리(추출)는 남은 턴이 있을 때만 플랫폼 키를 쓴다."""
+    from apps.tenants import trial
+
+    if not trial.uses_platform_key(config) or not trial.platform_key_ready():
+        return None
+    if require_turns and trial.remaining(config) <= 0:
+        return None
+    return trial.platform_llm()
 
 
 def chat_provider(config) -> LLMProvider:
     """챗·메모리용 LLM provider (모델 = config.model_id)."""
-    return _provider_from_config(config, config.model_id)
+    return _platform_trial_llm(config, require_turns=False) or _provider_from_config(config, config.model_id)
 
 
 # 챗 그래프 노드가 쓸 chat provider를 흘리는 contextvar. 비밀키를 LangGraph state에
@@ -100,7 +115,7 @@ def extraction_provider(config) -> LLMProvider:
     from django.conf import settings
 
     model = config.extraction_model or config.model_id or settings.GRAPH_EXTRACTION_MODEL
-    return _provider_from_config(config, model)
+    return _platform_trial_llm(config, require_turns=True) or _provider_from_config(config, model)
 
 
 def ocr_provider(config) -> LLMProvider:
@@ -136,6 +151,10 @@ def embedding_provider(config) -> EmbeddingProvider:
             dim=config.embed_dim,
             api_key=decrypt_secret(config.embed_api_key),
         )
+    from apps.tenants import trial
+
+    if config and trial.uses_platform_key(config) and trial.platform_key_ready():
+        return trial.platform_embedding(config.embed_dim)
     if getattr(settings, "PLATFORM_DEFAULT_PROVIDERS_ENABLED", False):
         return EmbeddingProvider(
             type="", base_url=f"{settings.OLLAMA_BASE_URL}/v1",

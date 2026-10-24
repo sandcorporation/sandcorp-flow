@@ -39,5 +39,6 @@ Accepted (구현은 후속 — REQUEST.md "C")
 - **재구축 플로우(Celery)**: Embedding provider 변경 시 재임베딩 + 무중단 swap.
 - **온보딩**: prod에선 provider 설정이 Tenant 필수(폴백 없음).
 - **플랫폼 기본 폴백 게이트(통합)**: 플랫폼 기본 Provider(OpenRouter LLM + ollama 임베딩) 폴백을 단일 플래그 `PLATFORM_DEFAULT_PROVIDERS_ENABLED`로 묶어 **dev만 True / prod False**(`dev.py`/`prod.py` 명시). 미설정 + 플래그 off면 LLM·임베딩 둘 다 `ValueError`로 거부(기존 임베딩 전용 게이트를 LLM까지 확장). 서버가 이 플래그를 config GET에 노출해 **어드민 ConfigTab이 prod에선 "기본" Provider 옵션을 숨긴다**(UI 게이팅 + 백엔드 거부 이중).
+  - 보충(#41, ADR-0026): prod에서 Provider가 없는 테넌트는 거부 대신 **체험 한도 안에서만** 플랫폼 OpenAI 키(`PLATFORM_OPENAI_API_KEY`)로 돈다. 이 플래그가 True인 dev는 그 경로를 타지 않는다.
 - `TenantConfig.model_id` → LLM provider의 `chat_model`로 흡수.
 - A1의 레이트리밋(A1-Q7)이 이제 **Tenant 키를 공개 URL 남용으로부터 보호**하는 역할도 겸한다.
