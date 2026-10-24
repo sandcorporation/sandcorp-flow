@@ -140,6 +140,10 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 
 ---
 
+### 흐름(Flow) 모델 — 실행기 전환 중 (ADR-0027)
+
+테넌트가 그리는 상담 흐름은 `backend/apps/flows/`에 있습니다. **Flow**(테넌트당 하나를 「공개 흐름」으로 지정)는 고칠 수 있는 **초안** 하나와 **바뀌지 않는 Flow Version**들을 가지며, 배포 중 버전 하나를 가리킵니다. Flow Version은 만들 때 흐름 JSON을 검증하고 정규화 JSON의 SHA-256 해시를 남기며, 저장 뒤 수정은 예외입니다. 새 **ChatSession**은 시작 때 공개 흐름의 배포 중 버전에 고정됩니다(`flow_version`, 배포가 진행 중 대화를 바꾸지 않음). 흐름 JSON 형식·검증 오류 코드·순환 규칙(순환은 방문자 답을 기다리는 노드를 지나야 함)은 [docs/flow-json.md](./docs/flow-json.md). 위 코드 그래프를 흐름 JSON 해석 실행기로 옮기는 일은 후속 티켓(#23)입니다.
+
 ## 4. 기술 사양
 
 | 영역 | 사양 |
