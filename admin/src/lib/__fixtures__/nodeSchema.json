@@ -1,0 +1,272 @@
+{
+ "start": {
+  "config": {
+   "additionalProperties": false,
+   "properties": {},
+   "title": "StartConfig",
+   "type": "object"
+  }
+ },
+ "ai_answer": {
+  "config": {
+   "additionalProperties": false,
+   "properties": {
+    "instructions": {
+     "default": "",
+     "title": "Instructions",
+     "type": "string"
+    },
+    "await_reply": {
+     "default": false,
+     "title": "Await Reply",
+     "type": "boolean"
+    }
+   },
+   "title": "AiAnswerConfig",
+   "type": "object"
+  }
+ },
+ "condition": {
+  "config": {
+   "$defs": {
+    "ConditionBranch": {
+     "additionalProperties": false,
+     "properties": {
+      "name": {
+       "maxLength": 64,
+       "minLength": 1,
+       "title": "Name",
+       "type": "string"
+      },
+      "when": {
+       "minLength": 1,
+       "title": "When",
+       "type": "string"
+      }
+     },
+     "required": [
+      "name",
+      "when"
+     ],
+     "title": "ConditionBranch",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "branches": {
+     "items": {
+      "$ref": "#/$defs/ConditionBranch"
+     },
+     "minItems": 1,
+     "title": "Branches",
+     "type": "array"
+    }
+   },
+   "required": [
+    "branches"
+   ],
+   "title": "ConditionConfig",
+   "type": "object"
+  }
+ },
+ "handoff": {
+  "config": {
+   "additionalProperties": false,
+   "properties": {
+    "reason": {
+     "default": "",
+     "title": "Reason",
+     "type": "string"
+    }
+   },
+   "title": "HandoffConfig",
+   "type": "object"
+  }
+ },
+ "knowledge_search": {
+  "config": {
+   "additionalProperties": false,
+   "properties": {
+    "top_k": {
+     "default": 5,
+     "maximum": 20,
+     "minimum": 1,
+     "title": "Top K",
+     "type": "integer"
+    }
+   },
+   "title": "KnowledgeSearchConfig",
+   "type": "object"
+  }
+ },
+ "ai_classify": {
+  "config": {
+   "$defs": {
+    "ExtractField": {
+     "additionalProperties": false,
+     "description": "추출할 필드 하나. 모델이 못 찾으면 null(누락)로 둔다.",
+     "properties": {
+      "name": {
+       "maxLength": 64,
+       "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+       "title": "Name",
+       "type": "string"
+      },
+      "description": {
+       "default": "",
+       "title": "Description",
+       "type": "string"
+      },
+      "type": {
+       "default": "string",
+       "enum": [
+        "string",
+        "number",
+        "boolean"
+       ],
+       "title": "Type",
+       "type": "string"
+      }
+     },
+     "required": [
+      "name"
+     ],
+     "title": "ExtractField",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "description": "AI 분류·추출(ADR-0027, #25). ``labels``로 분류하고 ``fields``로 추출한다 — 둘 중 하나 이상.\n\n결과는 상태의 ``label``·``fields``·``confidence``(0~1)에 쓰고, 조건 노드가 읽는다.",
+   "properties": {
+    "instructions": {
+     "default": "",
+     "title": "Instructions",
+     "type": "string"
+    },
+    "labels": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Labels",
+     "type": "array"
+    },
+    "fields": {
+     "items": {
+      "$ref": "#/$defs/ExtractField"
+     },
+     "title": "Fields",
+     "type": "array"
+    }
+   },
+   "title": "AiClassifyConfig",
+   "type": "object"
+  }
+ },
+ "guardrail": {
+  "config": {
+   "additionalProperties": false,
+   "description": "가드레일(ADR-0027, #26). ``target``의 글을 ``rules``로 검사하고 걸리면 ``action``으로 처리한다.\n\n- ``banned_words``(금지어 목록)·``pii``(전화번호·주민등록번호·카드번호·이메일)는 결정적 검사, ``price_promise``는 LLM 판정.\n- ``block``: ``block_message``로 바꿈. ``rewrite``: LLM으로 고쳐 씀(고친 글에도 결정적 규칙이 남으면 막기로). ``mask``: 걸린\n  부분만 가림(금지어·개인정보만 — 가격 약속은 부분을 가릴 수 없다).\n- ``output``: 직전 AI 답변(나가는 말), ``input``: 방문자 입력(들어오는 말). 입력을 막으면 ``block_message``로 답하고 턴이 끝난다.",
+   "properties": {
+    "rules": {
+     "items": {
+      "enum": [
+       "banned_words",
+       "pii",
+       "price_promise"
+      ],
+      "type": "string"
+     },
+     "minItems": 1,
+     "title": "Rules",
+     "type": "array"
+    },
+    "action": {
+     "default": "rewrite",
+     "enum": [
+      "block",
+      "rewrite",
+      "mask"
+     ],
+     "title": "Action",
+     "type": "string"
+    },
+    "target": {
+     "default": "output",
+     "enum": [
+      "output",
+      "input"
+     ],
+     "title": "Target",
+     "type": "string"
+    },
+    "banned_words": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Banned Words",
+     "type": "array"
+    },
+    "block_message": {
+     "default": "죄송합니다. 해당 내용은 안내해 드릴 수 없습니다.",
+     "title": "Block Message",
+     "type": "string"
+    }
+   },
+   "required": [
+    "rules"
+   ],
+   "title": "GuardrailConfig",
+   "type": "object"
+  }
+ },
+ "http_tool": {
+  "config": {
+   "additionalProperties": false,
+   "description": "HTTP 도구(ADR-0029). 허용 목록·IP 차단은 실행 때(#34). 여기선 모양과 비밀 참조 규칙만.",
+   "properties": {
+    "method": {
+     "default": "GET",
+     "enum": [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE"
+     ],
+     "title": "Method",
+     "type": "string"
+    },
+    "url": {
+     "minLength": 1,
+     "title": "Url",
+     "type": "string"
+    },
+    "headers": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "title": "Headers",
+     "type": "object"
+    },
+    "body_template": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Body Template"
+    }
+   },
+   "required": [
+    "url"
+   ],
+   "title": "HttpToolConfig",
+   "type": "object"
+  }
+ }
+}
