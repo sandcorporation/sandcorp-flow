@@ -27,9 +27,21 @@ Accepted (2026-10-25, 사용자 결정 — #36·#134)
 - **숨김**: 체험·도서관 테넌트는 운영자 테넌트 목록, 멤버십 목록(로그인 뒤 선택·MCP `list_tenants`), 운영 사용량 집계에 나오지 않는다.
 - 이름: 「체험 테넌트」(kind=try)는 가입 테넌트의 **Trial Quota**(#41, `trial_turns_remaining`)와 다른 것이다.
 
+- **공개 API·쿠키·한도(#135)**: `/api/try`(인증 없음)는 편집기 API와 같은 모양의 얇은 어댑터다(`try_api`, 응답 조립은
+  `flows.api.flow_detail_body`·`stream_test_turn` 공유). 「고쳐 보기」는 `create_try_tenant` + `TrySession`(쿠키 `sf_try`의
+  SHA-256만 저장, 테넌트와 함께 연쇄 삭제). 쿠키는 HttpOnly·Secure·SameSite=Strict·Path `/api/try/`, 쓰기 요청은 Origin이 같은
+  호스트이거나 `TRY_ALLOWED_ORIGINS`일 때만(CSRF).
+  - 세션당 20턴: 체험 테넌트의 `trial_turns_remaining = TRY_SESSION_TURNS`로 두고 기존 `admit_turn`(조건부 UPDATE)을 탄다.
+  - IP당 하루 3세션: `try_ip_days`(IP HMAC, 날짜) 한 문장 조건부 upsert(`… WHERE count < 한도 RETURNING`). IP는 `client_ip`
+    (XFF 끝에서 `TRUSTED_PROXY_COUNT`번째)를 따른다.
+  - 전체 하루 $5: `try_spend_days`(날짜 한 행, 정리에 지우지 않음). 시험 대화 전에 **누적 < 상한**이면 들이고, 턴 뒤 그 턴의
+    판단 기록 비용(모르는 모델 호출은 `PLATFORM_LLM_MODEL` 단가)을 원자적으로 더한다. 그래서 상한은 **진행 중인 턴들만큼(보통 한 턴)
+    넘을 수 있다** — 미리 잡아 두는 예약 방식은 턴 비용을 미리 몰라 기각. 넘으면 LLM·턴 없이 `try_daily_budget`(「내일 다시」).
+  - 「하루」는 `TRY_QUOTA_TIMEZONE`(Asia/Seoul) 날짜.
+
 ## Consequences
-- 공개 API·세션 쿠키·세션당 턴·IP·하루 비용 한도는 다음 층(#135)이 `create_try_tenant`·`prune_expired` 위에 얹는다.
-  체험 테넌트의 토큰 사용량 행은 정리 때 함께 지워지므로, 하루 비용 상한은 따로 세야 한다.
+- 체험 테넌트의 토큰 사용량 행은 정리 때 함께 지워지므로, 하루 비용 상한은 따로 센다(`try_spend_days`, #135).
+- 세션당 턴은 dev 폴백(`PLATFORM_DEFAULT_PROVIDERS_ENABLED`)이 켜져 있으면 세지 않는다(운영은 꺼져 있다).
 - 도서관 적재는 운영에서 플랫폼 키가 있어야 한다(없으면 `KnowledgeSeedError`, 다시 돌리면 이어 적재).
 - 체험 테넌트 판별은 호출마다 `kind` 한 칸을 읽는다(인덱스 `kind, try_expires_at`).
 

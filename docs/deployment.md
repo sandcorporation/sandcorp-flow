@@ -230,6 +230,11 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     | `PLATFORM_EMBED_MODEL` | `text-embedding-3-small` | 체험 테넌트의 임베딩. 본래 1536차원이지만 OpenAI `dimensions` 인자로 테넌트 `embed_dim`(기본 1024)에 맞춰 보낸다 — 인덱스 차원·「Provider 바꾸면 재임베딩」 규칙이 그대로다. |
     | `TRIAL_TURNS` | `200` | 새 조직이 받는 체험 턴(1턴 = 방문자 메시지 하나). 0009 마이그레이션 때 기존 조직도 이 값을 받는다. |
     | `TRY_TENANT_TTL_HOURS` | `24` | Try Session 체험 테넌트의 수명(ADR-0030). 지나면 `prune_try_tenants`가 테넌트째 지운다. |
+    | `TRY_SESSION_TURNS` | `20` | Try Session(체험 테넌트)당 시험 대화 턴(#135). 체험 테넌트의 `trial_turns_remaining`으로 두고 `admit_turn`이 깎는다(dev 폴백 켜짐이면 세지 않음). |
+    | `TRY_SESSIONS_PER_IP_PER_DAY` | `3` | IP당 하루 「고쳐 보기」 수. IP는 `TRUSTED_PROXY_COUNT` 규칙(XFF 끝에서 N번째)으로 정하고 HMAC으로만 저장. |
+    | `TRY_DAILY_BUDGET_USD` | `5` | 체험 전체 하루 비용 상한(판단 기록 비용 합). 누적이 상한 미만일 때만 시험 대화를 들이고 턴 뒤 더한다 — 진행 중인 턴들만큼(보통 한 턴) 넘을 수 있다. 넘으면 LLM 없이 `try_daily_budget`(「내일 다시」). |
+    | `TRY_QUOTA_TIMEZONE` | `Asia/Seoul` | 위 「하루」의 날짜 기준. |
+    | `TRY_ALLOWED_ORIGINS` | (빈 값) | `/api/try` 쓰기 요청(POST·PUT·PATCH)에 허용할 Origin(쉼표). 비어 있어도 API와 같은 호스트의 Origin은 허용 — `/try` 화면을 다른 도메인(예: sandcorp.co.kr)에서 띄울 때만 넣는다. |
     | `PLATFORM_OPENAI_BASE_URL` | `https://api.openai.com/v1` | 바꿀 일 없음(시험·프록시용). |
     | `TENANT_CREATE_LIMIT_PER_USER` | `3` | 온보딩에서 한 계정이 만들 수 있는 조직 수. |
     | `ONBOARDING_RATE_LIMIT_PER_HOUR` | `10` | 온보딩 시도 IP당 시간당 상한. |
@@ -248,6 +253,10 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
        도서관 테넌트는 Provider 없이 플랫폼 키로 임베딩·추출한다(키가 비면 `KnowledgeSeedError` — 키를 넣고 다시 돌리면 실패분만 이어 적재).
        확인: 출력 `try library <id> seeded`, 운영자 테넌트 목록에는 도서관이 **나오지 않는다**(숨은 테넌트).
     2. **24시간 정리**: `python manage.py prune_try_tenants`를 주기로 돌린다(호스트 cron 매시간, 또는 상주 `--every 3600`). 아직 박스에 등록돼 있지 않다.
+    3. **공개 API 확인(#135)**: `curl -s https://flow.sandcorp.co.kr/api/try/templates/`가 예제 셋을 돌려주고,
+       `curl -si -X POST https://flow.sandcorp.co.kr/api/try/sessions/ -H 'Content-Type: application/json' -d '{"template":"shop_support"}'`
+       (Origin 없음)가 403 `try_bad_origin`인지 본다. 브라우저에서 같은 호스트로 만든 세션은 `Set-Cookie: sf_try=…; HttpOnly; Secure; SameSite=Strict; Path=/api/try/`.
+       하루 비용 누적은 `try_spend_days` 표(정리에 지워지지 않음), IP 하루 세션 수는 `try_ip_days`(이틀 지난 행은 정리 때 삭제).
 
 ## 관련 문서
 - [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md) — 무중단 롤링 설계·기각안
