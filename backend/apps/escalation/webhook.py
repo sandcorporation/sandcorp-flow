@@ -1,4 +1,22 @@
-import requests
+"""에스컬레이션 웹훅 전송.
+
+`webhook_url`은 테넌트가 넣은 값이라 안전 계층(`apps.core.safe_http`, 공용 호스트 정책·https만)으로만 보낸다
+(#108): 내부망·사설·메타데이터 주소면 연결하지 않는다. 실패는 로그(사유 코드·호스트·해석 IP)를 남기고
+예외를 올린다 — 재시도·DLQ는 소비자 런타임 몫(issue 146) 그대로.
+"""
+import json
+import logging
+
+from apps.core.safe_http import Limits, SafeHttpError, tenant_url_client, user_message
+
+logger = logging.getLogger(__name__)
+
+WEBHOOK_SCHEMES = ("https",)
+WEBHOOK_LIMITS = Limits(total_timeout=10.0, max_body_bytes=64 * 1024, max_redirects=3)
+
+
+class WebhookError(Exception):
+    """웹훅 전송 실패. 문구엔 해석한 IP를 담지 않는다."""
 
 
 def _build_slack_payload(esc, messages) -> dict:
@@ -68,8 +86,23 @@ def send_webhook(escalation_id: str) -> None:
     messages = [{"role": m.role, "content": m.content} for m in recent]
     payload = _build_payload(esc, messages, config.webhook_type)
 
-    resp = requests.post(config.webhook_url, json=payload, timeout=10)
-    resp.raise_for_status()
+    client = tenant_url_client(WEBHOOK_SCHEMES, WEBHOOK_LIMITS)
+    try:
+        resp = client.request(
+            "POST", config.webhook_url,
+            headers={"Content-Type": "application/json"},
+            body=json.dumps(payload).encode("utf-8"),
+        )
+    except SafeHttpError as err:
+        logger.warning(
+            "webhook refused: escalation=%s tenant=%s reason=%s", escalation_id, esc.session.tenant_id, err
+        )
+        raise WebhookError(f"웹훅을 보내지 못했습니다: {user_message(err, WEBHOOK_SCHEMES)}") from err
+    if not 200 <= resp.status < 300:
+        logger.warning(
+            "webhook failed: escalation=%s tenant=%s status=%s", escalation_id, esc.session.tenant_id, resp.status
+        )
+        raise WebhookError(f"웹훅 응답이 HTTP {resp.status}입니다")
 
 
 def dispatch_webhook(escalation_id: str) -> None:
