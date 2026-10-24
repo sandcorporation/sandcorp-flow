@@ -20,6 +20,10 @@ export function trialMessage(t: Trial): { tone: 'info' | 'warn'; text: string } 
   }
 }
 
+// 시험 대화 턴이 끝나면 체험 횟수가 올랐으므로 배너가 다시 읽게 알린다(#103). 방문자 위젯 턴은 대상이 아니다.
+const TRIAL_CHANGED = 'flow:trial-changed'
+export const notifyTrialChanged = () => window.dispatchEvent(new Event(TRIAL_CHANGED))
+
 export default function TrialBanner() {
   const [trial, setTrial] = useState<Trial | null>(null)
   const { pathname, search } = useLocation()  // 화면을 옮길 때마다 다시 읽는다(키를 넣고 나면 사라지게)
@@ -27,6 +31,12 @@ export default function TrialBanner() {
   useEffect(() => {
     getTrial().then(setTrial).catch(() => setTrial(null))
   }, [pathname, search])
+
+  useEffect(() => {
+    const reload = () => { getTrial().then(setTrial).catch(() => setTrial(null)) }
+    window.addEventListener(TRIAL_CHANGED, reload)
+    return () => window.removeEventListener(TRIAL_CHANGED, reload)
+  }, [])
 
   const msg = trial && trialMessage(trial)
   if (!msg) return null

@@ -17,7 +17,9 @@ export function fakeFlowsApi(opts: {
   /** 시험 대화 POST 가 차례로 돌려줄 SSE 이벤트들(턴마다 하나). 다 쓰면 마지막 것을 되풀이한다. */
   testTurns?: { event: string; data: object }[][]
   testStatus?: number
-  trial?: { state: string; remaining: number; limit: number }
+  /** true면 버전 저장이 「마지막 버전과 같음」(created:false)으로 새 버전을 만들지 않는다. */
+  duplicateVersion?: boolean
+  trial?: { state: string; remaining: number; limit: number } | (() => { state: string; remaining: number; limit: number })  // 함수면 호출할 때마다 계산(턴 뒤 감소 흉내)
   /** 버전 이력(번호 오름차순) — 없으면 비어 있다. graphs 에 번호별 그래프를 주면 「버전 보기」가 그것을 돌려준다. */
   versions?: FakeVersion[]
   graphs?: Record<number, FlowGraph>
@@ -59,7 +61,7 @@ export function fakeFlowsApi(opts: {
       const turns = opts.testTurns ?? []
       return sse(turns[Math.min(turnNo++, turns.length - 1)] ?? [])
     }
-    if (method === 'GET' && path.endsWith('/api/tenant/trial/')) return json(200, opts.trial ?? { state: 'byok', remaining: 0, limit: 20 })
+    if (method === 'GET' && path.endsWith('/api/tenant/trial/')) return json(200, (typeof opts.trial === 'function' ? opts.trial() : opts.trial) ?? { state: 'byok', remaining: 0, limit: 20 })
     if (method === 'GET' && path.endsWith('/api/tenant/flows/node-schema/')) return json(200, { kinds: nodeSchema })
     if (method === 'GET' && path.endsWith('/api/tenant/members/me')) return json(200, { id: 'm1', tenant_id: 't1', tenant_name: '조직', role: 'admin', ...(opts.me ?? { name: '나', email: 'me@x.kr' }) })
     if (method === 'GET' && path.endsWith('/api/tenant/config/')) return json(200, { deploy_requires_approval: !!opts.requiresApproval })
@@ -70,6 +72,7 @@ export function fakeFlowsApi(opts: {
     }
     if (method === 'POST' && path.endsWith('/versions/')) {
       if (state.errors.length) return json(422, { detail: '초안에 오류가 있어 저장할 수 없습니다.', code: 'invalid_flow', errors: state.errors })
+      if (opts.duplicateVersion) return json(200, { created: false, version: versionOut(versions[versions.length - 1]) })
       const v: FakeVersion = { number: versions.length + 1, note: body?.note ?? '', created_by_name: opts.me?.name ?? '나', created_at: '2026-10-02T10:00:00Z' }
       versions.push(v)
       return json(201, { created: true, version: versionOut(v) })
