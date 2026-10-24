@@ -9,7 +9,7 @@ export default function TenantOnboarding() {
       <p className="rounded-md border border-dashed border-border bg-muted/40 p-3 text-muted-foreground">
         조직 만들기는 준비 중입니다. 먼저 쓰고 있는 팀이 있다면 관리자에게 초대 링크를 받아 합류하세요.
       </p>
-      <a className="text-primary underline underline-offset-4" href={ACCOUNT_URL} target="_blank" rel="noreferrer">
+      <a className="inline-block text-primary underline underline-offset-4" href={ACCOUNT_URL} target="_blank" rel="noreferrer">
         내 계정
       </a>
     </div>

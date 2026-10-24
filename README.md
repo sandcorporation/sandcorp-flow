@@ -205,7 +205,7 @@ docker compose -f docker-compose.dev.yml up --build
 docker compose exec api python manage.py migrate
 ```
 
-Operator 비밀번호 로그인은 없다(#21). 관리 화면 Operator 로그인은 sandcorp-auth 대표 계정으로 한다 — dev용 기밀 클라이언트를 등록하고 `.env`에 `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`·`AUTH_REDIRECT_URI`(admin dev 서버 주소의 `/api/auth/callback`)·`AUTH_OWNER_SUB`를 채운다. sandcorp-auth 없이 화면만 볼 때는 `docker compose exec api python manage.py seed_e2e_operator --token-file /tmp/op_token`으로 대표 Operator와 세션 토큰을 만들고, 그 값을 브라우저 sessionStorage `op_access`에 넣는다(e2e가 쓰는 방식).
+Operator 비밀번호 로그인은 없다(#21). 관리 화면 Operator 로그인은 sandcorp-auth 대표 계정으로 한다 — dev용 기밀 클라이언트를 등록하고 `.env`에 `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`·`AUTH_REDIRECT_URI`(admin dev 서버 주소의 `/api/auth/callback`)·`AUTH_OWNER_SUB`를 채운다. sandcorp-auth 없이 화면만 볼 때는 `docker compose exec api python manage.py seed_e2e_operator --token-file /tmp/op_token`으로 대표 Operator와 세션 토큰을 만들고, 그 값을 브라우저 sessionStorage `op_access`에 넣는다(e2e가 쓰는 방식). 고객(멤버) 화면도 같다 — `seed_e2e_member --token-file …`이 조직·Admin 멤버십과 세션 토큰을 만들고(sessionStorage `agent_access`), `--accept-invite-from <파일>`은 그 파일에 떨어진 초대 원문을 콜백처럼 수락하는 sandcorp-auth 대역이다(e2e `member-team.spec.js`).
 
 접근 경로:
 
@@ -237,12 +237,12 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 ## 7. 사용 흐름
 
 ### 고객 로그인·Tenant 발급 (#40)
-- **로그인**: 고객은 sandcorp-auth 계정으로 로그인합니다(`/admin-ui/tenant` → **sandcorp 계정으로 로그인**). Flow에는 비밀번호가 없습니다. 콜백은 속한 조직(Membership)이 하나면 바로 그 조직 화면을, 여럿이면 **조직 선택**을, 없으면 「초대를 받으세요」 안내를 보여줍니다(조직 만들기 온보딩은 #41).
+- **로그인**: 고객은 sandcorp-auth 계정으로 로그인합니다(`/admin-ui/tenant` → **sandcorp 계정으로 로그인**). Flow에는 비밀번호가 없습니다. 콜백은 속한 조직(Membership)이 하나면 바로 그 조직 화면을, 여럿이면 **조직 선택**을, 없으면 「조직 만들기는 준비 중」 안내(`TenantOnboarding`, 조직 만들기 온보딩은 #41)를 보여줍니다. 콜백 거절(`?login_error=`)은 사유별 문구로 안내하고, 상단 바에는 조직 이름·내 이름·**내 계정**(`https://auth.sandcorp.co.kr/account`)·**조직 바꾸기**가 있습니다.
 - **Operator 프로비저닝**: Operator로 로그인 → **Tenant 추가** → `TENANT_KEY`와 **첫 Admin 초대 링크**가 **1회** 표시. 링크를 고객에게 직접 전달하면, 고객이 그 링크로 로그인해 Admin이 됩니다. `TENANT_KEY`는 해시만 저장(분실 시 재발급), HMAC 신원검증 API·break-glass에만 사용(브라우저 비노출).
 
 ### 권한 (Tenant Admin / Tenant Member)
 - 멤버(Membership)는 **Admin / Member** 역할을 가집니다(권한 비트 기반, ADR-0025). **Admin은 전 권한**, **Member는 팀원 관리·`TENANT_KEY` 회전·Slug 변경만 제외한 전부**(문서·HITL·프롬프트/HITL 설정·Provider 키·조회 등 일상 운영은 다 가능).
-- **팀원 탭**: Admin이 **초대 링크**(역할 지정·7일·1회용, 이메일 발송 없음)를 만들어 직접 전달하고, 승격/강등·비활성화합니다. **마지막 활성 Admin은 비활성화·강등 불가**(lockout 방지). Admin 전체가 사라지는 사고는 `TENANT_KEY`로 `POST /api/tenant/invites/ {"role":"admin"}` — Admin 초대 링크를 발급해 복구(break-glass). Member에겐 팀원 관리·키 재발급·Slug 변경 컨트롤이 숨겨집니다.
+- **팀원 탭**: Admin이 **초대 링크**(역할 지정·7일·1회용, 이메일 발송 없음)를 만들고(만료 시각 표시·복사) 직접 전달합니다. 아직 쓰이지 않은 초대는 **대기 중인 초대**에서 취소하고, 팀원은 이름 → 이메일 → sub 끝 6자리로 보이며 승격/강등·**내보내기**(비활성화)를 합니다. **마지막 활성 Admin은 비활성화·강등 불가**(lockout 방지). Admin 전체가 사라지는 사고는 `TENANT_KEY`로 `POST /api/tenant/invites/ {"role":"admin"}` — Admin 초대 링크를 발급해 복구(break-glass). Member에겐 팀원 관리·키 재발급·Slug 변경 컨트롤이 숨겨집니다.
 
 ### Tenant 운영 (멤버)
 1. 어드민 UI 로그인 → **설정 탭**에서 Tenant Slug, (선택) LLM·Embedding Provider 키, HITL 토글, 브랜드 텍스트, 신원검증 등을 설정.

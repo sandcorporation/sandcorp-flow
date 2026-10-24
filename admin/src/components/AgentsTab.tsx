@@ -158,7 +158,7 @@ export default function AgentsTab() {
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold">팀원 목록</h2>
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         {!isAdmin && <p className="text-xs text-muted-foreground">팀원 관리는 관리자만 할 수 있습니다.</p>}
         <Table>
           <TableHeader>
@@ -173,8 +173,8 @@ export default function AgentsTab() {
                   <div className="font-medium">{memberLabel(m)}{m.id === myId && <span className="ml-1 text-xs font-normal text-muted-foreground">(나)</span>}</div>
                   {m.name && m.email && <div className="text-xs text-muted-foreground">{m.email}</div>}
                 </TableCell>
-                <TableCell><Badge variant={m.role === 'admin' ? 'default' : 'secondary'}>{ROLE_LABEL[m.role] ?? m.role}</Badge></TableCell>
-                <TableCell><Badge variant={m.is_active ? 'success' : 'secondary'}>{m.is_active ? '활성' : '내보냄'}</Badge></TableCell>
+                <TableCell><Badge className="whitespace-nowrap" variant={m.role === 'admin' ? 'default' : 'secondary'}>{ROLE_LABEL[m.role] ?? m.role}</Badge></TableCell>
+                <TableCell><Badge className="whitespace-nowrap" variant={m.is_active ? 'success' : 'secondary'}>{m.is_active ? '활성' : '내보냄'}</Badge></TableCell>
                 {isAdmin && (
                   <TableCell>
                     {m.is_active && (
