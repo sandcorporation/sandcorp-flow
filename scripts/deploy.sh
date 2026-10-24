@@ -24,6 +24,13 @@ if [ ! -f .env ]; then
 fi
 export IMAGE_TAG="$GIT_SHA"
 
+# 플러그인이 없으면 `docker rollout --help`가 docker 일반 도움말을 exit 0으로 내므로 문구로 확인한다.
+# migrate를 돌린 뒤 롤링 단계에서 멈추는 반쯤 배포를 막으려고 맨 앞에서 본다.
+if ! docker rollout --help 2>&1 | grep -q 'Rollout new Compose'; then
+  echo "docker rollout 플러그인이 없다(에이전트 ~/.docker/cli-plugins/docker-rollout). docs/deployment.md" >&2
+  exit 1
+fi
+
 COMPOSE_FILE="docker-compose.prod.oracle.yml"
 COMPOSE="docker compose -f $COMPOSE_FILE"
 
