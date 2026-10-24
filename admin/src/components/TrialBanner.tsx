@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { currentAgentRole, getTrial, type TrialState } from '../api'
+import { getTrial, type TrialState } from '../api'
 import { cn } from '@/lib/utils'
+import { useIsAdmin } from '../lib/useAgentRole'
 
 type Trial = { state: TrialState; remaining: number; limit: number }
 
@@ -25,6 +26,7 @@ const TRIAL_CHANGED = 'flow:trial-changed'
 export const notifyTrialChanged = () => window.dispatchEvent(new Event(TRIAL_CHANGED))
 
 export default function TrialBanner() {
+  const isAdmin = useIsAdmin()
   const [trial, setTrial] = useState<Trial | null>(null)
   const { pathname, search } = useLocation()  // 화면을 옮길 때마다 다시 읽는다(키를 넣고 나면 사라지게)
 
@@ -40,7 +42,6 @@ export default function TrialBanner() {
 
   const msg = trial && trialMessage(trial)
   if (!msg) return null
-  const isAdmin = currentAgentRole() === 'admin'
   return (
     <div
       role={msg.tone === 'warn' ? 'alert' : 'status'}

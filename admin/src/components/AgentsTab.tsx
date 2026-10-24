@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react'
-import { listMembers, listInvites, createInvite, revokeInvite, changeMemberRole, deactivateMember, currentAgentRole, memberMe } from '../api'
+import { listMembers, listInvites, createInvite, revokeInvite, changeMemberRole, deactivateMember, memberMe } from '../api'
 import { HttpError } from '../mutator'
 import type { MemberOut } from '../generated/model'
 import { Input } from '@/components/ui/input'
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { useIsAdmin } from '../lib/useAgentRole'
 
 const ROLE_LABEL: Record<string, string> = { admin: '관리자', member: '팀원' }
 
@@ -34,7 +35,7 @@ async function copyText(text: string): Promise<boolean> {
 
 // 팀원(멤버십) 관리 + 초대 링크(#40, #56). 비밀번호 계정은 없다 — 초대 링크로 sandcorp 계정 로그인하면 팀원이 된다.
 export default function AgentsTab() {
-  const isAdmin = currentAgentRole() === 'admin'
+  const isAdmin = useIsAdmin()
   const [members, setMembers] = useState<MemberOut[]>([])
   const [invites, setInvites] = useState<Invite[]>([])
   const [myId, setMyId] = useState<string | null>(null)
@@ -49,9 +50,10 @@ export default function AgentsTab() {
 
   useEffect(() => {
     loadMembers().catch(() => setError('팀원 목록을 불러오지 못했습니다.'))
-    loadInvites().catch(() => {})
     memberMe().then((me) => setMyId(me.id)).catch(() => {})
   }, [])
+  // 역할을 서버에서 읽은 뒤(또는 바뀐 뒤) Admin 이면 초대 목록을 불러온다.
+  useEffect(() => { loadInvites().catch(() => {}) }, [isAdmin])
 
   const handleInvite = async (e: FormEvent) => {
     e.preventDefault()

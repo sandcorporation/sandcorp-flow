@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Trash2 } from 'lucide-react'
-import { currentAgentRole } from '../api'
 import { appsFlowsApiFlowsGet, appsFlowsApiFlowsGetVersion, appsFlowsApiFlowsNodeSchema, appsFlowsApiFlowsPatchDraft } from '../generated/endpoints/flows/flows'
 import { appsTenantsApiGetConfig } from '../generated/endpoints/tenant/tenant'
 import { appsTenantsApiMemberMe } from '../generated/endpoints/tenant-members/tenant-members'
@@ -22,6 +21,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
+import { useIsAdmin } from '../lib/useAgentRole'
 
 type SaveState = 'saved' | 'saving' | 'failed'
 const EMPTY: FlowGraph = { nodes: [], edges: [] }
@@ -29,7 +29,7 @@ const EMPTY: FlowGraph = { nodes: [], edges: [] }
 /** 편집기: 왼쪽 노드 목록 · 가운데 캔버스 · 오른쪽 패널. 모든 편집은 패치 연산으로 곧바로 초안에 저장한다. */
 export default function FlowEditorPage() {
   const { id = '' } = useParams()
-  const isAdmin = currentAgentRole() === 'admin' // flow.edit·deploy·approve 는 Admin 전용(백엔드 permissions.py 와 같은 판정)
+  const isAdmin = useIsAdmin() // flow.edit·deploy·approve 는 Admin 전용(백엔드 permissions.py 와 같은 판정)
   const [viewing, setViewing] = useState<{ number: number; graph: FlowGraph } | null>(null)
   const readOnly = !isAdmin || viewing !== null // 버전을 보는 동안은 초안을 고치지 못한다
   const [versions, setVersions] = useState<VersionOut[]>([])

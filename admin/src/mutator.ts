@@ -3,6 +3,7 @@
 // ADR-0013의 authFetch 로직을 흡수하되, URL 프리픽스로 kind를 판정한다.
 
 import { AuthKind, getAccess, refresh } from './auth'
+import { reloadRole } from './roleStore'
 
 const BASE: string = import.meta.env.VITE_API_BASE || ''
 
@@ -48,6 +49,8 @@ export async function customInstance<T>(url: string, init: RequestInit = {}): Pr
   }
   const data = await parseBody(res)
   if (!res.ok) {
+    // 테넌트 쓰기가 403 이면 역할이 바뀌었을 수 있다 — 서버 역할을 다시 읽어 화면을 맞춘다(#120).
+    if (res.status === 403 && kind === 'agent' && !url.endsWith('/members/me')) void reloadRole()
     throw new HttpError(res.status, fullUrl, data)
   }
   // orval fetch 클라이언트가 기대하는 응답 래퍼

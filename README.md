@@ -271,7 +271,7 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 
 ### 권한 (Tenant Admin / Tenant Member)
 - 멤버(Membership)는 **Admin / Member** 역할을 가집니다(권한 비트 기반, ADR-0025). **Admin은 전 권한**, **Member는 팀원 관리·`TENANT_KEY` 회전·Slug 변경·흐름 편집/배포/승인(`flow.edit`·`flow.deploy`·`flow.approve`)·비밀/허용 도메인 관리(`secrets.manage`·`domains.manage`)만 제외한 전부**(문서·HITL·프롬프트/HITL 설정·Provider 키·조회, 흐름 읽기 등 일상 운영은 다 가능).
-- **팀원 탭**: Admin이 **초대 링크**(역할 지정·7일·1회용, 이메일 발송 없음)를 만들고(만료 시각 표시·복사) 직접 전달합니다. 아직 쓰이지 않은 초대는 **대기 중인 초대**에서 취소하고, 팀원은 이름 → 이메일 → sub 끝 6자리로 보이며 승격/강등·**내보내기**(비활성화)를 합니다. **마지막 활성 Admin은 비활성화·강등 불가**(lockout 방지). Admin 전체가 사라지는 사고는 `TENANT_KEY`로 `POST /api/tenant/invites/ {"role":"admin"}` — Admin 초대 링크를 발급해 복구(break-glass). Member에겐 팀원 관리·키 재발급·Slug 변경 컨트롤이 숨겨집니다.
+- **팀원 탭**: Admin이 **초대 링크**(역할 지정·7일·1회용, 이메일 발송 없음)를 만들고(만료 시각 표시·복사) 직접 전달합니다. 아직 쓰이지 않은 초대는 **대기 중인 초대**에서 취소하고, 팀원은 이름 → 이메일 → sub 끝 6자리로 보이며 승격/강등·**내보내기**(비활성화)를 합니다. **마지막 활성 Admin은 비활성화·강등 불가**(lockout 방지). Admin 전체가 사라지는 사고는 `TENANT_KEY`로 `POST /api/tenant/invites/ {"role":"admin"}` — Admin 초대 링크를 발급해 복구(break-glass). Member에겐 팀원 관리·키 재발급·Slug 변경 컨트롤이 숨겨집니다. **화면의 역할 판단(#120)**: 토큰 claims 의 `role`은 발급 시점 값이라 강등·승격 뒤 낡으므로 쓰지 않고, 앱 진입·새로고침 때 `GET /api/tenant/members/me`의 DB 역할을 한 번 읽어 공용 상태(`admin/src/roleStore.ts`)에 둔다. Admin 전용 화면은 `useIsAdmin()`/`useAgentRole()`(`admin/src/lib/useAgentRole.ts`)만 쓰고(`api.currentAgentRole()`이 같은 상태를 읽음), 읽기 전(null)에는 쓰기 컨트롤이 숨은 채로 시작한다. 테넌트 쓰기가 403이면 `mutator.ts`가 역할을 다시 읽어 화면을 맞춘다. 시험: `serverRole.test.tsx`, E2E `secrets-domains.spec.js`.
 
 ### Tenant 운영 (멤버)
 1. 어드민 UI 로그인 → **설정 탭**에서 Tenant Slug, (선택) LLM·Embedding Provider 키, HITL 토글, 브랜드 텍스트, 신원검증 등을 설정.
