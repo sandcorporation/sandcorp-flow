@@ -29,6 +29,7 @@ class FlowState(ChatState):
 
     - ``hitl_enabled``: 이 턴에 사람 넘김이 가능한가(테넌트 설정 ∧ 상담시간). 거짓이면 AI 답변은 넘김 갈래를 쓰지
       않고, 사람 넘김 노드는 넘기지 않고 턴을 끝낸다.
+    - ``dry_run``: 시험 한 턴(#76). 사람 넘김 노드가 Escalation·알림 없이 넘겼다고만 적는다.
     - ``resume_node``: 다음 턴을 시작할 노드 id(``await_reply`` AI 답변 뒤). 비면 시작 노드부터.
     - ``route``: 실행기 내부 — 방금 노드가 고른 다음 노드 id.
     - ``steps``·``step_limit_exceeded``: 한 턴 노드 상한(``MAX_STEPS_PER_TURN``).
@@ -37,6 +38,7 @@ class FlowState(ChatState):
     """
 
     hitl_enabled: bool
+    dry_run: bool
     resume_node: str
     route: str
     steps: int

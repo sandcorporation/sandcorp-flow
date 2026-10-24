@@ -51,6 +51,7 @@ async def stream(request, slug: str, visitor_id: str = "", hash: str = ""):
         tenant_id=tenant.id,
         visitor_id=visitor_id,
         ended_at=None,
+        is_test=False,
     )
 
     existing = await sync_to_async(

@@ -352,11 +352,12 @@ def _save_messages_sync(state: dict) -> dict:
             role=ChatMessage.ROLE_ASSISTANT,
             content=state["assistant_response"],
         )
-        schedule_memory_extraction.delay(
-            str(session.tenant_id),
-            session.visitor_id,
-            str(session.id),
-        )
+        if not session.is_test:  # 시험 한 턴(#76)은 방문자 메모리를 만들지 않는다
+            schedule_memory_extraction.delay(
+                str(session.tenant_id),
+                session.visitor_id,
+                str(session.id),
+            )
     except Exception:
         pass
 

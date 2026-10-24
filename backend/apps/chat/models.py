@@ -13,6 +13,8 @@ class ChatSession(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
     is_hitl = models.BooleanField(default=False)
+    # 흐름 편집 「시험 한 턴」(#76) 세션. 운영 세션 목록·위젯 세션 재사용에서 빠지고, 공개 흐름 버전에 고정하지 않는다.
+    is_test = models.BooleanField(default=False)
     # 대화가 시작 때 고정된 Flow Version(ADR-0027). 배포가 진행 중 대화를 바꾸지 않는다.
     # 이 칸이 생기기 전 세션과 공개 흐름이 없는 테넌트의 세션은 비어 있다.
     flow_version = models.ForeignKey(
@@ -36,7 +38,8 @@ class ChatSession(models.Model):
             from apps.flows.models import Flow, FlowVersion
 
             if self.flow_version_id is None:
-                self.flow_version = Flow.public_version_for(self.tenant_id)
+                if not self.is_test:  # 시험 세션은 초안으로 돈다 — 공개 버전에 고정하지 않는다
+                    self.flow_version = Flow.public_version_for(self.tenant_id)
             elif not FlowVersion.objects.for_tenant(self.tenant_id).filter(pk=self.flow_version_id).exists():
                 raise ValueError("다른 테넌트의 Flow Version에 대화를 고정할 수 없습니다")
         super().save(*args, **kwargs)

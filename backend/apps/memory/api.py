@@ -60,7 +60,7 @@ def list_sessions(request, limit: int = 50, offset: int = 0):
     cutoff = timezone.now() - timedelta(days=SESSION_WINDOW_DAYS)
 
     qs = (
-        ChatSession.objects.filter(tenant_id=tenant.id)
+        ChatSession.objects.filter(tenant_id=tenant.id, is_test=False)
         .filter(Q(created_at__gte=cutoff) | Q(id__in=pinned_ids))
         .annotate(last_msg=Max("messages__created_at"))
     )
@@ -237,7 +237,7 @@ def list_visitors(request, search: Optional[str] = None):
     from apps.chat.models import ChatSession
 
     tenant = request.auth.tenant
-    qs = ChatSession.objects.filter(tenant_id=tenant.id)
+    qs = ChatSession.objects.filter(tenant_id=tenant.id, is_test=False)
     if search:
         qs = qs.filter(visitor_id__icontains=search)
     visitor_ids = list(qs.values_list("visitor_id", flat=True).distinct())
@@ -261,7 +261,7 @@ def list_visitor_sessions(request, visitor_id: str):
 
     tenant = request.auth.tenant
     sessions = ChatSession.objects.filter(
-        tenant_id=tenant.id, visitor_id=visitor_id
+        tenant_id=tenant.id, visitor_id=visitor_id, is_test=False
     ).order_by("-created_at")
     return [
         {

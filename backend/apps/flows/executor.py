@@ -144,7 +144,7 @@ def compile_flow(graph_json: JSON, checkpointer: BaseCheckpointSaver | None = No
     return flow_builder(graph_json).compile(checkpointer=checkpointer)
 
 
-def turn_input(base: dict[str, object], hitl_enabled: bool) -> dict[str, object]:
+def turn_input(base: dict[str, object], hitl_enabled: bool, *, dry_run: bool = False) -> dict[str, object]:
     """기존 챗 입력(``_load_chat_inputs``의 initial_state)에 실행기 턴 키를 더한다.
 
     ``resume_node``는 넣지 않는다 — 체크포인트에 남은 재개 지점을 덮지 않게.
@@ -152,6 +152,7 @@ def turn_input(base: dict[str, object], hitl_enabled: bool) -> dict[str, object]
     return {
         **base,
         "hitl_enabled": hitl_enabled,
+        "dry_run": dry_run,
         "route": "",
         "steps": 0,
         "step_limit_exceeded": False,
@@ -160,12 +161,17 @@ def turn_input(base: dict[str, object], hitl_enabled: bool) -> dict[str, object]
     }
 
 
-async def run_flow_turn_async(session: ChatSession, user_message: str, graph_json: JSON) -> FlowState:
+async def run_flow_turn_async(
+    session: ChatSession, user_message: str, graph_json: JSON, *, dry_run: bool = False
+) -> FlowState:
     """세션 한 턴을 흐름으로 돌린다. 입력·Provider·사용량 맥락은 기존 챗 경로와 같은 함수로 만든다.
 
     LLM 클라이언트는 노드가 만들지 않는다 — ``chat_provider(config)``로 고른 Provider를 ContextVar에 넣고,
     AI 답변 핸들러가 부르는 기존 ``call_llm_*``이 그것을 꺼내 쓴다. 체험 턴 차감은 이 함수를 부르는 쪽
     (chat_task의 ``trial.admit_turn``)이 맡는다 — 운영 경로 교체는 #72.
+
+    ``dry_run=True``(시험 한 턴, #76)면 갈래는 운영과 똑같이 고르되 사람 넘김 노드가 실제로 넘기지 않는다 —
+    Escalation·웹훅·상담원/방문자 SSE가 생기지 않고, trace에 넘김 노드가 남고 ``needs_hitl``이 참이 된다.
     """
     from asgiref.sync import sync_to_async
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -182,7 +188,7 @@ async def run_flow_turn_async(session: ChatSession, user_message: str, graph_jso
         await saver.setup()
         graph = compile_flow(graph_json, checkpointer=saver)
         result: FlowState = await graph.ainvoke(
-            turn_input(dict(initial_state), effective_hitl),
+            turn_input(dict(initial_state), effective_hitl, dry_run=dry_run),
             config={"configurable": {"thread_id": str(session.id)}, "recursion_limit": RECURSION_LIMIT},
         )
     return result
