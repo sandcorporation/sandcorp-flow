@@ -186,6 +186,9 @@ def _draft_out(result: services.DraftResult) -> dict[str, object]:
     return {"graph": result.graph, "errors": [e.as_dict() for e in result.errors], "valid": result.valid}
 
 
+SEED_CREATOR = "시스템(기본 흐름)"  # 만든 이 없는 v1은 기본 흐름 시드(온보딩·마이그레이션)가 만든 것
+
+
 def _version_out(version: FlowVersion, deployed_id: uuid.UUID | None) -> dict[str, object]:
     creator = version.created_by
     return {
@@ -193,7 +196,7 @@ def _version_out(version: FlowVersion, deployed_id: uuid.UUID | None) -> dict[st
         "note": version.note,
         "hash": version.hash,
         "created_at": version.created_at,
-        "created_by_name": (creator.name or creator.email) if creator else None,
+        "created_by_name": (creator.name or creator.email) if creator else (SEED_CREATOR if version.number == 1 else None),
         "deployed": version.pk == deployed_id,
     }
 

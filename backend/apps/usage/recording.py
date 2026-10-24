@@ -5,6 +5,7 @@ record_usage가 TokenUsage 일 버킷 행을 원자적 upsert로 증분한다(ON
 """
 from django.db import connection
 
+from .context import LLMCall, note_call
 from .pricing import cost_usd
 
 
@@ -43,4 +44,6 @@ def record_embedding_usage(resp_json: dict, tenant_id, model: str) -> None:
     usage = (resp_json or {}).get("usage") or {}
     total = usage.get("total_tokens") or usage.get("prompt_tokens") or 0
     if total:
+        # 지금 도는 노드의 수집기에도 남긴다(판단 기록의 노드 토큰·비용). 롤업은 아래 한 번만 — 이중 집계 없음.
+        note_call(LLMCall(model, int(total), 0))
         record_usage(tenant_id, "embedding", model, input_tokens=int(total), output_tokens=0)

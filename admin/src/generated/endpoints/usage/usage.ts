@@ -14,7 +14,7 @@ import type {
 import { customInstance } from '../../../mutator';
 
 /**
- * 전체 테넌트 토큰 사용량(테넌트별·일별).
+ * 전체 테넌트 토큰 사용량·비용(테넌트별·일별).
  * @summary Operator Usage
  */
 export type appsUsageApiOperatorUsageResponse200 = {
@@ -57,7 +57,7 @@ export const appsUsageApiOperatorUsage = async (params?: AppsUsageApiOperatorUsa
 
 
 /**
- * 인증된 테넌트의 토큰 사용량(기간·call_type별·일별).
+ * 인증된 테넌트의 토큰 사용량·비용(기간·call_type별·일별).
  * @summary Tenant Usage
  */
 export type appsUsageApiTenantUsageResponse200 = {

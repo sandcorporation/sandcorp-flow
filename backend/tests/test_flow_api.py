@@ -342,3 +342,13 @@ def test_node_schema_lists_every_kind_with_fields_enums_and_required(client, adm
 def test_node_schema_needs_no_flow_edit_permission(client, tenant_admin_token):
     """읽기 전용 멤버도 폼 틀을 읽을 수 있어야 한다(저장만 flow.edit)."""
     assert client.get(f"{BASE}node-schema/").status_code == 401
+
+
+def test_seeded_default_flow_version_is_labelled_as_system(client, tenant_with_key, admin_token):
+    """기본 흐름 시드 버전은 만든 이가 없다 — 「알 수 없음」이 아니라 「시스템(기본 흐름)」으로 내보낸다. 사람이 저장한 버전은 그 사람."""
+    from apps.flows.defaults import ensure_default_flow
+
+    tenant, _ = tenant_with_key
+    flow = ensure_default_flow(tenant.id)
+    body = client.get(f"{BASE}{flow.id}/", **h(admin_token)).json()
+    assert [(v["number"], v["created_by_name"]) for v in body["versions"]] == [(1, "시스템(기본 흐름)")]

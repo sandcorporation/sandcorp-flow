@@ -6,8 +6,10 @@
  */
 
 export interface TenantRow {
+  cost_usd: string;
   request_count: number;
   tenant_id: string;
   tenant_name: string;
   total_tokens: number;
+  unknown_cost_models: string[];
 }

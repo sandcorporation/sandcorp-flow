@@ -3,12 +3,14 @@
 우리 DB 롤업(TokenUsage)을 집계해 인앱 화면에 제공한다. 호출 상세·디버깅은 Langfuse가 담당.
 """
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.db.models import Sum
 from ninja import Router, Schema
 
 from apps.tenants.auth import operator_auth, member_auth
 from .models import TokenUsage
+from .pricing import is_priced
 
 tenant_usage_router = Router(tags=["usage"], auth=member_auth)
 operator_usage_router = Router(tags=["usage"], auth=operator_auth)
@@ -20,15 +22,21 @@ class UsageBucket(Schema):
     output_tokens: int
     total_tokens: int
     request_count: int
+    cost_usd: str  # 단가 아는 모델만의 합계(USD, 소수 6자리)
+    unknown_cost_models: list[str]  # 단가 표에 없어 합계에 못 더한 모델
 
 
 class DailyPoint(Schema):
     date: str
     total_tokens: int
+    cost_usd: str
+    has_unknown_cost: bool
 
 
 class TenantUsageOut(Schema):
     total_tokens: int
+    cost_usd: str
+    unknown_cost_models: list[str]
     by_call_type: list[UsageBucket]
     daily: list[DailyPoint]
 
@@ -38,10 +46,14 @@ class TenantRow(Schema):
     tenant_name: str
     total_tokens: int
     request_count: int
+    cost_usd: str
+    unknown_cost_models: list[str]
 
 
 class OperatorUsageOut(Schema):
     total_tokens: int
+    cost_usd: str
+    unknown_cost_models: list[str]
     by_tenant: list[TenantRow]
     daily: list[DailyPoint]
 
@@ -50,22 +62,51 @@ def _since(days: int):
     return date.today() - timedelta(days=max(1, days))
 
 
+def _fmt(cost) -> str:
+    return f"{Decimal(cost or 0):.6f}"
+
+
+def _unknown(models) -> list[str]:
+    return sorted({m for m in models if not is_priced(m)})
+
+
+def _cost_and_unknown(qs, key: str | None = None) -> dict:
+    """키(call_type·tenant_id)별 {cost, unknown models}. key=None이면 전체 한 덩이."""
+    out: dict = {}
+    for r in qs.values(*( [key] if key else [] ), "model").annotate(c=Sum("cost_usd")):
+        slot = out.setdefault(r[key] if key else None, {"cost": Decimal(0), "models": set()})
+        slot["cost"] += r["c"] or 0
+        slot["models"].add(r["model"])
+    return {k: {"cost_usd": _fmt(v["cost"]), "unknown_cost_models": _unknown(v["models"])} for k, v in out.items()}
+
+
+_NONE = {"cost_usd": _fmt(0), "unknown_cost_models": []}
+
+
 def _daily(qs) -> list[dict]:
-    rows = qs.values("date").annotate(total_tokens=Sum("total_tokens")).order_by("date")
-    return [{"date": str(r["date"]), "total_tokens": r["total_tokens"] or 0} for r in rows]
+    rows = qs.values("date").annotate(total_tokens=Sum("total_tokens"), c=Sum("cost_usd")).order_by("date")
+    models: dict = {}
+    for r in qs.values("date", "model").distinct():
+        models.setdefault(r["date"], set()).add(r["model"])
+    return [{"date": str(r["date"]), "total_tokens": r["total_tokens"] or 0, "cost_usd": _fmt(r["c"]),
+             "has_unknown_cost": bool(_unknown(models.get(r["date"], ())))} for r in rows]
 
 
 @tenant_usage_router.get("/", response=TenantUsageOut)
 def tenant_usage(request, days: int = 30):
-    """인증된 테넌트의 토큰 사용량(기간·call_type별·일별)."""
+    """인증된 테넌트의 토큰 사용량·비용(기간·call_type별·일별)."""
     tid = request.auth.tenant.id
     qs = TokenUsage.objects.filter(tenant_id=tid, date__gte=_since(days))
     by_call = list(qs.values("call_type").annotate(
         input_tokens=Sum("input_tokens"), output_tokens=Sum("output_tokens"),
         total_tokens=Sum("total_tokens"), request_count=Sum("request_count"),
     ).order_by("call_type"))
+    costs = _cost_and_unknown(qs, "call_type")
+    for b in by_call:
+        b.update(costs.get(b["call_type"], _NONE))
     return {
         "total_tokens": sum(b["total_tokens"] or 0 for b in by_call),
+        **_cost_and_unknown(qs).get(None, _NONE),
         "by_call_type": by_call,
         "daily": _daily(qs),
     }
@@ -73,22 +114,25 @@ def tenant_usage(request, days: int = 30):
 
 @operator_usage_router.get("/", response=OperatorUsageOut)
 def operator_usage(request, days: int = 30):
-    """전체 테넌트 토큰 사용량(테넌트별·일별)."""
+    """전체 테넌트 토큰 사용량·비용(테넌트별·일별)."""
     from apps.tenants.models import Tenant
 
     qs = TokenUsage.objects.filter(date__gte=_since(days))
     rows = list(qs.values("tenant_id").annotate(
         total_tokens=Sum("total_tokens"), request_count=Sum("request_count"),
     ).order_by("-total_tokens"))
+    costs = _cost_and_unknown(qs, "tenant_id")
     names = {str(t.id): t.name for t in Tenant.objects.all()}
     by_tenant = [{
         "tenant_id": str(r["tenant_id"]),
         "tenant_name": names.get(str(r["tenant_id"]), "(unknown)"),
         "total_tokens": r["total_tokens"] or 0,
         "request_count": r["request_count"] or 0,
+        **costs.get(r["tenant_id"], _NONE),
     } for r in rows]
     return {
         "total_tokens": sum(r["total_tokens"] for r in by_tenant),
+        **_cost_and_unknown(qs).get(None, _NONE),
         "by_tenant": by_tenant,
         "daily": _daily(qs),
     }

@@ -37,3 +37,8 @@ def cost_usd(model: str, input_tokens: int, output_tokens: int) -> Decimal | Non
         return None
     cost = (Decimal(input_tokens) * price[0] + Decimal(output_tokens) * price[1]) / _MTOK
     return cost.quantize(_QUANT)
+
+
+def is_priced(model: str) -> bool:
+    """단가 표에 있는 모델인가(사용량 화면의 「단가 미상」 표시용)."""
+    return _lookup(model or "") is not None
