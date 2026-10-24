@@ -112,7 +112,7 @@ export async function deleteTenant(id: string) {
 // ?select_tenant=1 / ?onboarding=1 / ?login_error= 를 붙여 /admin-ui/tenant 로 돌려보낸다.
 
 export function memberLoginUrl(): string {
-  return `${import.meta.env.VITE_API_BASE || ''}/api/auth/authorize`
+  return `${import.meta.env.VITE_API_BASE || ''}/api/auth/authorize/member`
 }
 export async function memberTenants() {
   return (await appsTenantsApiMemberTenants()).data as {

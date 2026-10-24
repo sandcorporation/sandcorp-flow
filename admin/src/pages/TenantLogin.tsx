@@ -8,6 +8,7 @@ const LOGIN_ERRORS: Record<string, string> = {
   invite_expired: '초대 링크가 만료되었습니다. 관리자에게 새 링크를 받으세요.',
   invite_used: '이미 사용된 초대 링크입니다.',
   invite_invalid: '유효하지 않은 초대 링크입니다.',
+  owner: '대표 계정은 Operator 화면(/admin-ui/operator)으로 로그인하세요.',
 }
 
 type Tenant = { tenant_id: string; tenant_name: string; role: string }

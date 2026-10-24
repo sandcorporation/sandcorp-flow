@@ -2,7 +2,7 @@
 
 sandcorp-auth는 외부 경계라 토큰 엔드포인트만 대역(`FakeAuthorizationServer`, 실제 Ed25519 서명)으로
 바꾸고, 콜백·검증기·DB·쿠키·Ninja 엔드포인트는 실제로 돈다. 브라우저가 겪는 순서대로 시험한다:
-초대 링크(`/api/auth/authorize?invite=`) → sandcorp-auth → `/api/auth/callback` → 테넌트 세션.
+초대 링크(`/api/auth/authorize/member?invite=`) → sandcorp-auth → `/api/auth/callback` → 테넌트 세션.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ def login(
     server: FakeAuthorizationServer,
     *,
     sub: str = MEMBER_SUB,
-    start_url: str = "/api/auth/authorize",
+    start_url: str = "/api/auth/authorize/member",
     profile: dict[str, object] | None = None,
 ):
     """브라우저 한 바퀴: authorize → (sandcorp-auth 동의) → callback. 콜백 응답을 돌려준다."""
@@ -81,6 +81,52 @@ def invite_url(client: Client, token: str, role: str = "member") -> str:
     assert r.status_code == 201, r.content
     url = urlsplit(r.json()["url"])
     return f"{url.path}?{url.query}"
+
+
+# ── 진입별 요청 스코프(ADR-0028) ─────────────────────────────────────────────
+
+
+def _requested_scope(client: Client, path: str) -> str:
+    started = client.get(path)
+    assert started.status_code == 302
+    return parse_qs(urlsplit(started["Location"]).query)["scope"][0]
+
+
+@pytest.mark.django_db
+def test_each_entry_requests_its_own_scope() -> None:
+    """member가 admin을 요청하면 sandcorp-auth가 invalid_scope로 돌려보내므로 고객 진입은 admin을 빼야 한다."""
+    assert _requested_scope(Client(), "/api/auth/authorize") == "openid profile email login admin"
+    assert _requested_scope(Client(), "/api/auth/authorize/member") == "openid profile email login"
+    assert _requested_scope(Client(), "/api/auth/authorize/member?invite=x") == "openid profile email login"
+    # #61에서 나간 옛 초대 링크(/api/auth/authorize?invite=)도 고객 진입으로 간다
+    assert _requested_scope(Client(), "/api/auth/authorize?invite=x") == "openid profile email login"
+
+
+@pytest.mark.django_db
+def test_owner_through_the_member_entry_is_refused(server) -> None:
+    """고객 진입에 대표(acct 없음) — 고객 화면으로 돌려보내고 Operator·멤버 세션은 열지 않는다."""
+    from apps.tenants.models import Operator
+
+    client = Client()
+    started = client.get("/api/auth/authorize/member")
+    response = client.get("/api/auth/callback", server.approve(started["Location"], flow_scope="login"))
+
+    path, params = landing(response)
+    assert path == MEMBER_HOME and params == {"login_error": "owner"}
+    assert "op_refresh" not in response.cookies and "member_refresh" not in response.cookies
+    assert not Operator.objects.exists()
+
+
+@pytest.mark.django_db
+def test_old_invite_link_on_the_operator_path_still_joins(server, tenant_admin_token) -> None:
+    from apps.tenants.models import Membership
+
+    url = invite_url(Client(), tenant_admin_token)
+    old = url.replace("/api/auth/authorize/member?", "/api/auth/authorize?")
+
+    landing(login(Client(), server, start_url=old))
+
+    assert Membership.objects.filter(user__sub=MEMBER_SUB).exists()
 
 
 # ── 콜백: 멤버십 없음 / 하나 / 여럿 ──────────────────────────────────────────
@@ -257,7 +303,7 @@ def test_revoked_or_made_up_invite_is_refused(server, tenant_admin_token) -> Non
     assert client.get("/api/tenant/invites/", **_hdr(tenant_admin_token)).json() == []
 
     assert landing(login(Client(), server, start_url=url))[1] == {"login_error": "invite_invalid"}
-    made_up = "/api/auth/authorize?invite=not-a-real-token"
+    made_up = "/api/auth/authorize/member?invite=not-a-real-token"
     assert landing(login(Client(), server, start_url=made_up))[1] == {"login_error": "invite_invalid"}
 
 

@@ -4,7 +4,7 @@ import { s } from '../styles'
 
 // 백엔드 콜백(/api/auth/callback)이 거절하면 ?login_error=<사유>로 돌려보낸다(#21).
 const REJECTION: Record<string, string> = {
-  member: 'Operator 화면은 대표 계정만 들어올 수 있습니다. 일반 사용자 로그인은 아직 열리지 않았습니다.',
+  member: 'Operator 화면은 대표 계정만 들어올 수 있습니다. 고객은 Tenant 화면(/admin-ui/tenant)으로 로그인하세요.',
   admin: '이 계정에는 Flow 관리(admin) 권한이 없습니다. sandcorp-auth에서 Flow 리소스의 admin 스코프를 확인하세요.',
   denied: 'sandcorp-auth에서 로그인이나 동의를 취소했습니다.',
   state: '로그인 시도가 만료되었거나 다른 창에서 시작되었습니다. 다시 로그인하세요.',

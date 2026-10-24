@@ -12,7 +12,7 @@ function at(search: string) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.mocked(api.memberLoginUrl).mockReturnValue('/api/auth/authorize')
+  vi.mocked(api.memberLoginUrl).mockReturnValue('/api/auth/authorize/member')
 })
 afterEach(() => at(''))
 
@@ -21,7 +21,7 @@ describe('TenantLogin — sandcorp-auth 고객 로그인 (#40)', () => {
     at('')
     render(<TenantLogin onLogin={vi.fn()} />)
 
-    expect(screen.getByRole('link', { name: 'sandcorp 계정으로 로그인' })).toHaveAttribute('href', '/api/auth/authorize')
+    expect(screen.getByRole('link', { name: 'sandcorp 계정으로 로그인' })).toHaveAttribute('href', '/api/auth/authorize/member')
     expect(screen.queryByPlaceholderText('비밀번호')).toBeNull()
     expect(screen.queryByText('새 조직 만들기')).toBeNull()
   })

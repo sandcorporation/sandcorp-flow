@@ -38,7 +38,7 @@ _Avoid_: EmbedToken(per-session 단기 토큰 — 폐지됨); 토큰(해시는 �
 Tenant를 식별하는 서버사이드 전용 시크릿. 절대 브라우저에 노출되지 않음. 두 가지 용도로만 사용: (1) Tenant 서버가 Identity Verification HMAC API를 호출할 때, (2) **break-glass** — Admin 등가 주체로 팀원·초대 API를 부를 때(마지막 Admin을 잃은 조직이 TENANT_KEY로 **Admin 초대 링크**를 발급해 복구한다, ADR-0025 D). 어드민 UI 로그인에는 사용하지 않음.
 
 **초대 링크** (Invite)
-Tenant Admin(또는 TENANT_KEY)이 만드는 팀원 초대. 추측 불가 토큰(256비트, 해시만 저장)·만료 7일·1회용·역할 지정이다. 받은 사람이 링크(`/api/auth/authorize?invite=…`)로 sandcorp-auth에 로그인하면 그 Tenant의 Membership이 생긴다. 이메일은 보내지 않는다 — Admin이 직접 전달한다. Operator가 Tenant를 만들 때도 첫 Admin 초대 링크가 나온다.
+Tenant Admin(또는 TENANT_KEY)이 만드는 팀원 초대. 추측 불가 토큰(256비트, 해시만 저장)·만료 7일·1회용·역할 지정이다. 받은 사람이 링크(`/api/auth/authorize/member?invite=…`)로 sandcorp-auth에 로그인하면 그 Tenant의 Membership이 생긴다. 이메일은 보내지 않는다 — Admin이 직접 전달한다. Operator가 Tenant를 만들 때도 첫 Admin 초대 링크가 나온다.
 _Avoid_: 임시 비밀번호(폐지 — Flow는 비밀번호를 만들어 주지 않는다), 공개 셀프 가입(폐지 — 테넌트 만들기는 온보딩)
 
 **Access Token**

@@ -105,7 +105,7 @@ def test_authorize_redirects_to_sandcorp_auth_with_pkce_state_and_nonce() -> Non
     assert params["response_type"] == "code"
     assert params["client_id"] == CLIENT_ID
     assert params["redirect_uri"] == REDIRECT_URI
-    assert params["scope"] == "openid profile email login admin"
+    assert params["scope"] == "openid profile email login admin"  # Operator 진입은 admin까지 요청
     assert params["resource"] == FLOW
     assert params["code_challenge_method"] == "S256"
     assert len(params["code_challenge"]) == 43  # base64url(SHA-256), 패딩 없음
@@ -223,30 +223,26 @@ def test_owner_without_admin_scope_is_refused(server: FakeAuthorizationServer) -
 
 
 @pytest.mark.django_db
-def test_member_never_gets_an_operator_session(server: FakeAuthorizationServer, settings) -> None:
-    """일반 사용자는 고객 경로(#40, test_member_login.py)로 간다 — Operator 세션·Operator 행은 없다."""
-    from apps.tenants.models import Operator
+def test_member_through_the_operator_entry_is_refused(server: FakeAuthorizationServer) -> None:
+    """관리 화면(Operator) 진입에 일반 사용자 — ADR-0028대로 Operator가 아니다. 고객 진입은 test_member_login.py."""
+    from apps.tenants.models import Membership, Operator
 
-    settings.AUTH_MEMBER_REDIRECT = "/admin-ui/tenant"
     client = Client()
     response = callback(client, server.approve_member(start(client)))
 
-    assert urlsplit(response["Location"]).path == "/admin-ui/tenant"
-    assert "op_refresh" not in response.cookies
-    assert not Operator.objects.exists()
+    assert rejected_with(response) == "member"
+    assert "op_refresh" not in response.cookies and "member_refresh" not in response.cookies
+    assert not Operator.objects.exists() and not Membership.objects.exists()
 
 
 @pytest.mark.django_db
-def test_member_cannot_pretend_with_admin_scope(server: FakeAuthorizationServer, settings) -> None:
+def test_member_cannot_pretend_with_admin_scope(server: FakeAuthorizationServer) -> None:
     from apps.tenants.models import Operator
 
-    settings.AUTH_MEMBER_REDIRECT = "/admin-ui/tenant"
     client = Client()
     query = server.approve(start(client), sub=MEMBER_SUB, acct="member", flow_scope="admin login")
 
-    response = callback(client, query)
-    assert urlsplit(response["Location"]).path == "/admin-ui/tenant"
-    assert "op_refresh" not in response.cookies
+    assert rejected_with(callback(client, query)) == "member"
     assert not Operator.objects.exists()
 
 
