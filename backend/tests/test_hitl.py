@@ -31,8 +31,8 @@ async def test_fake_llm_verdict_drives_escalation(tenant_with_key, fake_chat_llm
 
 
 @pytest.mark.django_db(transaction=True)
-async def test_hitl_with_response_streams_transition_then_escalates(tenant_with_key, fake_chat_llm, redis_subscribe):
-    """needs_hitl=True여도 AI 전환 멘트가 있으면 먼저 스트리밍·저장된 뒤 escalation된다."""
+async def test_hitl_with_response_does_not_stream_model_text_then_escalates(tenant_with_key, fake_chat_llm, redis_subscribe):
+    """needs_hitl=True면 모델 답(전환 멘트 포함)은 스트리밍·저장되지 않고 escalation만 일어난다(#25: 「연결 불가」 모순 차단)."""
     from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import HITLResponse
     from apps.chat.models import ChatMessage
@@ -47,16 +47,11 @@ async def test_hitl_with_response_streams_transition_then_escalates(tenant_with_
 
     await run_chat_turn_async(session, "FCB1010 전원 사양 알려줘")
 
-    first = get_redis_message(pubsub)
-    assert first is not None and first["type"] == "token", f"전환 멘트 스트리밍 안 됨: {first}"
-    streamed = first["content"]
-    while True:
-        nxt = get_redis_message(pubsub)
-        if nxt is None or nxt["type"] != "token":
-            break
-        streamed += nxt["content"]
-    assert streamed == "상담원에게 연결해 드리겠습니다."
-    assert await adb(ChatMessage.objects.filter(
+    seen = []
+    while (msg := get_redis_message(pubsub)) is not None:
+        seen.append(msg)
+    assert not [m for m in seen if m["type"] == "token" and "연결해 드리겠습니다" in m["content"]]
+    assert not await adb(ChatMessage.objects.filter(
         session=session, role=ChatMessage.ROLE_ASSISTANT, content="상담원에게 연결해 드리겠습니다.",
     ).exists)()
     await adb(session.refresh_from_db)()

@@ -33,7 +33,11 @@ def _answer_for(body: dict) -> str:
         return "안녕하세요"
     out: dict[str, object] = {}
     for name, spec in props.items():
-        if spec.get("type") == "boolean":
+        if name == "confidence":
+            out[name] = 0.9
+        elif name == "label":
+            out[name] = (spec.get("enum") or [""])[0]
+        elif spec.get("type") == "boolean":
             out[name] = name != "needs_hitl"
         else:
             out[name] = "배송은 2~3일 걸립니다." if name == "response" else ""
@@ -251,3 +255,28 @@ async def test_llm_boundary_reports_usage(wired_tenant, real_llm_boundary, strea
     bucket = await adb(TokenUsage.objects.get)(tenant_id=tenant.id, call_type="chat")
     assert (bucket.input_tokens, bucket.output_tokens) == (PROMPT_TOKENS, COMPLETION_TOKENS)
     assert bucket.cost_usd == GPT_4O_MINI_COST
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_classify_node_turn_counts_tokens_and_cost_through_the_real_boundary(platform_tenant):
+    """AI 분류 노드도 실제 LLM 경계를 거쳐 노드 토큰·비용과 token_usage 롤업이 잡힌다(#86 교훈)."""
+    from apps.chat.models import ChatSession
+    from apps.flows.executor import run_flow_turn_async
+    from apps.usage.models import TokenUsage
+
+    def node(i, kind, n, config=None):
+        return {"id": i, "kind": kind, "code": f"N-{n:02d}", "name": i, "position": {"x": 0, "y": 0},
+                "config": config or {}}
+
+    flow = {"nodes": [node("s", "start", 1), node("c", "ai_classify", 2, {"labels": ["refund", "other"]})],
+            "edges": [{"from": "s", "to": "c"}]}
+    session = await adb(ChatSession.objects.create)(tenant_id=platform_tenant.id, visitor_id="v-cls-wire")
+
+    result = await run_flow_turn_async(session, "환불하고 싶어요", flow)
+
+    entry = next(t for t in result["trace"] if t["node_id"] == "c")
+    assert entry["input_tokens"] == PROMPT_TOKENS and entry["output_tokens"] == COMPLETION_TOKENS
+    assert Decimal(entry["cost_usd"]) == GPT_4O_MINI_COST
+    assert entry["record"]["output"]["label"] == "refund"
+    buckets = await adb(list)(TokenUsage.objects.filter(tenant_id=platform_tenant.id))
+    assert sum(b.input_tokens for b in buckets) == PROMPT_TOKENS
