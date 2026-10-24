@@ -24,9 +24,13 @@ class ProviderError(Exception):
     """provider 조회·검증 실패(연결 불가·키 오류 등). 사람이 읽는 메시지."""
 
 
-def ensure_provider_url(type: str, base_url: str) -> None:
-    """테넌트가 넣은 base_url이면 저장·조회 전에 검사한다. 플랫폼 기본(type="")·빈 값(표준 주소)은 건너뛴다."""
-    if not type or not base_url:
+def ensure_provider_url(base_url: str) -> None:
+    """테넌트가 넣은 base_url을 저장·조회 전에 검사한다. 빈 값(표준 주소)만 건너뛴다.
+
+    Provider type과 상관없이 본다 — 플랫폼 기본(type="")이어도 저장되는 base_url은 테넌트 입력이다(#110).
+    플랫폼 고정 주소(설정의 OLLAMA·OpenRouter)는 테넌트 입력이 아니므로 부르는 쪽이 넘기지 않는다.
+    """
+    if not base_url:
         return
     try:
         check_provider_url(base_url)
@@ -76,7 +80,8 @@ def list_provider_models(kind: str, type: str, base_url: str, api_key: str) -> l
 
     type="" 플랫폼 기본은 kind로 분기한다: embed→ollama /api/tags, llm→OpenRouter /models.
     """
-    ensure_provider_url(type, base_url)
+    if type:  # type=""이면 base_url은 플랫폼 고정 주소(설정값)다
+        ensure_provider_url(base_url)
     try:
         if type == "anthropic":
             return _anthropic_models(base_url, api_key)
@@ -97,7 +102,8 @@ def validate_provider(kind: str, type: str, base_url: str, api_key: str, model: 
     tenant_id가 주어지면(어드민 저장 경로) 검증 임베딩 프로브도 사용량으로 기록한다 — OpenAI엔
     과금되지만 어디에도 안 잡히던 갭을 닫는다(TokenUsage + Langfuse, issue 204).
     """
-    ensure_provider_url(type, base_url)
+    if type:  # type=""(플랫폼 기본)은 base_url을 쓰지 않는다 — 저장 검사는 update_config가 따로 한다
+        ensure_provider_url(base_url)
     if kind == "embed":
         try:
             with guarded_http_client(DEFAULT_TIMEOUT) as client:

@@ -520,3 +520,13 @@ def test_dev_setting_allows_internal_base_url_in_config_patch(
     resp = _patch_config(client, tenant_admin_token, {field_name: base})
     assert resp.status_code == 200, resp.content
     assert resp.json()[field_name] == base
+
+
+@pytest.mark.django_db
+def test_config_patch_round_trip_of_stored_base_url_is_not_resolved_again(client, tenant_admin_token, prod: Prod):
+    """어드민 폼이 저장된 base_url을 그대로 되돌려 보내면 다시 풀지 않는다(다른 설정 저장이 DNS 장애로 막히지 않게)."""
+    assert _patch_config(client, tenant_admin_token, {"llm_base_url": "https://llm.example.com/v1"}).status_code == 200
+    prod.dns.answers["llm.example.com"] = []  # 이제 해석 실패
+    resp = _patch_config(client, tenant_admin_token, {"llm_base_url": "https://llm.example.com/v1", "welcome_message": "안녕하세요"})
+    assert resp.status_code == 200, resp.content
+    assert resp.json()["welcome_message"] == "안녕하세요"

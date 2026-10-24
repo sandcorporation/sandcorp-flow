@@ -745,8 +745,16 @@ def update_config(request, body: TenantConfigIn):
     _old_embed = _embed_signature(config)
 
     # provider 연결 필드가 바뀌었으면 저장 전에 검증 — 실패하면 broken provider를 거부한다.
-    from apps.agent.provider_models import ProviderError
+    from apps.agent.provider_models import ProviderError, ensure_provider_url
     try:
+        # base_url은 Provider type과 상관없이 저장 전에 본다 — 플랫폼 기본(type="")이라 연결 검증을
+        # 건너뛰어도 사설 주소가 저장되면 안 된다(#110). 거부 문구는 Provider 전용 경로와 같다.
+        # 이미 저장된 값을 그대로 되돌려 보낸 것(어드민 폼 round-trip)은 다시 풀지 않는다 — 다른 설정
+        # 저장이 DNS 일시 장애로 막히지 않게. 호출 때마다 guarded_http_client가 다시 검사한다.
+        for field in ("llm_base_url", "embed_base_url", "ocr_base_url"):
+            url = getattr(body, field)
+            if url and url != getattr(config, field):
+                ensure_provider_url(url)
         _validate_changed_provider(config, body, "llm")
         _validate_changed_provider(config, body, "embed")
         _validate_changed_provider(config, body, "ocr")
