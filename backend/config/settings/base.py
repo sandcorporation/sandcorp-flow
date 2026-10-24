@@ -113,6 +113,10 @@ OPEN_ROUTER_BASE_URL = os.environ.get("OPEN_ROUTER_BASE_URL", "https://openroute
 # base 기본은 안전하게 False(미설정 환경에서 실수로 플랫폼 비용을 떠안지 않도록).
 PLATFORM_DEFAULT_PROVIDERS_ENABLED = False
 
+# 테넌트가 넣은 URL(웹 문서·웹훅·custom Provider)이 내부망·사설·루프백·메타데이터 주소에 닿아도 되는가(#108).
+# dev·test만 True(fake-llm·ollama·로컬 시험 서버). 기본과 운영은 False — 공용 주소만, 해석한 IP를 검사해 연결.
+OUTBOUND_PRIVATE_ALLOWED = False
+
 # 플랫폼 키(ADR-0026 「플랫폼 키는 OpenAI 하나」)와 체험 한도(Trial Quota, #41).
 # 자기 LLM Provider가 없는 테넌트는 체험 턴이 남아 있는 동안만 플랫폼 OpenAI 키로 돈다.
 # dev(PLATFORM_DEFAULT_PROVIDERS_ENABLED=True)는 이 경로를 타지 않고 기존 fake-llm/ollama 폴백을 쓴다.

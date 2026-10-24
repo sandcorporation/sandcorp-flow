@@ -30,3 +30,15 @@ URL·헤더·본문에 섞일 수 있어 SSRF(사설망·메타데이터 엔드�
 ## Consequences
 - HTTP 클라이언트는 「해석 → 검사 → 그 IP로 연결」을 하는 전용 계층으로 감싼다(일반 `httpx` 호출 금지). sandcorp-auth의 CIMD 가져오기(#20)와 같은 방식이다.
 - 테넌트 설정에 「허용 도메인」과 「비밀」 화면이 생긴다(비밀은 쓰기 전용, 조회 시 이름만).
+
+## 보충 (#108): 테넌트가 넣은 URL — 허용 목록 없는 「공용 호스트만」 정책
+
+HTTP 도구 노드 말고도 서버가 테넌트가 넣은 URL을 부르는 곳이 있었다 — 웹 문서 가져오기(`rag/web.py`), 에스컬레이션 웹훅(`escalation/webhook.py`), custom LLM·임베딩·OCR Provider의 `base_url`(LLM SDK·임베딩·모델 목록). 셀프 가입이 열린 운영에서 이들은 IP 검사 없이 `httpx`/`requests`로 불렀다(웹 문서는 응답이 지식으로 저장돼 검색·챗으로 읽히는 SSRF).
+
+- **정책**: `PublicHosts(schemes)` — 도메인 허용 목록만 없고 나머지는 위 결정 그대로다: IP 리터럴 거부, 해석한 **모든** IP 검사, 검사한 IP로 연결, 리다이렉트마다 다시 검사, 전체 시간·본문 상한. 기본 포트만(http 80·https 443).
+- **웹 문서**: http·https. 공개 웹 문서는 아직 http만 주는 곳이 있고, 응답을 사람이 다시 보는 지식이라 기밀 전송 요구가 없다. 상한은 20초·**5MB**·리다이렉트 5회 — 보통 문서 페이지 HTML이 수백 KB~1MB대라 256KB로는 잘리고, http→https→www 사슬이 흔하다. 시간 초과·연결·DNS 실패만 인제스션 태스크가 다시 시도한다.
+- **웹훅**: https만. 본문에 상담 대화가 실린다. 10초·응답 64KB·리다이렉트 3회. 저장 때 형식(https·IP 리터럴·포트)을 보고, 해석·IP 검사는 보낼 때마다 한다. 실패는 로그(사유 코드·호스트·해석 IP)+예외 — 재시도·DLQ는 소비자 런타임 그대로.
+- **custom Provider**: 저장(·모델 목록 조회) 때 `check_provider_url` — https, userinfo 없음, 해석한 IP 모두 공용(포트는 자유 — 자체 호스팅 엔드포인트가 흔히 8443 등을 쓴다). **부를 때도** 검사한다: LLM SDK(`ChatOpenAI`)·임베딩·모델 목록이 쓰는 httpx 클라이언트에 연결 순간마다 해석·IP 검사를 하는 httpcore 네트워크 백엔드를 단다(`guarded_http_client`). TLS의 SNI·인증서 검증은 원래 호스트로 한다. 저장 뒤 DNS가 사설로 바뀌어도(리바인딩) 연결하지 않는다. 체험 플랫폼 키의 `api.openai.com`도 같은 길이며 공용이라 통과한다. Anthropic 네이티브는 고정 주소(`api.anthropic.com`)뿐이다.
+- **dev·test**: 내부 호스트(fake-llm·ollama·로컬 시험 서버)를 써야 하므로 `OUTBOUND_PRIVATE_ALLOWED=True`(dev.py)일 때만 사설 주소·http·임의 포트를 허용한다. 기본(base.py)과 운영(prod.py)은 False로 고정 — env로 바꿀 수 없다. `PLATFORM_DEFAULT_PROVIDERS_ENABLED`와 따로 둔 까닭: 하나는 비용(플랫폼 키 폴백), 하나는 보안(사설 송신)이라 한쪽을 켜려다 다른 쪽이 열리면 안 된다.
+- **사용자 문구**: `user_message(code)`가 사유를 한국어로 만든다(예: 「이 주소는 가져올 수 없습니다: 내부망·사설 주소입니다」). 해석한 IP는 사용자 문구에 넣지 않고 로그에만 남긴다.
+- 네트워크 모듈 import 묶음(`test_only_the_safe_layer_opens_new_outbound_connections`)에서 테넌트 URL을 부르던 모듈을 뺐다. 남은 예외는 플랫폼 고정 주소(인증 서버 token·JWKS)와 예외 타입만 쓰는 `rag/tasks.py`뿐이다.

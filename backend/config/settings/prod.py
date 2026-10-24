@@ -25,5 +25,7 @@ CSRF_TRUSTED_ORIGINS = [o for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").sp
 # prod(GPU 없는 Oracle A1)는 플랫폼 기본 Provider를 끈다 — Tenant가 자기 LLM·Embedding
 # Provider를 설정해야 인제스션·챗·검색이 동작한다(ADR-0012, 온보딩 필수).
 PLATFORM_DEFAULT_PROVIDERS_ENABLED = False
+# 테넌트 URL은 공용 주소만(#108 SSRF). env로 바꾸지 못하게 고정한다.
+OUTBOUND_PRIVATE_ALLOWED = False
 # 클라이언트 → NPM → nginx(oracle) → api: 두 프록시가 X-Forwarded-For를 덧붙인다(#41 온보딩 IP 레이트리밋).
 TRUSTED_PROXY_COUNT = int(os.environ.get("TRUSTED_PROXY_COUNT", "2"))
