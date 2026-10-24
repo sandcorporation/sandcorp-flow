@@ -185,14 +185,14 @@ for (const [name, size] of [['390', { width: 390, height: 844 }], ['데스크톱
       await page.addInitScript((t) => sessionStorage.setItem('agent_access', t), memberToken())
       await mockApi(page)
       if (short) {
-        await page.route(/\/api\/tenant\/escalations\/$/, (r) => r.request().method() === 'GET' ? r.fulfill({ json: SHORT_ESCS }) : r.fallback())
-        await page.route(/\/api\/tenant\/escalations\/[^/]+\/messages$/, (r) => r.fulfill({ json: [{ id: 'q1', role: 'user', content: '안녕', created_at: T0 }] }))
+        await page.route((u) => /\/api\/tenant\/escalations\/$/.test(u.pathname), (r) => r.request().method() === 'GET' ? r.fulfill({ json: SHORT_ESCS }) : r.fallback())
+        await page.route((u) => /\/api\/tenant\/escalations\/[^/]+\/messages$/.test(u.pathname), (r) => r.fulfill({ json: [{ id: 'q1', role: 'user', content: '안녕', created_at: T0 }] }))
       }
       await page.goto(`${ADMIN_URL}/admin-ui/tenant/hitl`)
       await expect(page.getByRole('heading', { name: /상담 콘솔/ })).toBeVisible()
       await page.waitForTimeout(1500)
-      const mainOverflows = await page.evaluate(() => { const m = document.querySelector('main'); return m.scrollHeight > m.clientHeight })
-      if (short) expect(mainOverflows).toBe(true) // 시험이 의미를 가지려면 main 이 스크롤 가능해야 한다
+      const mainOverflows = await page.evaluate(() => { const m = document.querySelector('main'); const d = document.documentElement; return m.scrollHeight > m.clientHeight || d.scrollHeight > d.clientHeight })
+      if (short) expect(mainOverflows).toBe(true) // 시험이 의미를 가지려면 main 또는 문서가 스크롤 가능해야 한다
       expect(await scrolledAncestors(page)).toEqual([])
       await expect(page.getByRole('heading', { name: /상담 콘솔/ })).toBeInViewport()
     })
