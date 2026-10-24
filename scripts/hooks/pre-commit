@@ -8,9 +8,25 @@ set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 # 백엔드 스키마에 영향 줄 수 있는 변경이 스테이징됐는가?
-if ! git diff --cached --name-only | grep -qE '^backend/.*api\.py$|^backend/config/api\.py$|^admin/orval\.config\.ts$'; then
-  exit 0
-fi
+#  - admin/orval.config.ts
+#  - backend 비테스트·비마이그레이션 .py 중 이름이 api/schema(s)로 끝나거나(예: api.py, schemas.py),
+#    스테이징된 내용이 ninja·pydantic을 import하는 파일(스키마 모듈·인증/권한 등 OpenAPI에 닿는 모듈).
+#    그 밖의 .py(모델·서비스 등)만 바뀐 커밋은 docker를 띄우지 않고 통과한다.
+needs_check=0
+while IFS= read -r f; do
+  case "$f" in
+    admin/orval.config.ts) needs_check=1; break ;;
+    backend/*.py)
+      case "$f" in */tests/*|*/migrations/*|*/test_*.py|*/conftest.py) continue ;; esac
+      case "$f" in
+        */api.py|*/schema.py|*/schemas.py|*/*_api.py|*/*_schemas.py) needs_check=1; break ;;
+      esac
+      if git show ":$f" 2>/dev/null | grep -qE '^\s*(from|import) +(ninja|pydantic)\b'; then
+        needs_check=1; break
+      fi ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACMR)
+[ "$needs_check" = 1 ] || exit 0
 
 echo "[pre-commit] 백엔드 API 변경 감지 → admin 클라이언트 재생성·드리프트 검사…"
 bash scripts/gen-admin-api.sh >/dev/null 2>&1 || { echo "✗ codegen 실패"; exit 1; }
