@@ -1,18 +1,21 @@
 """테넌트 비밀·허용 도메인(#33, ADR-0029 「비밀」) — deep module.
 
-비밀 값은 **쓰기 전용**이다. 이 모듈 밖으로 평문이 나가는 길은 ``render_secrets`` 하나(요청을 만들 때 서버에서만)이고,
-평문이 이 프로세스를 지나가는 순간(저장·치환) ``register_revealed(tenant_id, value)``로 가림 목록에 올린다.
-가림은 두 자리에서 돌고, 범위가 다르다(#115).
+비밀 값은 **쓰기 전용**이다. 이 모듈 밖으로 평문이 나가는 길은 ``render_secrets`` 하나(요청을 만들 때 서버에서만)다.
+가림은 두 자리에서 돌고, 범위·출처가 다르다(#115, #118).
 
-- 판단 기록(테넌트가 읽는다): ``apps.flows.trace.REDACTORS``의 ``redact(tenant_id, text)`` — **그 기록의 테넌트 비밀로만**.
+- 테넌트가 읽는 출력(판단 기록·시험 대화 trace): ``apps.flows.trace.REDACTORS``의 ``redact(tenant_id, text)`` —
+  **그 테넌트가 DB에 저장한 비밀 전체**(복호화) + 이 프로세스가 등록한 그 테넌트 **파생값**(``register_revealed``).
   다른 테넌트 비밀로도 가리면 임의 문자열을 넣어 보고 어디가 가려지는지로 남의 비밀을 한 조각씩 알아낼 수 있다.
+  저장된 비밀을 DB에서 읽는 까닭: api(워커 여럿)와 worker-chat은 다른 프로세스라, 「이 프로세스가 본 값」만으로는
+  다른 프로세스에서 저장된 비밀이 대화 프로세스 출력에 그대로 나간다(#118). 테넌트별 캐시는 ``STORED_TTL_SECONDS``
+  동안 믿고, 같은 프로세스의 저장·삭제는 곧바로 버린다. 비밀이 없는 테넌트는 빈 집합을 캐시한다.
 - 로그(운영자만 본다): ``install_log_redaction``이 LogRecord 팩토리를 감싸 ``redact_log``로 가린다 — 프로세스가 본
-  모든 테넌트 비밀(최근 ``MAX_LOG_VALUES``개). 핸들러·포매터와 무관하게 caplog·Sentry 같은 모든 핸들러가 가린 기록을 받는다.
+  모든 테넌트 비밀(저장·치환·DB 가림 캐시를 채울 때 오른 값, 최근 ``MAX_LOG_VALUES``개). 팩토리 안에서는 DB를 부르지
+  않는다(재귀·로그마다 조회). 핸들러·포매터와 무관하게 caplog·Sentry 같은 모든 핸들러가 가린 기록을 받는다.
 
 가림은 원문 전체와 **원문의 부분 문자열**(``PARTIAL_MIN``자 이상)을 ``MASK``로 바꾼다 — 잘린 오류 메시지·응답 조각에
-섞인 키 앞부분도 가린다. 목록은 프로세스 단위다: 평문은 그 프로세스에서 복호화(또는 저장 요청으로 수신)되어야만
-그 프로세스의 출력에 나타날 수 있으므로, 「이 프로세스가 본 값」만 등록하면 빠짐이 없다. 목록은 테넌트마다
-``MAX_TENANT_VALUES``, 로그 공용은 ``MAX_LOG_VALUES``개까지(가장 오래 안 쓰인 값부터 빠진다 — 치환할 때마다 다시 오른다).
+섞인 키 앞부분도 가린다. 파생값 목록은 테넌트마다 ``MAX_TENANT_VALUES``, 로그 공용은 ``MAX_LOG_VALUES``개까지(가장
+오래 안 쓰인 값부터 빠진다 — 만들 때마다 다시 오른다).
 """
 
 from __future__ import annotations
@@ -20,13 +23,17 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import time
 import uuid
 from collections import OrderedDict
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from apps.flows.schema import JSON, SECRET_REF_RE
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from apps.core.safe_http import AllowList
     from apps.tenants.models import TenantAllowedDomain, TenantSecret
 
@@ -64,9 +71,12 @@ class DomainExists(DomainError):
 # ── 가림 ────────────────────────────────────────────────────────────────────
 
 MAX_TENANT_VALUES = 256
-"""테넌트 하나가 가림 목록에 둘 수 있는 값 수(최근 것부터). 교체를 거듭해도 메모리가 끝없이 자라지 않게."""
+"""테넌트 하나가 **파생값** 가림 목록에 둘 수 있는 값 수(최근 것부터). 교체를 거듭해도 메모리가 끝없이 자라지 않게."""
 MAX_LOG_VALUES = 1024
 """로그 가림(프로세스 공용) 목록 상한. 넘으면 가장 오래 안 쓰인 값부터 뺀다."""
+STORED_TTL_SECONDS = 30.0
+"""저장된 비밀 가림 캐시를 믿는 시간. 지나면 ``(개수, max(updated_at))`` 한 번으로 바뀜을 보고, 바뀌었을 때만 다시 복호화한다.
+같은 프로세스의 저장·삭제는 즉시 무효화하고, 다른 프로세스(api 워커·worker-chat)의 저장·삭제는 이 시간 안에 따라잡는다."""
 
 
 class _Mask:
@@ -92,6 +102,9 @@ class _Mask:
         else:
             self.grams = self.grams | _grams_of(value)
 
+    def __contains__(self, value: str) -> bool:
+        return value in self._values
+
     def _rebuild(self) -> None:
         values = list(self._values)
         self.short = frozenset(v for v in values if len(v) < PARTIAL_MIN)
@@ -101,69 +114,161 @@ class _Mask:
         return bool(self.grams or self.short)
 
     def apply(self, text: str) -> str:
-        grams, short = self.grams, self.short
-        for value in short:
+        return _apply(text, (self,))
+
+
+def _apply(text: str, masks: tuple[_Mask, ...]) -> str:
+    """여러 집합의 원문·조각을 한 번에 가린다(겹치거나 이어진 구간은 ``MASK`` 하나로)."""
+    masks = tuple(m for m in masks if m)
+    if not masks:
+        return text
+    for mask in masks:
+        for value in mask.short:
             text = text.replace(value, MASK)
-        if not grams or len(text) < PARTIAL_MIN:
-            return text
-        covered = [False] * len(text)
-        hit = False
-        for i in range(len(text) - PARTIAL_MIN + 1):
-            if text[i:i + PARTIAL_MIN] in grams:
-                hit = True
-                for j in range(i, i + PARTIAL_MIN):
-                    covered[j] = True
-        if not hit:
-            return text
-        out: list[str] = []
-        prev = False
-        for ch, cov in zip(text, covered):
-            if cov:
-                if not prev:
-                    out.append(MASK)
-            else:
-                out.append(ch)
-            prev = cov
-        return "".join(out)
+    gram_sets = [m.grams for m in masks if m.grams]
+    if not gram_sets or len(text) < PARTIAL_MIN:
+        return text
+    covered = [False] * len(text)
+    hit = False
+    for i in range(len(text) - PARTIAL_MIN + 1):
+        piece = text[i:i + PARTIAL_MIN]
+        if any(piece in grams for grams in gram_sets):
+            hit = True
+            for j in range(i, i + PARTIAL_MIN):
+                covered[j] = True
+    if not hit:
+        return text
+    out: list[str] = []
+    prev = False
+    for ch, cov in zip(text, covered):
+        if cov:
+            if not prev:
+                out.append(MASK)
+        else:
+            out.append(ch)
+        prev = cov
+    return "".join(out)
 
 
 def _grams_of(value: str) -> set[str]:
     return {value[i:i + PARTIAL_MIN] for i in range(len(value) - PARTIAL_MIN + 1)}
 
 
+_Stamp = tuple[int, "datetime | None"]
+"""비밀 표에서 한 테넌트의 ``(개수, max(updated_at))`` — 저장·교체·삭제 어느 것이든 바뀐다."""
+
+
+@dataclass
+class _Stored:
+    """한 테넌트의 저장된 비밀 전체(DB에서 복호화)로 만든 가림 집합과, 그것을 만든 때의 표 상태."""
+
+    mask: _Mask
+    stamp: _Stamp
+    checked: float
+
+
 _lock = threading.Lock()
-_by_tenant: dict[uuid.UUID, _Mask] = {}
+_derived: dict[uuid.UUID, _Mask] = {}
+"""테넌트별 **파생값**(``register_revealed`` — Basic base64 등). 저장된 비밀 자체는 ``_stored``가 DB에서 읽는다."""
+_stored: dict[uuid.UUID, _Stored] = {}
 _log_mask = _Mask(MAX_LOG_VALUES)
+_clock = time.monotonic
+"""캐시 시간(시험이 바꿔 끼워 TTL 경과를 흉내 낸다)."""
+
+logger = logging.getLogger(__name__)
 
 
 def _key(tenant_id: uuid.UUID | str) -> uuid.UUID:
     return tenant_id if isinstance(tenant_id, uuid.UUID) else uuid.UUID(str(tenant_id))
 
 
-def register_revealed(tenant_id: uuid.UUID | str, value: str) -> None:
-    """이 테넌트의 평문이 이 프로세스를 지나갔다 — 이후 **이 테넌트의** 판단 기록과 (프로세스 공용) 로그에서 가린다.
+def _register_log(value: str) -> None:
+    if value:
+        with _lock:
+            _log_mask.add(value)
 
-    HTTP 도구(#34)가 비밀에서 파생한 값(예: Basic 인증의 base64)을 만들면 그 값도 같은 테넌트로 여기에 등록한다.
+
+def register_revealed(tenant_id: uuid.UUID | str, value: str) -> None:
+    """비밀에서 **파생한** 값(예: Basic 인증의 base64, URL 인코딩)이 이 프로세스에서 만들어졌다 — 이후 이 테넌트의
+    출력과 (프로세스 공용) 로그에서 가린다. 저장된 비밀 원문은 등록하지 않아도 ``redact``가 DB에서 읽어 가린다(#118).
+
+    파생값은 만든 프로세스만 안다. 다른 프로세스로 넘겨 내보낼 일이 생기면 그쪽에서 다시 등록할 것.
     """
     if not value:
         return
     with _lock:
         key = _key(tenant_id)
-        mask = _by_tenant.get(key)
+        mask = _derived.get(key)
         if mask is None:
-            mask = _by_tenant[key] = _Mask(MAX_TENANT_VALUES)
+            mask = _derived[key] = _Mask(MAX_TENANT_VALUES)
         mask.add(value)
         _log_mask.add(value)
 
 
+def _stamp_of(key: uuid.UUID) -> _Stamp:
+    from django.db.models import Count, Max
+
+    from apps.tenants.models import TenantSecret
+
+    agg = TenantSecret.objects.filter(tenant_id=key).aggregate(n=Count("id"), last=Max("updated_at"))
+    return agg["n"], agg["last"]
+
+
+def _load_stored(key: uuid.UUID, stamp: _Stamp) -> _Mask:
+    from cryptography.fernet import InvalidToken
+
+    from apps.tenants.crypto import decrypt_secret
+    from apps.tenants.models import TenantSecret
+
+    rows = list(TenantSecret.objects.filter(tenant_id=key).values_list("name", "ciphertext")) if stamp[0] else []
+    mask = _Mask(max(len(rows), 1))
+    with _lock:
+        for name, ciphertext in rows:
+            try:
+                value = decrypt_secret(ciphertext)
+            except InvalidToken:  # SECRET_KEY가 바뀐 옛 암호문 — 이 값은 어차피 치환되지 못한다
+                logger.warning("비밀 복호화 실패 tenant=%s name=%s", key, name)
+                continue
+            mask.add(value)
+            _log_mask.add(value)
+    return mask
+
+
+def _stored_mask(key: uuid.UUID) -> _Mask:
+    """이 테넌트의 저장된 비밀 전체 가림 집합(sync, DB). TTL 안이면 DB를 부르지 않는다.
+
+    TTL이 지나면 ``(개수, max(updated_at))``만 읽어 그대로면 그대로 쓰고, 바뀌었을 때만 복호화해 다시 만든다.
+    비밀이 없는 테넌트는 빈 집합을 캐시한다(복호화 없음, TTL마다 개수 한 번).
+    """
+    now = _clock()
+    entry = _stored.get(key)
+    if entry is not None and now - entry.checked < STORED_TTL_SECONDS:
+        return entry.mask
+    stamp = _stamp_of(key)
+    if entry is not None and entry.stamp == stamp:
+        entry.checked = now
+        return entry.mask
+    mask = _load_stored(key, stamp)
+    _stored[key] = _Stored(mask=mask, stamp=stamp, checked=now)
+    return mask
+
+
+def forget_stored(tenant_id: uuid.UUID | str) -> None:
+    """이 테넌트의 저장된 비밀 가림 캐시를 버린다 — 다음 ``redact``가 DB에서 다시 읽는다(저장·삭제 직후)."""
+    _stored.pop(_key(tenant_id), None)
+
+
 def redact(tenant_id: uuid.UUID | str, text: str) -> str:
-    """**이 테넌트의** 등록된 비밀 원문과 그 ``PARTIAL_MIN``자 이상 부분 문자열을 ``MASK``로 바꾼다(겹치는 구간은 하나로).
+    """**이 테넌트의** 비밀 원문(DB에 저장된 전체)·파생값과 그 ``PARTIAL_MIN``자 이상 부분 문자열을 ``MASK``로 바꾼다.
 
     테넌트가 읽는 출력(판단 기록·시험 대화 trace)에 쓴다. 다른 테넌트 비밀은 건드리지 않는다 — 건드리면 그 출력이
-    「이 조각이 누군가의 비밀인가」를 알려 주는 오라클이 된다(#115).
+    「이 조각이 누군가의 비밀인가」를 알려 주는 오라클이 된다(#115). 저장된 비밀은 프로세스가 본 적이 없어도 가린다
+    (다른 프로세스에서 저장된 값, #118). **sync** — 캐시가 낡았으면 DB를 부르므로 async 안에서는 ``sync_to_async``로.
     """
-    mask = _by_tenant.get(_key(tenant_id))
-    return mask.apply(text) if mask else text
+    key = _key(tenant_id)
+    derived = _derived.get(key)
+    stored = _stored_mask(key)
+    return _apply(text, (stored, derived) if derived is not None else (stored,))
 
 
 def redact_log(text: str) -> str:
@@ -231,13 +336,14 @@ def set_secret(tenant_id: uuid.UUID, name: str, value: str) -> TenantSecret:
     from apps.tenants.models import TenantSecret
 
     if len(value) >= MIN_VALUE_CHARS:
-        register_revealed(tenant_id, value)  # 검사에 걸려도 이 값은 이미 이 프로세스를 지나갔다(너무 짧은 값은 흔한 낱말을 가린다)
+        _register_log(value)  # 검사에 걸려도 이 값은 이미 이 프로세스를 지나갔다(너무 짧은 값은 흔한 낱말을 가린다)
     _check_name(name)
     if not MIN_VALUE_CHARS <= len(value) <= MAX_VALUE_CHARS:
         raise SecretError(f"비밀 값은 {MIN_VALUE_CHARS}~{MAX_VALUE_CHARS}자여야 합니다.")
     secret, _ = TenantSecret.objects.update_or_create(
         tenant_id=tenant_id, name=name, defaults={"ciphertext": encrypt_secret(value)}
     )
+    forget_stored(tenant_id)  # 이 프로세스의 출력은 곧바로 새 값을 가린다(다른 프로세스는 STORED_TTL_SECONDS 안에)
     return secret
 
 
@@ -247,6 +353,7 @@ def delete_secret(tenant_id: uuid.UUID, name: str) -> None:
     deleted, _ = TenantSecret.objects.filter(tenant_id=tenant_id, name=name).delete()
     if not deleted:
         raise SecretNotFound(name)
+    forget_stored(tenant_id)
 
 
 def secret_refs(value: JSON) -> set[str]:
@@ -264,7 +371,8 @@ def render_secrets(tenant_id: uuid.UUID, template: str) -> str:
     """``template`` 안의 ``{{secret.이름}}``을 이 테넌트의 평문으로 바꾼다(sync, DB 한 번).
 
     HTTP 요청을 만드는 자리(#34)에서만 부른다 — 결과를 판단 기록·응답에 직접 넣지 않는다(넣어도 가려지지만).
-    없는 이름이 있으면 ``SecretNotFound``(메시지엔 이름만). 복호화한 값은 가림 목록에 올린다.
+    없는 이름이 있으면 ``SecretNotFound``(메시지엔 이름만). 복호화한 값은 로그 가림에 올리고, 테넌트 가림 캐시가
+    그 값을 모르면(다른 프로세스가 방금 바꿈) 캐시를 버린다.
     """
     from apps.tenants.crypto import decrypt_secret
     from apps.tenants.models import TenantSecret
@@ -278,7 +386,10 @@ def render_secrets(tenant_id: uuid.UUID, template: str) -> str:
         raise SecretNotFound(missing[0])
     plain = {name: decrypt_secret(ct) for name, ct in rows.items()}
     for value in plain.values():
-        register_revealed(tenant_id, value)
+        _register_log(value)
+    entry = _stored.get(_key(tenant_id))
+    if entry is not None and any(v not in entry.mask for v in plain.values()):
+        forget_stored(tenant_id)  # 다른 프로세스가 방금 바꾼 값 — TTL을 기다리지 않고 다음 가림이 다시 읽게
     return SECRET_REF_RE.sub(lambda m: plain[m.group(1)], template)
 
 

@@ -53,8 +53,9 @@ def test_secret_and_domain_management_are_admin_only_bits():
         assert P.has_permission(admin, bit) and not P.has_permission(member, bit)
 
 
-# ── 가림(순수) ──────────────────────────────────────────────────────────────
+# ── 가림(파생값 등록) ── 저장된 비밀이 없는 테넌트라도 redact는 그 테넌트 비밀 표를 본다(#118) → django_db ──
 
+@pytest.mark.django_db
 def test_redact_masks_revealed_value_and_its_substrings():
     import uuid
 
@@ -73,6 +74,7 @@ def test_redact_masks_revealed_value_and_its_substrings():
     assert redact(tid, "평범한 문장 그대로") == "평범한 문장 그대로"
 
 
+@pytest.mark.django_db
 def test_redact_is_scoped_to_the_tenant_but_log_redaction_is_process_wide():
     import uuid
 
@@ -88,6 +90,7 @@ def test_redact_is_scoped_to_the_tenant_but_log_redaction_is_process_wide():
     assert redact_log(f"x {value[3:15]} y") == f"x {MASK} y"
 
 
+@pytest.mark.django_db
 def test_redaction_lists_are_bounded_least_recently_used_first(monkeypatch):
     import uuid
 
@@ -401,3 +404,130 @@ def test_other_tenants_secret_does_not_mask_this_tenants_mcp_test_turn(signer, f
     theirs, mine = turn(b), turn(a)
     assert secret[5:17] in theirs and "[비밀]" not in theirs
     assert secret[5:17] not in mine
+
+
+# ── 가림은 DB에 저장된 그 테넌트 비밀 전체로(#118) ───────────────────────────
+# 운영은 api(uvicorn 워커 2)와 worker-chat이 서로 다른 프로세스다. 비밀을 저장한 프로세스만 그 값을 알면 시험 대화를
+# 돌리는 프로세스의 판단 기록·SSE trace에 원문이 그대로 나간다. 「다른 프로세스가 저장」은 이 프로세스의 가림 함수를
+# 거치지 않고 ORM으로 바로 넣어 흉내 낸다.
+
+def _store_elsewhere(tenant_id, name: str, value: str):
+    """다른 프로세스가 저장한 비밀 — 이 프로세스의 ``set_secret``·``render_secrets``를 거치지 않는다."""
+    from apps.tenants.crypto import encrypt_secret
+    from apps.tenants.models import TenantSecret
+
+    secret, _ = TenantSecret.objects.update_or_create(
+        tenant_id=tenant_id, name=name, defaults={"ciphertext": encrypt_secret(value)})
+    return secret
+
+
+def _later(monkeypatch, seconds: float) -> None:
+    """캐시 시계를 ``seconds``만큼 앞으로 — 다른 프로세스의 변경을 TTL로 따라잡는지 본다."""
+    import time
+
+    from apps.tenants import tenant_secrets as ts
+
+    base = time.monotonic()
+    monkeypatch.setattr(ts, "_clock", lambda: base + seconds, raising=False)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_secret_stored_by_another_process_is_masked_in_test_conversation(client, tenant_with_key, tenant_admin_token,
+                                                                          fake_chat_llm):
+    """비밀을 모르는 프로세스에서 돌린 시험 대화 — SSE trace와 저장 판단 기록 모두 그 테넌트 비밀을 가린다."""
+    from test_flow_api import jpost, new_flow, sse_events
+
+    tenant, _ = tenant_with_key
+    secret = _fresh()
+    _store_elsewhere(tenant.id, "shop_key", secret)
+    fid = new_flow(client, tenant_admin_token)
+
+    r = jpost(client, f"/api/tenant/flows/{fid}/test/", {"message": f"키는 {secret} 이고 앞은 {secret[:12]}"},
+              tenant_admin_token)
+
+    events = sse_events(r)
+    traced = json.dumps([d for n, d in events if n == "trace"], ensure_ascii=False)
+    assert secret[:12] not in traced and secret[6:18] not in traced and "[비밀]" in traced
+    session_id = dict(events)["done"]["session_id"]
+    stored = client.get(f"/api/tenant/sessions/{session_id}/decision-traces", **_hdr(tenant_admin_token)).json()
+    dumped = json.dumps(stored, ensure_ascii=False)
+    assert secret[:12] not in dumped and "[비밀]" in dumped
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_deleted_secret_is_no_longer_masked_and_replaced_value_is(tenant_with_key, fake_chat_llm):
+    """같은 프로세스의 저장·삭제는 곧바로 반영 — 지운 값은 더 가리지 않고, 바꾼 값은 새 값을 가린다."""
+    from asgiref.sync import sync_to_async as adb
+
+    from apps.flows import services
+    from apps.tenants.tenant_secrets import delete_secret, set_secret
+    from test_flow_services import make_flow
+
+    tenant, _ = tenant_with_key
+    flow = await adb(make_flow)(tenant)
+    old, new = _fresh(), _fresh()
+
+    async def traced(text: str) -> str:
+        result = await services.run_test_turn(tenant.id, flow.id, text)
+        assert result.ran, result
+        return json.dumps(result.trace, ensure_ascii=False)
+
+    await adb(set_secret)(tenant.id, "shop_key", old)
+    assert old[3:15] not in await traced(f"이거 {old[3:15]}")
+
+    await adb(set_secret)(tenant.id, "shop_key", new)
+    assert new[3:15] not in await traced(f"이거 {new[3:15]}")
+
+    await adb(delete_secret)(tenant.id, "shop_key")
+    after = await traced(f"이거 {new[3:15]}")
+    assert new[3:15] in after and "[비밀]" not in after
+
+
+@pytest.mark.django_db
+def test_another_processes_change_and_delete_converge_after_ttl(tenant_with_key, monkeypatch):
+    """다른 프로세스의 교체·삭제는 캐시 TTL이 지나면 따라잡는다(표의 개수·최근 수정 시각으로 바뀜을 안다)."""
+    from apps.tenants import tenant_secrets as ts
+    from apps.tenants.models import TenantSecret
+
+    tenant, _ = tenant_with_key
+    old, new = _fresh(), _fresh()
+    _store_elsewhere(tenant.id, "shop_key", old)
+    assert ts.redact(tenant.id, old) == "[비밀]"
+
+    _store_elsewhere(tenant.id, "shop_key", new)
+    _later(monkeypatch, ts.STORED_TTL_SECONDS + 1)
+    assert ts.redact(tenant.id, new) == "[비밀]" and ts.redact(tenant.id, old) == old
+
+    TenantSecret.objects.filter(tenant_id=tenant.id).delete()
+    _later(monkeypatch, 2 * ts.STORED_TTL_SECONDS + 2)
+    assert ts.redact(tenant.id, new) == new
+
+
+@pytest.mark.django_db
+def test_render_picks_up_another_processes_new_value_without_waiting(tenant_with_key):
+    """치환이 캐시가 모르는 값을 복호화하면(다른 프로세스가 방금 바꿈) TTL을 기다리지 않고 그 값을 가린다."""
+    from apps.tenants import tenant_secrets as ts
+
+    tenant, _ = tenant_with_key
+    old, new = _fresh(), _fresh()
+    _store_elsewhere(tenant.id, "shop_key", old)
+    assert ts.redact(tenant.id, old) == "[비밀]"
+    _store_elsewhere(tenant.id, "shop_key", new)
+
+    ts.render_secrets(tenant.id, "Bearer {{secret.shop_key}}")
+
+    assert ts.redact(tenant.id, f"응답 {new}") == "응답 [비밀]"
+
+
+@pytest.mark.django_db
+def test_tenant_without_secrets_costs_no_query_within_ttl(tenant_with_key, monkeypatch, django_assert_num_queries):
+    """비밀 없는 테넌트는 빈 집합을 캐시 — TTL 안에선 조회 0번, 지나면 개수 확인 한 번(복호화 없음)."""
+    from apps.tenants import tenant_secrets as ts
+
+    tenant, _ = tenant_with_key
+    ts.redact(tenant.id, "아무 말")
+    with django_assert_num_queries(0):
+        assert ts.redact(tenant.id, "아무 말 abcdefgh") == "아무 말 abcdefgh"
+    _later(monkeypatch, ts.STORED_TTL_SECONDS + 1)
+    with django_assert_num_queries(1):
+        ts.redact(tenant.id, "또 다른 말")
