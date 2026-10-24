@@ -1,11 +1,10 @@
 // admin HTTP facade (ADR-0014). CRUD는 전부 orval 생성 클라이언트(→ mutator)를 거친다.
-// 손작성으로 남는 것: login/logout의 토큰 부수효과 + SSE(openEscalationStream).
+// 손작성으로 남는 것: login/logout의 토큰 부수효과 + Operator 로그인 이동 + SSE(openEscalationStream).
 // 이 facade는 친근한 함수명 + .data 언랩 + 일부 특수 계약(409/404/친절 에러)만 담당한다.
 import { setAccess, clearAccess, getAccess, onAccessChange } from './auth'
 import { HttpError } from './mutator'
 
 import {
-  appsTenantsApiLogin,
   appsTenantsApiOperatorLogout,
   appsTenantsApiOperatorLogoutAll,
   appsTenantsApiListTenants,
@@ -75,10 +74,12 @@ const BASE: string = import.meta.env.VITE_API_BASE || ''
 
 // ── Operator ─────────────────────────────────────────────────────────────
 
-export async function operatorLogin(username: string, password: string) {
-  const data = (await appsTenantsApiLogin({ username, password })).data as { access_token: string }
-  setAccess('operator', data.access_token)
-  return data
+// Operator 로그인은 sandcorp-auth(#21): 백엔드 /authorize로 이동 → sandcorp-auth → 백엔드 콜백이
+// Refresh 쿠키를 심고 /admin-ui/operator로 돌려보낸다. access는 App 부팅의 silent refresh가 받는다.
+// 거절이면 ?login_error=<사유>가 붙어 돌아온다(OperatorLogin이 거절 화면을 보여 준다).
+export const OPERATOR_LOGIN_PATH = '/api/operator/auth/authorize'
+export function startOperatorLogin() {
+  window.location.assign(`${BASE}${OPERATOR_LOGIN_PATH}`)
 }
 export async function operatorLogout() {
   await appsTenantsApiOperatorLogout()
