@@ -45,6 +45,8 @@ class OnboardingRejected(Exception):
 
 
 def create_tenant_for(user: User, name: str, slug: str) -> Membership:
+    from apps.flows.defaults import ensure_default_flow
+
     clean_name = (name or "").strip()
     clean_slug = normalize_slug(slug)
     if not clean_name or len(clean_name) > MAX_NAME_LEN:
@@ -63,6 +65,7 @@ def create_tenant_for(user: User, name: str, slug: str) -> Membership:
             tenant.slug = clean_slug
             tenant.created_by = user
             tenant.save(update_fields=["slug", "created_by"])
+            ensure_default_flow(tenant.id)
             return Membership.objects.create(user=user, tenant=tenant, role=Membership.ROLE_ADMIN)
     except IntegrityError:
         # 검사와 저장 사이에 같은 이름·slug가 먼저 들어온 경우(unique 제약이 최종 판정).

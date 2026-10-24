@@ -63,7 +63,7 @@ def _local_search_sync(state: dict) -> dict:
     from apps.rag.graph_store import GraphStore
 
     gs = GraphStore(state["tenant_id"])
-    matched = gs.search_entities(state["user_message"], top_k=5)
+    matched = gs.search_entities(state["user_message"], top_k=state.get("search_top_k", 5))  # 흐름 지식 검색 노드의 top_k(#23)
 
     chunks = []
     seen_entities = set()

@@ -31,6 +31,9 @@ DEFAULT_HANDLE = "next"
 ELSE_HANDLE = "else"
 """조건 노드의 기본 갈래(어느 조건에도 맞지 않을 때)."""
 
+HANDOFF_HANDLE = "handoff"
+"""AI 답변이 사람 넘김이 필요하다고 판단할 때 나가는 갈래(선택). 선이 있을 때만 AI가 넘김을 판단한다."""
+
 MAX_STEPS_PER_TURN = 50
 """실행기가 한 턴에 실행할 노드 수 상한(무한 루프 방지 안전장치, ADR-0027 순환 규칙)."""
 
@@ -84,6 +87,9 @@ class AiAnswerConfig(NodeConfig):
 
     def waits_for_reply(self) -> bool:
         return self.await_reply
+
+    def handles(self) -> tuple[str, ...]:
+        return (DEFAULT_HANDLE, HANDOFF_HANDLE)
 
 
 class ConditionBranch(BaseModel):

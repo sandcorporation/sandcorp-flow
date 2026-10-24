@@ -39,7 +39,7 @@ HTTP 도구 보안은 [ADR-0029](adr/0029-http-tool-node-security.md). 용어는
 | kind | 이름 | config | 나가는 갈래 |
 |---|---|---|---|
 | `start` | 시작 | `{}` | `next` |
-| `ai_answer` | AI 답변 | `instructions: str = ""`, `await_reply: bool = false` | `next` |
+| `ai_answer` | AI 답변 | `instructions: str = ""`, `await_reply: bool = false` | `next`, `handoff`(선택 — AI가 사람 넘김이 필요하다고 판단할 때만 이 선으로) |
 | `condition` | 조건 | `branches: [{name, when}]`(1개 이상, 이름 유일, `else`·`next` 예약) | 각 `name` + `else` — **모두 선 필수** |
 | `handoff` | 사람 넘김 | `reason: str = ""` | 없음 |
 | `knowledge_search` | 지식 검색 | `top_k: int = 5`(1~20) | `next` |
@@ -47,7 +47,7 @@ HTTP 도구 보안은 [ADR-0029](adr/0029-http-tool-node-security.md). 용어는
 | `guardrail` | 가드레일 | `rules: ["banned_words" \| "pii" \| "price_promise"]`(1개 이상), `action: "block" \| "rewrite" = "rewrite"` | `next` |
 | `http_tool` | HTTP 도구 | `method`(GET·POST·PUT·PATCH·DELETE), `url`(https만, user@host 금지), `headers: {str: str}`, `body_template: str \| null` | `next` |
 
-`next` 갈래는 선이 없어도 된다 — 거기서 턴이 끝난다. `condition.branches[].when` 식의 문법은 조건 노드 티켓이 정한다.
+`next` 갈래는 선이 없어도 된다 — 거기서 턴이 끝난다. AI 답변의 `handoff` 갈래도 선택이다 — 선이 있고 테넌트가 사람 넘김을 켰고 상담시간일 때만 AI가 넘김을 판단하고(넘김 판단이 든 답변 스키마), 선이 없으면 넘김 없는 답변 스키마로 묻는다. `condition.branches[].when` 식의 문법은 조건 노드 티켓이 정한다.
 
 ### 비밀은 참조만
 
