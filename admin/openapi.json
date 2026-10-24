@@ -2326,6 +2326,76 @@
         "title": "TrialOut",
         "type": "object"
       },
+      "TrySessionOut": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "flow_id": {
+            "title": "Flow Id",
+            "type": "string"
+          },
+          "template": {
+            "title": "Template",
+            "type": "string"
+          },
+          "turns_remaining": {
+            "title": "Turns Remaining",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "flow_id",
+          "template",
+          "expires_at",
+          "turns_remaining"
+        ],
+        "title": "TrySessionOut",
+        "type": "object"
+      },
+      "TryStartIn": {
+        "properties": {
+          "template": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template"
+        ],
+        "title": "TryStartIn",
+        "type": "object"
+      },
+      "TryTemplateOut": {
+        "properties": {
+          "documents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "documents"
+        ],
+        "title": "TryTemplateOut",
+        "type": "object"
+      },
       "UpsertNode": {
         "additionalProperties": false,
         "description": "노드를 더하거나(새 id) 고친다(있는 id — 준 필드만 바꾸고 config는 통째로 바꾼다).",
@@ -4805,7 +4875,7 @@
     },
     "/api/tenant/flows/{flow_id}/test/": {
       "post": {
-        "description": "초안으로 시험 한 턴을 돌려 SSE로 흘려보낸다. 실제 사람 넘김·알림은 없고 세션은 ``is_test``다.\n\n이벤트: ``start``{flow_id} → ``trace``{노드 항목}×N → ``reply``{text} → ``done``{ran, handoff, note, errors, session_id}.\n초안이 무효이면 ``trace``·``reply`` 없이 ``done``(ran=false, errors)만 온다. 판단 기록 전체는 ``session_id``로\n``GET /api/tenant/sessions/{id}/decision-traces``에서 다시 읽는다. 체험 턴을 1 쓴다(ADR-0026).",
+        "description": "초안으로 시험 한 턴을 돌려 SSE로 흘려보낸다. 실제 사람 넘김·알림은 없고 세션은 ``is_test``다.\n\n이벤트: ``start``{flow_id} → ``trace``{노드 항목}×N → ``reply``{text} → ``done``{ran, handoff, note, code, errors, session_id}.\n초안이 무효이면 ``trace``·``reply`` 없이 ``done``(ran=false, errors)만 온다. 판단 기록 전체는 ``session_id``로\n``GET /api/tenant/sessions/{id}/decision-traces``에서 다시 읽는다. 체험 턴을 1 쓴다(ADR-0026).",
         "operationId": "apps_flows_api_flows_test_conversation",
         "parameters": [
           {
@@ -6230,6 +6300,305 @@
         "summary": "List Visitor Sessions",
         "tags": [
           "memory"
+        ]
+      }
+    },
+    "/api/try/flows/{flow_id}/": {
+      "get": {
+        "operationId": "apps_tenants_try_api_try_flow_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Try Flow Get",
+        "tags": [
+          "try"
+        ]
+      }
+    },
+    "/api/try/flows/{flow_id}/deploy/": {
+      "post": {
+        "description": "체험은 배포하지 않는다 — 편집기의 배포 버튼이 받을 사유를 그대로 준다.",
+        "operationId": "apps_tenants_try_api_try_deploy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Try Deploy",
+        "tags": [
+          "try"
+        ]
+      }
+    },
+    "/api/try/flows/{flow_id}/draft/": {
+      "patch": {
+        "operationId": "apps_tenants_try_api_try_patch_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Try Patch Draft",
+        "tags": [
+          "try"
+        ]
+      },
+      "put": {
+        "operationId": "apps_tenants_try_api_try_put_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftPutIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Try Put Draft",
+        "tags": [
+          "try"
+        ]
+      }
+    },
+    "/api/try/flows/{flow_id}/test/": {
+      "post": {
+        "description": "초안으로 시험 한 턴(SSE, 편집기와 같은 이벤트). 돌지 않은 사유는 ``done.code``:\n``try_daily_budget``(전체 하루 비용, 「내일 다시」) · ``try_turns_exhausted``(세션 턴) · ``try_unavailable``(플랫폼 키 없음).",
+        "operationId": "apps_tenants_try_api_try_test_conversation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestTurnIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Try Test Conversation",
+        "tags": [
+          "try"
+        ]
+      }
+    },
+    "/api/try/node-schema/": {
+      "get": {
+        "description": "편집기 노드 설정 폼의 틀(``/api/tenant/flows/node-schema/``와 같은 것).",
+        "operationId": "apps_tenants_try_api_try_node_schema",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "additionalProperties": {
+                      "$ref": "#/components/schemas/JSON"
+                    },
+                    "type": "object"
+                  },
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Try Node Schema",
+        "tags": [
+          "try"
+        ]
+      }
+    },
+    "/api/try/session/": {
+      "get": {
+        "operationId": "apps_tenants_try_api_try_session_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrySessionOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Try Session Get",
+        "tags": [
+          "try"
+        ]
+      }
+    },
+    "/api/try/sessions/": {
+      "post": {
+        "description": "「고쳐 보기」 — 체험 테넌트(예제 사본)를 만들고 세션 쿠키를 준다. IP당 하루 ``TRY_SESSIONS_PER_IP_PER_DAY``.",
+        "operationId": "apps_tenants_try_api_try_start",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TryStartIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrySessionOut"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "summary": "Try Start",
+        "tags": [
+          "try"
+        ]
+      }
+    },
+    "/api/try/templates/": {
+      "get": {
+        "description": "`/try?template=…` 진입용 예제 목록(인증 없음).",
+        "operationId": "apps_tenants_try_api_try_templates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TryTemplateOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Try Templates",
+        "tags": [
+          "try"
         ]
       }
     }

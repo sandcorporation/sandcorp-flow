@@ -342,3 +342,48 @@ class TenantAllowedDomain(models.Model):
         db_table = "tenant_allowed_domains"
         constraints = [models.UniqueConstraint(fields=["tenant", "pattern"], name="tenant_allowed_domain_unique")]
         ordering = ["pattern"]
+
+
+class TrySession(models.Model):
+    """Try Session(#135, ADR-0030) — 브라우저 세션 쿠키 하나 ↔ 체험 테넌트 하나.
+
+    쿠키에는 추측 불가 세션 ID 원문이, 여기에는 그 SHA-256만 둔다(DB가 새도 쿠키를 만들 수 없다). 체험 테넌트가
+    정리(``prune_try_tenants``)되면 연쇄로 지워진다.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    token_hash = models.CharField(max_length=64, unique=True)
+    tenant = models.OneToOneField(Tenant, on_delete=models.CASCADE, related_name="try_session")
+    flow_id = models.UUIDField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "try_sessions"
+
+
+class TryIpDay(models.Model):
+    """IP(HMAC)별 하루(Asia/Seoul 날짜) 체험 세션 수 — 조건부 upsert로만 늘린다(``try_session.admit_ip``).
+
+    IP 원문은 두지 않는다. 체험 테넌트 정리와 무관하게 남고, 이틀 지난 행은 정리 때 지운다.
+    """
+
+    ip_hash = models.CharField(max_length=64)
+    day = models.DateField()
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "try_ip_days"
+        constraints = [models.UniqueConstraint(fields=["ip_hash", "day"], name="try_ip_day_unique")]
+
+
+class TrySpendDay(models.Model):
+    """체험 전체의 하루(Asia/Seoul 날짜) 누적 비용(USD) — 원자적 upsert로만 더한다(``try_session.add_spend``).
+
+    토큰 사용량(TokenUsage)은 체험 테넌트 정리 때 함께 지워지므로 하루 비용 상한은 이 표로 센다(지우지 않는다).
+    """
+
+    day = models.DateField(primary_key=True)
+    cost_usd = models.DecimalField(max_digits=14, decimal_places=6, default=0)
+
+    class Meta:
+        db_table = "try_spend_days"
