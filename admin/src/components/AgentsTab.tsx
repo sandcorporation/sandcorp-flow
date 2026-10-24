@@ -120,7 +120,7 @@ export default function AgentsTab() {
           </form>
 
           {created && (
-            <Card className="border-amber-300 bg-amber-50 dark:border-amber-700/60 dark:bg-amber-950/30">
+            <Card className="border-primary bg-primary/15 border-l-4">
               <CardContent className="space-y-2 pt-5 text-sm">
                 <p>
                   {ROLE_LABEL[created.role] ?? created.role} 초대 링크 · {formatExpiry(created.expires_at)}까지.
@@ -158,7 +158,7 @@ export default function AgentsTab() {
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold">팀원 목록</h2>
-        {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         {!isAdmin && <p className="text-xs text-muted-foreground">팀원 관리는 관리자만 할 수 있습니다.</p>}
         <Table>
           <TableHeader>

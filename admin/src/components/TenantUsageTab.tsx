@@ -60,7 +60,7 @@ export default function TenantUsageTab() {
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={data.by_call_type}>
                   <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="call_type" /><YAxis /><Tooltip />
-                  <Bar dataKey="total_tokens" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="total_tokens" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -72,7 +72,7 @@ export default function TenantUsageTab() {
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={data.daily}>
                   <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><Tooltip />
-                  <Line type="monotone" dataKey="total_tokens" stroke="#6366f1" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="total_tokens" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>

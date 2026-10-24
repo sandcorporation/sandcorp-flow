@@ -42,7 +42,7 @@ export default function MemoryTab() {
 
       {searched && (
         memories.length === 0
-          ? <p style={{ color: '#a0aec0' }}>Memory가 없습니다.</p>
+          ? <p style={{ color: 'hsl(var(--muted-foreground))' }}>Memory가 없습니다.</p>
           : (
             <table style={s.table}>
               <thead>

@@ -52,7 +52,7 @@ export default function OperatorTenants() {
   return (
     <div className="max-w-4xl space-y-6">
       {createdKey && (
-        <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
+        <Card className="border-primary bg-primary/15">
           <CardContent className="space-y-1 pt-5 text-sm">
             <p><strong>{createdKey.name}</strong> 생성 완료. (1회만 표시됩니다)</p>
             <p>TENANT_KEY: <code className="rounded bg-muted px-1 py-0.5 text-xs">{createdKey.key}</code></p>
@@ -63,7 +63,7 @@ export default function OperatorTenants() {
       )}
 
       {invite && (
-        <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
+        <Card className="border-primary bg-primary/15">
           <CardContent className="space-y-1 pt-5 text-sm">
             <p><strong>{invite.name}</strong> Admin 초대 링크(7일·1회용 — 고객에게 직접 전달, 1회만 표시됩니다)</p>
             <p><code className="break-all rounded bg-muted px-1 py-0.5 text-xs">{invite.url}</code></p>

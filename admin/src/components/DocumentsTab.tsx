@@ -166,7 +166,7 @@ export default function DocumentsTab() {
                       <span className="flex items-center gap-2">
                         {d.name}
                         <button data-testid="edit-label" title="레이블 수정"
-                          className="cursor-pointer text-xs text-primary hover:underline" onClick={() => startEdit(d)}>✏️ 레이블 수정</button>
+                          className="cursor-pointer text-xs text-foreground underline decoration-primary decoration-2 underline-offset-2" onClick={() => startEdit(d)}>✏️ 레이블 수정</button>
                       </span>
                     )}
                   </TableCell>
@@ -189,7 +189,7 @@ export default function DocumentsTab() {
                         {Array.isArray(chunkState) && chunkState.length === 0 && <div className="text-sm text-muted-foreground">청크 없음</div>}
                         {Array.isArray(chunkState) && chunkState.map(c => (
                           <div key={c.chunk_index} data-testid="chunk-item" className="mb-2 border-b border-border pb-2 text-xs">
-                            <span className="mr-2 font-bold text-primary">#{c.chunk_index}</span>
+                            <span className="mr-2 font-bold font-mono text-ink">#{c.chunk_index}</span>
                             <span data-testid="chunk-content" className="text-muted-foreground">{c.content.slice(0, 200)}{c.content.length > 200 ? '…' : ''}</span>
                           </div>
                         ))}

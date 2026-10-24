@@ -60,11 +60,11 @@ export default function TenantLogin({ onLogin }: { onLogin: (name: string) => vo
         </CardHeader>
         <CardContent className="space-y-4 break-keep">
           {loginError && (
-            <p role="alert" className="text-sm leading-relaxed text-red-600 dark:text-red-400">
+            <p role="alert" className="text-sm leading-relaxed text-destructive">
               {LOGIN_ERRORS[loginError] ?? UNKNOWN_ERROR}
             </p>
           )}
-          {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
           {showTenants ? (
             <div className="space-y-2">

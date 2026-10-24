@@ -21,7 +21,7 @@ export default function ThemeToggle() {
   }
 
   return (
-    <Button variant="ghost" size="icon" aria-label="테마 전환" onClick={toggle}>
+    <Button variant="head" size="icon" aria-label="테마 전환" onClick={toggle}>
       {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
     </Button>
   )

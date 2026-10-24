@@ -32,9 +32,12 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground md:flex-row">
-      <aside className="flex flex-shrink-0 flex-col border-b border-border bg-card md:w-60 md:border-b-0 md:border-r">
-        <div className="truncate px-5 py-3 text-base font-semibold md:py-4">{brand}</div>
-        <nav className="flex gap-1 overflow-x-auto px-3 pb-2 md:flex-col md:pb-0" aria-label="주 메뉴">
+      <aside className="flex flex-shrink-0 flex-col border-b border-border bg-surface md:w-60 md:border-b-0 md:border-r">
+        <div className="flex min-h-12 items-center gap-2 border-b-2 border-ink bg-head px-5 font-cond text-base font-semibold tracking-[0.02em] text-head-foreground">
+          <span aria-hidden className="h-4 w-4 flex-none bg-[linear-gradient(180deg,#e7c46a_0_55%,#8a6214_55%_100%)]" />
+          <span className="truncate">{brand}</span>
+        </div>
+        <nav className="flex gap-1 overflow-x-auto px-3 py-2 md:flex-col md:py-3" aria-label="주 메뉴">
           {navItems.map(item => (
             <NavLink
               key={item.to}
@@ -42,8 +45,8 @@ export default function DashboardLayout({
               end
               className={({ isActive }) =>
                 cn(
-                  'flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
-                  isActive && 'bg-accent font-medium text-accent-foreground',
+                  'flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md border border-transparent border-l-[3px] px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-raised hover:text-ink',
+                  isActive && 'border-border border-l-primary bg-raised font-semibold text-ink',
                 )
               }
             >
@@ -55,23 +58,23 @@ export default function DashboardLayout({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-14 flex-wrap items-center justify-end gap-2 border-b border-border px-4 py-2 md:px-6">
-          {user && <span className="mr-2 truncate text-sm text-muted-foreground">{user}</span>}
+        <header className="flex min-h-12 flex-wrap items-center justify-end gap-2 border-b-2 border-ink bg-head px-4 py-2 text-head-foreground md:px-6">
+          {user && <span className="mr-2 truncate font-mono text-xs text-head-foreground/70">{user}</span>}
           {accountHref && (
-            <Button asChild variant="ghost" size="sm">
+            <Button asChild variant="head" size="sm">
               <a href={accountHref} target="_blank" rel="noreferrer">내 계정</a>
             </Button>
           )}
           {onSwitch && (
-            <Button variant="ghost" size="sm" onClick={onSwitch}>
+            <Button variant="head" size="sm" onClick={onSwitch}>
               조직 바꾸기
             </Button>
           )}
           <ThemeToggle />
-          <Button variant="outline" size="sm" onClick={onLogout}>
+          <Button variant="head" size="sm" onClick={onLogout}>
             로그아웃
           </Button>
-          <Button variant="ghost" size="sm" onClick={onLogoutAll}>
+          <Button variant="head" size="sm" onClick={onLogoutAll}>
             모든 기기에서 로그아웃
           </Button>
         </header>

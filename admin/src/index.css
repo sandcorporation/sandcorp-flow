@@ -2,52 +2,151 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 산업용 HMI 테마(ADR-0026). 기준: docs/design/agents-industrial.css.
+   값은 shadcn 관례대로 "H S% L%" 세 값 — 색이 필요한 곳에서 hsl(var(--x))로 쓴다.
+   shadcn 이름 → HMI 의미:
+     background=바탕(--bg)  card=면(--surface)  secondary=올린 면(--raised)  muted=가라앉은 면(--sunken)
+     foreground=본문(--text)  muted-foreground=보조 글자  primary=호박색(주 버튼·실행 경로)  border/input=선(--line)
+     destructive=사람 넘김·경보(적색)  accent=hover 면
+   HMI 전용: ink(강조 글자) line-soft grid ok(정상 녹색) alarm(적색) hazard(경고띠 황) run(실행 중) head·head-ink(머리 막대) */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    --background: 90 5.6% 78.8%;
+    --foreground: 90 8.8% 13.3%;
+    --card: 84 7.7% 87.3%;
+    --card-foreground: 120 5.3% 7.5%;
+    --primary: 41.3 100% 47.1%;
+    --primary-foreground: 120 5.3% 7.5%;
+    --secondary: 84 12.8% 92.4%;
+    --secondary-foreground: 120 5.3% 7.5%;
+    --muted: 90 6.8% 82.7%;
+    --muted-foreground: 105 4.6% 34.1%;
+    --accent: 90 6.8% 82.7%;
+    --accent-foreground: 120 5.3% 7.5%;
+    --destructive: 0 66.4% 46.7%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 97.5 4.2% 62.4%;
+    --input: 97.5 4.2% 62.4%;
+    --ring: 41.3 100% 47.1%;
+    --radius: 2px;
+
+    --surface: 84 7.7% 87.3%;
+    --sunken: 90 6.8% 82.7%;
+    --raised: 84 12.8% 92.4%;
+    --line-soft: 90 5.6% 71.8%;
+    --grid: 94.3 5.4% 74.7%;
+    --ink: 120 5.3% 7.5%;
+    --run: 41.3 100% 47.1%;
+    --ok: 122.3 45.3% 33.7%;
+    --alarm: 0 66.4% 46.7%;
+    --hazard: 48.1 100% 47.5%;
+    --head: 120 4.1% 23.7%;
+    --head-ink: 84 12.8% 92.4%;
+
+    --font-sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    --font-cond: "IBM Plex Sans Condensed", "IBM Plex Sans KR", "Arial Narrow", sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    color-scheme: dark;
+    --background: 120 3.6% 11%;
+    --foreground: 86.7 8.3% 78.6%;
+    --card: 120 4% 14.7%;
+    --card-foreground: 80 13% 91%;
+    --primary: 41.3 100% 47.1%;
+    --primary-foreground: 120 5.3% 7.5%;
+    --secondary: 120 4.3% 18%;
+    --secondary-foreground: 80 13% 91%;
+    --muted: 120 4.2% 9.4%;
+    --muted-foreground: 100 4.1% 56.7%;
+    --accent: 120 4.3% 18%;
+    --accent-foreground: 80 13% 91%;
+    --destructive: 1.1 83.2% 62.5%;
+    --destructive-foreground: 120 5.3% 7.5%;
+    --border: 110 4.2% 28.2%;
+    --input: 110 4.2% 28.2%;
+    --ring: 41.3 100% 47.1%;
+
+    --surface: 120 4% 14.7%;
+    --sunken: 120 4.2% 9.4%;
+    --raised: 120 4.3% 18%;
+    --line-soft: 108 4.7% 21%;
+    --grid: 120 3.8% 15.5%;
+    --ink: 80 13% 91%;
+    --run: 41.6 90.9% 57.1%;
+    --ok: 122.6 39.3% 54.1%;
+    --alarm: 1.1 83.2% 62.5%;
+    --hazard: 48.1 100% 47.5%;
+    --head: 120 4.5% 21.8%;
+    --head-ink: 80 13% 91%;
   }
 
   * {
     @apply border-border;
   }
+  html,
+  body {
+    height: 100%;
+  }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    line-height: 1.45;
+    word-break: keep-all;
+  }
+  button {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 1px;
+  }
+}
+
+@layer components {
+  /* 섹션 라벨: Plex Sans Condensed, 넓은 자간, 아래 가는 선 (시안 .group h4) */
+  .hmi-label {
+    font-family: var(--font-cond);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    @apply text-muted-foreground;
+  }
+  /* 판단 기록·ID·수치: 모노 */
+  .hmi-code {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.02em;
+  }
+  /* 가드레일 황·흑 경고띠 (시안 .node.guard .kind) — 노드 표시는 #29 */
+  .hazard-stripe {
+    background: repeating-linear-gradient(-45deg, hsl(var(--hazard)) 0 8px, #121412 8px 16px);
+  }
+  /* 상태 램프 */
+  .lamp {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+  .lamp-ok {
+    background: hsl(var(--ok));
+  }
+  .lamp-run {
+    background: hsl(var(--run));
+    box-shadow: 0 0 0 3px hsl(var(--run) / 0.35);
+  }
+  .lamp-alarm {
+    background: hsl(var(--alarm));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
   }
 }
