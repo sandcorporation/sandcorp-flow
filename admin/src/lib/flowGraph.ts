@@ -75,6 +75,8 @@ export function outHandles(node: Pick<FlowNodeJson, 'kind' | 'config'>): string[
       return []
     case 'ai_answer':
       return [DEFAULT_HANDLE, 'handoff']
+    case 'http_tool':
+      return [DEFAULT_HANDLE, 'error'] // next=2xx, error=실패(선택, 선이 없으면 턴이 끝난다)
     case 'condition': {
       const branches = Array.isArray(node.config?.branches) ? (node.config.branches as unknown[]) : []
       const names = branches.map((b) => (b as { name?: unknown })?.name).filter((x): x is string => typeof x === 'string' && x !== '')

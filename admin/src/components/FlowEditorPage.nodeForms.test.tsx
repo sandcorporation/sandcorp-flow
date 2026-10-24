@@ -37,6 +37,8 @@ function renderEditor() {
     </MemoryRouter>,
   )
 }
+/** <b>·<code> 로 쪼개진 문장도 문단 전체 글로 찾는다. */
+const para = (re: RegExp) => (_: string, el: Element | null) => el?.tagName === 'P' && re.test(el.textContent ?? '')
 const lastConfig = (fake: ReturnType<typeof fakeFlowsApi>, id: string) => {
   const ops = fake.patches().flat().filter((o: any) => o.op === 'upsert_node' && o.id === id && o.config)
   return ops[ops.length - 1]?.config
@@ -182,12 +184,12 @@ describe('노드 설정 패널 — 종류별 폼', () => {
     // https://api.example.com/o 는 *.example.com 한 단계 하위 → 허용
     await screen.findByLabelText('주소(https)')
     await waitFor(() => expect(api.listAllowedDomains).toHaveBeenCalled())
-    expect(screen.queryByText(/허용 도메인에 없습니다/)).toBeNull()
+    expect(screen.queryByText(para(/허용 도메인에 없습니다/))).toBeNull()
     const url = screen.getByLabelText('주소(https)')
     fireEvent.change(url, { target: { value: 'https://other.io/x' } })
     fireEvent.blur(url)
     await waitFor(() => expect(lastConfig(fake, 'http1').url).toBe('https://other.io/x'))
-    expect(await screen.findByText(/other\.io.*허용 도메인에 없습니다/)).toBeInTheDocument()
+    expect(await screen.findByText(para(/other\.io.*허용 도메인에 없습니다/))).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /설정에서 허용 도메인 추가/ })).toHaveAttribute('href', '/tenant/config?section=secrets')
   })
 
@@ -197,9 +199,9 @@ describe('노드 설정 패널 — 종류별 폼', () => {
     fakeFlowsApi({ graph: g })
     renderEditor()
     await pick('주문 조회')
-    expect(await screen.findByText(/등록되지 않은 비밀: nope/)).toBeInTheDocument()
-    expect(screen.queryByText(/등록되지 않은 비밀:.*shop_key/)).toBeNull()
-    expect(screen.getByText(/등록된 비밀:.*shop_key/)).toBeInTheDocument()
+    expect(await screen.findByText(para(/등록되지 않은 비밀: nope/))).toBeInTheDocument()
+    expect(screen.queryByText(para(/등록되지 않은 비밀:.*shop_key/))).toBeNull()
+    expect(screen.getByText(para(/등록된 비밀:.*shop_key/))).toBeInTheDocument()
   })
 
   it('HTTP 도구: 서버 검증 오류(url·save 경로)를 해당 필드 아래에, unknown_secret 은 노드 오류로 보인다', async () => {

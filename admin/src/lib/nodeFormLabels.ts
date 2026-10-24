@@ -1,6 +1,6 @@
 // 노드 설정 폼에서 사람이 읽는 말. 필드의 존재·선택지·필수·범위는 백엔드 스키마(nodeForm.ts)가 정하고, 여기는 라벨·도움말만 둔다.
 // 키: `종류.필드` (객체 배열의 한 줄 안은 `종류.필드.하위필드`). 라벨이 없는 필드는 스키마의 필드 이름을 그대로 쓴다.
-export type FieldText = { label: string; help?: string; options?: Record<string, string>; add?: string; placeholder?: string }
+export type FieldText = { label: string; keyLabel?: string; valueLabel?: string; keyPlaceholder?: string; valuePlaceholder?: string; help?: string; options?: Record<string, string>; add?: string; placeholder?: string }
 
 export const FIELD_TEXT: Record<string, FieldText> = {
   'ai_answer.instructions': { label: '답변 지침', help: '이 단계에서 AI가 어떻게 답할지. 비우면 기본 지침을 씁니다.' },
@@ -36,13 +36,18 @@ export const FIELD_TEXT: Record<string, FieldText> = {
   'guardrail.block_message': { label: '막을 때 문구', help: '비우면 기본 문구를 씁니다.' },
 
   'http_tool.method': { label: '메서드' },
-  'http_tool.url': { label: '주소(https)', help: 'https:// 로 시작합니다. 주소에는 비밀 참조를 넣을 수 없습니다 — 비밀은 헤더에 두세요.', placeholder: 'https://api.example.com/orders' },
+  'http_tool.url': { label: '주소(https)', help: 'https:// 로 시작합니다. 호스트(도메인·포트)는 고정 글이어야 하고, {{state.…}} 는 경로·쿼리에만 쓸 수 있습니다. 주소에는 비밀 참조를 넣을 수 없습니다 — 비밀은 헤더에 두세요.', placeholder: 'https://api.example.com/orders' },
   'http_tool.headers': { label: '헤더', add: '헤더 추가', help: '인증 계열 헤더(Authorization·Cookie·토큰·키·비밀번호)는 원문 대신 {{secret.이름}} 참조만 씁니다.' },
-  'http_tool.body_template': { label: '본문 틀', help: '비우면 본문 없이 보냅니다.' },
+  'http_tool.body_template': { label: '본문 틀', help: '비우면 본문 없이 보냅니다. 쓸 수 있는 참조: {{state.user_message}} · {{state.label}} · {{state.confidence}} · {{state.fields.이름}} · {{secret.이름}}. 값은 JSON 문자열 안쪽으로 들어가니 "{{state.user_message}}" 처럼 따옴표 안에 씁니다.' },
+  'http_tool.save': {
+    label: '응답→상태', add: '저장할 값 추가', keyLabel: '상태 이름', valueLabel: '응답 경로', keyPlaceholder: 'order_status', valuePlaceholder: '$.data.status',
+    help: '응답 JSON의 값을 상태 fields.이름 에 저장합니다. 경로는 $ 로 시작하고 .이름 · [숫자] · [\'이름\'] 만 씁니다. 조건 노드와 다음 HTTP 도구가 읽습니다.',
+  },
 }
 
 /** 종류별로 폼 위에 붙는 안내. */
 export const KIND_NOTE: Record<string, string> = {
+  http_tool: '2xx 응답이면 next 갈래로, 차단·시간 초과·크기 초과·HTTP 오류 등 실패면 error 갈래로 갑니다. error 갈래에 선이 없으면 턴이 거기서 끝납니다.',
   start: '시작 노드는 설정할 항목이 없습니다. 방문자가 말을 걸면 여기서 출발합니다.',
 }
 
@@ -64,3 +69,6 @@ export function headerNeedsSecretRef(name: string, value: string): boolean {
   const rest = value.replace(new RegExp(SECRET_REF_RE.source, 'g'), '').trim()
   return !SECRET_REF_RE.test(value) || (rest !== '' && !/^[A-Za-z]+$/.test(rest))
 }
+
+/** 시험 대화·실제 방문자 모두 이 API를 실제로 부른다. */
+export const HTTP_LIVE_NOTICE = '시험 대화도 이 API를 실제로 호출합니다(POST면 실제로 접수됨).'
