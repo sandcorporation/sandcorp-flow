@@ -1,57 +1,59 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as api from '../api'
-import { HttpError } from '../mutator'
 import TenantLogin from './TenantLogin'
 
 vi.mock('../api')
 
-beforeEach(() => { vi.clearAllMocks() })
-
-async function fillSignup(opts: { org?: string; user?: string; pw?: string; confirm?: string }) {
-  await userEvent.click(screen.getByText('새 조직 만들기'))
-  await userEvent.type(screen.getByPlaceholderText('조직 이름'), opts.org ?? 'NewCo')
-  await userEvent.type(screen.getByPlaceholderText('사용자명'), opts.user ?? 'owner')
-  await userEvent.type(screen.getByPlaceholderText('비밀번호'), opts.pw ?? 'pw12345678')
-  await userEvent.type(screen.getByPlaceholderText('비밀번호 확인'), opts.confirm ?? opts.pw ?? 'pw12345678')
-  await userEvent.click(screen.getByRole('button', { name: '가입하고 시작' }))
+function at(search: string) {
+  window.history.replaceState(null, '', `/admin-ui/tenant${search}`)
 }
 
-describe('TenantLogin — 가입/로그인 + 비밀번호 확인·정책 (issue 209·211)', () => {
-  it('가입 성공 시 tenantSignup 호출 + onLogin', async () => {
-    vi.mocked(api.tenantSignup).mockResolvedValue({ access_token: 't' } as any)
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.mocked(api.memberLoginUrl).mockReturnValue('/api/auth/authorize')
+})
+afterEach(() => at(''))
+
+describe('TenantLogin — sandcorp-auth 고객 로그인 (#40)', () => {
+  it('비밀번호 폼 없이 sandcorp-auth 로그인으로 보낸다', () => {
+    at('')
+    render(<TenantLogin onLogin={vi.fn()} />)
+
+    expect(screen.getByRole('link', { name: 'sandcorp 계정으로 로그인' })).toHaveAttribute('href', '/api/auth/authorize')
+    expect(screen.queryByPlaceholderText('비밀번호')).toBeNull()
+    expect(screen.queryByText('새 조직 만들기')).toBeNull()
+  })
+
+  it('만료된 초대 링크로 돌아오면 안내한다', () => {
+    at('?login_error=invite_expired')
+    render(<TenantLogin onLogin={vi.fn()} />)
+    expect(screen.getByText('초대 링크가 만료되었습니다. 관리자에게 새 링크를 받으세요.')).toBeInTheDocument()
+  })
+
+  it('속한 조직이 없으면 초대가 필요하다고 안내한다', () => {
+    at('?onboarding=1')
+    render(<TenantLogin onLogin={vi.fn()} />)
+    expect(screen.getByText('아직 속한 조직이 없습니다. 관리자에게 초대 링크를 받으세요.')).toBeInTheDocument()
+  })
+
+  it('조직이 여럿이면 골라서 들어간다', async () => {
+    at('?select_tenant=1')
+    vi.mocked(api.memberTenants).mockResolvedValue({
+      name: '김고객', email: null,
+      tenants: [
+        { tenant_id: 't1', tenant_name: 'Alpha', role: 'admin' },
+        { tenant_id: 't2', tenant_name: 'Beta', role: 'member' },
+      ],
+    })
+    vi.mocked(api.selectTenant).mockResolvedValue({ access_token: 't' })
     const onLogin = vi.fn()
     render(<TenantLogin onLogin={onLogin} />)
 
-    await fillSignup({ pw: 'pw12345678' })
+    await userEvent.click(await screen.findByRole('button', { name: 'Beta (Member)' }))
 
-    expect(api.tenantSignup).toHaveBeenCalledWith('NewCo', 'owner', 'pw12345678')
-    expect(onLogin).toHaveBeenCalledWith('owner')
-    expect(api.tenantAgentLogin).not.toHaveBeenCalled()
-  })
-
-  it('비밀번호 확인이 일치하지 않으면 막고 tenantSignup을 호출하지 않는다', async () => {
-    render(<TenantLogin onLogin={vi.fn()} />)
-    await fillSignup({ pw: 'pw12345678', confirm: 'different' })
-
-    expect(await screen.findByText('비밀번호가 일치하지 않습니다.')).toBeInTheDocument()
-    expect(api.tenantSignup).not.toHaveBeenCalled()
-  })
-
-  it('비밀번호 정책 위반(400)이면 백엔드 메시지를 보여준다', async () => {
-    vi.mocked(api.tenantSignup).mockRejectedValue(new HttpError(400, '/x', { detail: '비밀번호는 8자 이상이어야 합니다.' }))
-    render(<TenantLogin onLogin={vi.fn()} />)
-    await fillSignup({ pw: 'weak', confirm: 'weak' })
-
-    expect(await screen.findByText('비밀번호는 8자 이상이어야 합니다.')).toBeInTheDocument()
-  })
-
-  it('중복 조직 이름(409)이면 안내 메시지를 보여준다', async () => {
-    vi.mocked(api.tenantSignup).mockRejectedValue(new HttpError(409, '/x'))
-    render(<TenantLogin onLogin={vi.fn()} />)
-    await fillSignup({ org: 'Dup', pw: 'pw12345678' })
-
-    expect(await screen.findByText('이미 사용 중인 조직 이름입니다.')).toBeInTheDocument()
+    expect(api.selectTenant).toHaveBeenCalledWith('t2')
+    expect(onLogin).toHaveBeenCalledWith('김고객')
   })
 })

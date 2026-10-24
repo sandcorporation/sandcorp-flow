@@ -9,7 +9,7 @@ const BASE: string = import.meta.env.VITE_API_BASE || ''
 const ACCESS_KEY: Record<AuthKind, string> = { operator: 'op_access', agent: 'agent_access' }
 const REFRESH_PATH: Record<AuthKind, string> = {
   operator: '/api/operator/auth/refresh',
-  agent: '/api/tenant/agents/auth/refresh',
+  agent: '/api/tenant/members/auth/refresh', // 멤버(고객) 테넌트 세션(#40)
 }
 
 // access 갱신 구독자(kind별). silent refresh로 토큰이 바뀌면 SSE 재오픈 등에 알린다.

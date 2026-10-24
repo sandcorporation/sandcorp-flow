@@ -37,7 +37,7 @@ export default function App() {
   const [operatorAuthed, setOperatorAuthed] = useState(() => !!getAccess('operator'))
   const [operatorBooting, setOperatorBooting] = useState(true)
 
-  // TenantAgent: operator와 동일하게 access=sessionStorage, refresh=httpOnly 쿠키.
+  // 멤버(고객, #40): operator와 동일하게 access=sessionStorage, refresh=httpOnly 쿠키.
   const [agentAuthed, setAgentAuthed] = useState(() => !!getAccess('agent'))
   const [agentBooting, setAgentBooting] = useState(true)
   const [agentUsername, setAgentUsername] = useState(() => localStorage.getItem('agent_username'))
@@ -89,7 +89,7 @@ export default function App() {
       : <OperatorLogin />
 
   const tenantEl = agentBooting
-    ? null
+    ? <div aria-busy="true" />
     : agentAuthed
       ? <DashboardLayout brand="Tenant" navItems={tenantNav} user={agentUsername} onLogout={handleTenantLogout} onLogoutAll={handleTenantLogoutAll} />
       : <TenantLogin onLogin={handleTenantLogin} />

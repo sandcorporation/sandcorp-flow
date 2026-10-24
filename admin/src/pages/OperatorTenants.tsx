@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 
-type CreatedKey = { name: string; key: string; agentUsername: string; agentPassword: string }
+type CreatedKey = { name: string; key: string; inviteUrl: string }
 
 // Operator 대시보드 콘텐츠(테넌트 생성 + 목록). 셸(헤더/로그아웃)은 DashboardLayout이 제공.
 export default function OperatorTenants() {
@@ -25,7 +25,7 @@ export default function OperatorTenants() {
     if (!newName.trim()) return
     setLoading(true)
     const data = await createTenant(newName.trim())
-    setCreatedKey({ name: data.name, key: data.tenant_key, agentUsername: data.agent_username, agentPassword: data.agent_temp_password })
+    setCreatedKey({ name: data.name, key: data.tenant_key, inviteUrl: data.admin_invite_url })
     setNewName('')
     await load()
     setLoading(false)
@@ -45,8 +45,7 @@ export default function OperatorTenants() {
           <CardContent className="space-y-1 pt-5 text-sm">
             <p><strong>{createdKey.name}</strong> 생성 완료. (1회만 표시됩니다)</p>
             <p>TENANT_KEY: <code className="rounded bg-muted px-1 py-0.5 text-xs">{createdKey.key}</code></p>
-            <p>초기 상담원 — 사용자명: <code className="rounded bg-muted px-1 py-0.5 text-xs">{createdKey.agentUsername}</code>{' '}
-              임시 비밀번호: <code className="rounded bg-muted px-1 py-0.5 text-xs">{createdKey.agentPassword}</code></p>
+            <p>첫 Admin 초대 링크(7일·1회용 — 고객에게 직접 전달): <code className="break-all rounded bg-muted px-1 py-0.5 text-xs">{createdKey.inviteUrl}</code></p>
             <Button size="sm" variant="ghost" className="mt-1" onClick={() => setCreatedKey(null)}>✕ 닫기</Button>
           </CardContent>
         </Card>

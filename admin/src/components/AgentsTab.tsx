@@ -1,7 +1,7 @@
 import { useState, useEffect, FormEvent } from 'react'
-import { listAgents, createAgent, changeAgentRole, deactivateAgent, changePassword, currentAgentRole } from '../api'
+import { listMembers, createInvite, changeMemberRole, deactivateMember, currentAgentRole } from '../api'
 import { HttpError } from '../mutator'
-import type { AgentOut } from '../generated/model'
+import type { MemberOut } from '../generated/model'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -10,35 +10,36 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 
 const ROLE_LABEL: Record<string, string> = { admin: 'Admin', member: 'Member' }
 
+// 팀원(멤버십) 관리 + 초대 링크(#40). 비밀번호 계정은 없다 — 초대 링크로 sandcorp-auth 로그인하면 멤버가 된다.
+// 최소 화면이다(대기 중 초대 목록·폐기 화면은 #56).
 export default function AgentsTab() {
   const isAdmin = currentAgentRole() === 'admin'
-  const [agents, setAgents] = useState<AgentOut[]>([])
-  const [newUsername, setNewUsername] = useState('')
+  const [members, setMembers] = useState<MemberOut[]>([])
   const [newRole, setNewRole] = useState<'admin' | 'member'>('member')
-  const [createdCred, setCreatedCred] = useState<{ username: string; password: string } | null>(null)
+  const [invite, setInvite] = useState<{ url: string; role: string; expires_at: string } | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '', error: '', success: false })
 
-  const load = async () => setAgents(await listAgents())
+  const load = async () => setMembers(await listMembers())
 
   useEffect(() => { load() }, [])
 
-  const handleCreate = async (e: FormEvent) => {
+  const handleInvite = async (e: FormEvent) => {
     e.preventDefault()
-    if (!newUsername.trim()) return
     setLoading(true)
-    const data = await createAgent(newUsername.trim(), newRole)
-    setCreatedCred({ username: data.username, password: data.temp_password })
-    setNewUsername('')
-    await load()
+    try {
+      const data = await createInvite(newRole)
+      setInvite({ url: data.url, role: data.role, expires_at: data.expires_at })
+    } catch {
+      setError('초대 링크를 만들지 못했습니다.')
+    }
     setLoading(false)
   }
 
-  const handleRole = async (a: AgentOut, role: 'admin' | 'member') => {
+  const handleRole = async (m: MemberOut, role: 'admin' | 'member') => {
     setError('')
     try {
-      await changeAgentRole(a.id, role)
+      await changeMemberRole(m.id, role)
       await load()
     } catch (e) {
       setError(e instanceof HttpError && e.status === 409 ? '마지막 Admin은 강등할 수 없습니다.' : '역할 변경에 실패했습니다.')
@@ -49,50 +50,37 @@ export default function AgentsTab() {
     if (!confirm('비활성화하시겠습니까?')) return
     setError('')
     try {
-      await deactivateAgent(id)
+      await deactivateMember(id)
       await load()
     } catch (e) {
       setError(e instanceof HttpError && e.status === 409 ? '마지막 Admin은 비활성화할 수 없습니다.' : '비활성화에 실패했습니다.')
     }
   }
 
-  const handleChangePassword = async (e: FormEvent) => {
-    e.preventDefault()
-    if (pwForm.next !== pwForm.confirm) {
-      setPwForm(f => ({ ...f, error: '새 비밀번호가 일치하지 않습니다.', success: false }))
-      return
-    }
-    try {
-      await changePassword(pwForm.current, pwForm.next)
-      setPwForm({ current: '', next: '', confirm: '', error: '', success: true })
-      setTimeout(() => setPwForm(f => ({ ...f, success: false })), 2000)
-    } catch (err) {
-      setPwForm(f => ({ ...f, error: err instanceof Error ? err.message : String(err), success: false }))
-    }
-  }
-
   return (
     <div className="max-w-3xl space-y-6">
-      {createdCred && (
+      {invite && (
         <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
           <CardContent className="flex items-center gap-2 pt-5 text-sm">
-            <span><strong>{createdCred.username}</strong> 계정이 생성되었습니다. 임시 비밀번호 (1회만 표시): <code className="rounded bg-muted px-1 py-0.5 text-xs">{createdCred.password}</code></span>
-            <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setCreatedCred(null)}>✕</Button>
+            <span className="min-w-0 flex-1">
+              {ROLE_LABEL[invite.role]} 초대 링크 (7일·1회용, 이 화면에서 한 번만 표시 — 직접 전달하세요):
+              <Input readOnly aria-label="초대 링크" className="mt-1" value={invite.url} onFocus={e => e.target.select()} />
+            </span>
+            <Button size="sm" variant="ghost" onClick={() => setInvite(null)}>✕</Button>
           </CardContent>
         </Card>
       )}
 
       {isAdmin && (
         <div className="space-y-2">
-          <h2 className="text-sm font-semibold">팀원 추가</h2>
-          <form onSubmit={handleCreate} className="flex gap-2">
-            <Input className="flex-1" placeholder="사용자명" value={newUsername} onChange={e => setNewUsername(e.target.value)} />
+          <h2 className="text-sm font-semibold">팀원 초대</h2>
+          <form onSubmit={handleInvite} className="flex gap-2">
             <select className="rounded-md border border-input bg-background px-2 text-sm" value={newRole}
               onChange={e => setNewRole(e.target.value as 'admin' | 'member')} aria-label="역할">
               <option value="member">Member</option>
               <option value="admin">Admin</option>
             </select>
-            <Button type="submit" disabled={loading}>추가</Button>
+            <Button type="submit" disabled={loading}>초대 링크 만들기</Button>
           </form>
         </div>
       )}
@@ -103,12 +91,12 @@ export default function AgentsTab() {
         {!isAdmin && <p className="text-xs text-muted-foreground">팀원 관리는 Admin만 할 수 있습니다.</p>}
         <Table>
           <TableHeader>
-            <TableRow><TableHead>사용자명</TableHead><TableHead>역할</TableHead><TableHead>상태</TableHead>{isAdmin && <TableHead>작업</TableHead>}</TableRow>
+            <TableRow><TableHead>이름</TableHead><TableHead>역할</TableHead><TableHead>상태</TableHead>{isAdmin && <TableHead>작업</TableHead>}</TableRow>
           </TableHeader>
           <TableBody>
-            {agents.map(a => (
+            {members.map(a => (
               <TableRow key={a.id}>
-                <TableCell>{a.username}</TableCell>
+                <TableCell>{a.name || a.email || '(이름 없음)'}</TableCell>
                 <TableCell><Badge variant={a.role === 'admin' ? 'default' : 'secondary'}>{ROLE_LABEL[a.role] || a.role}</Badge></TableCell>
                 <TableCell><Badge variant={a.is_active ? 'success' : 'secondary'}>{a.is_active ? '활성' : '비활성'}</Badge></TableCell>
                 {isAdmin && (
@@ -127,17 +115,6 @@ export default function AgentsTab() {
         </Table>
       </div>
 
-      <div className="space-y-2">
-        <h2 className="text-sm font-semibold">내 비밀번호 변경</h2>
-        <form onSubmit={handleChangePassword} className="flex max-w-sm flex-col gap-2">
-          <Input type="password" placeholder="현재 비밀번호" value={pwForm.current} onChange={e => setPwForm(f => ({ ...f, current: e.target.value }))} />
-          <Input type="password" placeholder="새 비밀번호" value={pwForm.next} onChange={e => setPwForm(f => ({ ...f, next: e.target.value }))} />
-          <Input type="password" placeholder="새 비밀번호 확인" value={pwForm.confirm} onChange={e => setPwForm(f => ({ ...f, confirm: e.target.value }))} />
-          <p className="text-xs text-muted-foreground">8자 이상(영문·숫자·특수문자 3종) 또는 10자 이상(2종 이상)</p>
-          {pwForm.error && <p className="text-sm text-destructive">{pwForm.error}</p>}
-          <Button type="submit" className="self-start">{pwForm.success ? '✓ 변경됨' : '변경'}</Button>
-        </form>
-      </div>
     </div>
   )
 }
