@@ -191,7 +191,11 @@ def test_deploy_and_rollback(tenant_with_key):
         services.deploy_version(tenant.id, flow.id, 9)
 
 
-def test_deploy_refuses_a_version_with_nodes_lacking_handlers(tenant_with_key):
+def test_deploy_refuses_a_version_with_nodes_lacking_handlers(tenant_with_key, monkeypatch):
+    from apps.flows.executor import HANDLERS
+    from apps.flows.schema import NodeKind
+
+    monkeypatch.delitem(HANDLERS, NodeKind.HTTP_TOOL)  # 핸들러 없는 종류 흉내(이제 모든 종류에 핸들러가 있다)
     tenant, _ = tenant_with_key
     ops = [node("start", "start", 1), node("guard", "http_tool", 2, {"url": "https://example.com/x"}), link("start", "guard")]
     flow = make_flow(tenant, ops)
@@ -277,7 +281,11 @@ async def test_test_turn_continues_the_same_test_session(tenant_with_key, fake_c
 
 
 @pytest.mark.django_db(transaction=True)
-async def test_test_turn_refuses_flows_with_missing_handlers_without_a_session(tenant_with_key, fake_chat_llm):
+async def test_test_turn_refuses_flows_with_missing_handlers_without_a_session(tenant_with_key, fake_chat_llm, monkeypatch):
+    from apps.flows.executor import HANDLERS
+    from apps.flows.schema import NodeKind
+
+    monkeypatch.delitem(HANDLERS, NodeKind.HTTP_TOOL)  # 핸들러 없는 종류 흉내(이제 모든 종류에 핸들러가 있다)
     from apps.chat.models import ChatSession
 
     tenant, _ = tenant_with_key

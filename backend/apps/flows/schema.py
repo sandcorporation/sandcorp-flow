@@ -24,6 +24,8 @@ from typing import ClassVar, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from apps.flows.expr import ExprError, compile_when
+from apps.flows.templates import SAVE_NAME_RE, TemplateError, parse_path
+from apps.flows.templates import refs as template_refs
 
 type JSON = dict[str, JSON] | list[JSON] | str | int | float | bool | None
 
@@ -33,6 +35,9 @@ DEFAULT_HANDLE = "next"
 ELSE_HANDLE = "else"
 """조건 노드의 기본 갈래(어느 조건에도 맞지 않을 때)."""
 
+ERROR_HANDLE = "error"
+"""HTTP 도구가 실패했을 때(차단·시간 초과·크기·HTTP 오류) 나가는 갈래(선택). 선이 없으면 턴이 끝난다."""
+
 HANDOFF_HANDLE = "handoff"
 """AI 답변이 사람 넘김이 필요하다고 판단할 때 나가는 갈래(선택). 선이 있을 때만 AI가 넘김을 판단한다."""
 
@@ -41,6 +46,9 @@ MAX_STEPS_PER_TURN = 50
 
 CODE_RE = re.compile(r"^N-\d{2,}$")
 SECRET_REF_RE = re.compile(r"\{\{\s*secret\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
+HEADER_NAME_RE = re.compile(r"[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}")
+RESERVED_HEADERS = frozenset({"host", "content-length", "transfer-encoding", "connection", "upgrade", "te"})
+"""HTTP 도구가 직접 정하지 못하는 헤더(요청 틀을 깨거나 다른 호스트로 보내는 통로)."""
 SENSITIVE_HEADER_RE = re.compile(r"authorization|cookie|token|secret|api[-_]?key|password", re.IGNORECASE)
 
 
@@ -223,21 +231,39 @@ class GuardrailConfig(NodeConfig):
 
 
 class HttpToolConfig(NodeConfig):
-    """HTTP 도구(ADR-0029). 허용 목록·IP 차단은 실행 때(#34). 여기선 모양과 비밀 참조 규칙만."""
+    """HTTP 도구(ADR-0029, #34). 허용 목록·IP 차단·리다이렉트 검사는 실행 때(``apps.flows.http_tool``).
+
+    - ``url``: https만. 호스트(·포트·사용자 정보)는 틀의 **고정 부분**이어야 한다 — ``{{state.…}}``는 경로·쿼리에만,
+      값은 실행 때 한 조각으로 퍼센트 인코딩된다(``/``·``?``·``#``·``.``까지). 비밀 참조는 넣을 수 없다.
+    - ``headers``: 고정 글과 ``{{secret.이름}}``만(방문자 값은 안 됨). 인증 계열 이름이면 값은 참조(+스킴 한 단어)만.
+    - ``body_template``: ``{{secret.…}}``·``{{state.…}}`` 둘 다. 값은 JSON 문자열 안쪽으로 이스케이프돼 들어간다.
+    - ``save``: 상태 ``fields.이름`` ← 응답 JSON 경로(``templates.parse_path``). 조건 노드·다음 HTTP 도구가 읽는다.
+    - 나가는 갈래: ``next``(2xx), ``error``(차단·시간 초과·크기·HTTP 오류 등, 선택 — 선이 없으면 턴이 끝난다).
+    """
 
     method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = "GET"
-    url: str = Field(min_length=1)
-    headers: dict[str, str] = Field(default_factory=dict)
-    body_template: str | None = None
+    url: str = Field(min_length=1, max_length=2000)
+    headers: dict[str, str] = Field(default_factory=dict, max_length=20)
+    body_template: str | None = Field(default=None, max_length=16000)
+    save: dict[str, str] = Field(default_factory=dict, max_length=20)
 
     @field_validator("url")
     @classmethod
     def _https_only(cls, url: str) -> str:
         if not url.startswith("https://"):
             raise ValueError("url은 https:// 로 시작해야 합니다")
-        if "@" in url.split("/", 3)[2]:
+        authority = re.split(r"[/?#]", url[len("https://"):], maxsplit=1)[0]
+        if "{{" in authority or "}}" in authority:
+            raise ValueError("url의 호스트는 고정해야 합니다 — {{…}} 참조는 경로·쿼리에만 쓸 수 있습니다")
+        if "@" in authority:
             raise ValueError("url에 사용자 정보(user@host)를 넣을 수 없습니다")
-        if SECRET_REF_RE.search(url):
+        if not authority:
+            raise ValueError("url에 호스트가 없습니다")
+        try:
+            found = template_refs(url)
+        except TemplateError as exc:
+            raise ValueError(f"url: {exc}") from exc
+        if any(r.kind == "secret" for r in found):
             raise ValueError("url에는 비밀 참조를 넣을 수 없습니다(헤더에 두세요)")
         return url
 
@@ -245,6 +271,18 @@ class HttpToolConfig(NodeConfig):
     @classmethod
     def _secrets_by_reference(cls, headers: dict[str, str]) -> dict[str, str]:
         for name, value in headers.items():
+            if not HEADER_NAME_RE.fullmatch(name):
+                raise ValueError(f"헤더 이름 '{name[:40]}'이(가) 올바르지 않습니다")
+            if name.lower() in RESERVED_HEADERS:
+                raise ValueError(f"헤더 '{name}'은(는) 직접 정할 수 없습니다")
+            if "\r" in value or "\n" in value:
+                raise ValueError(f"헤더 '{name}' 값에 줄바꿈을 넣을 수 없습니다")
+            try:
+                found = template_refs(value)
+            except TemplateError as exc:
+                raise ValueError(f"헤더 '{name}': {exc}") from exc
+            if any(r.kind != "secret" for r in found):
+                raise ValueError(f"헤더 '{name}'에는 방문자 값({{{{state.…}}}})을 넣을 수 없습니다(본문·URL 경로에 두세요)")
             if not SENSITIVE_HEADER_RE.search(name):
                 continue
             # 인증 계열 헤더 값은 {{secret.이름}} 참조(앞의 스킴 한 단어 허용, 예: "Bearer {{secret.key}}")만.
@@ -252,6 +290,31 @@ class HttpToolConfig(NodeConfig):
             if not SECRET_REF_RE.search(value) or (rest and not re.fullmatch(r"[A-Za-z]+", rest)):
                 raise ValueError(f"헤더 '{name}'에는 비밀 원문 대신 {{{{secret.이름}}}} 참조를 넣으세요")
         return headers
+
+    @field_validator("body_template")
+    @classmethod
+    def _body_refs(cls, body: str | None) -> str | None:
+        if body is not None:
+            try:
+                template_refs(body)
+            except TemplateError as exc:
+                raise ValueError(f"body_template: {exc}") from exc
+        return body
+
+    @field_validator("save")
+    @classmethod
+    def _save_paths(cls, save: dict[str, str]) -> dict[str, str]:
+        for name, path in save.items():
+            if not SAVE_NAME_RE.fullmatch(name):
+                raise ValueError(f"save 이름 '{name[:40]}'은(는) 영문·숫자·_ 64자까지입니다")
+            try:
+                parse_path(path)
+            except TemplateError as exc:
+                raise ValueError(f"save '{name}': {exc}") from exc
+        return save
+
+    def handles(self) -> tuple[str, ...]:
+        return (DEFAULT_HANDLE, ERROR_HANDLE)
 
 
 NODE_CONFIG_MODELS: dict[NodeKind, type[NodeConfig]] = {

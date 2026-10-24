@@ -174,7 +174,7 @@ def test_unapplicable_op_is_a_tool_error_and_changes_nothing(signer: Signer) -> 
 
 
 @pytest.mark.django_db(transaction=True)
-def test_example_flow_built_by_patches_then_trimmed_to_handlers_deploys_and_runs(signer: Signer, fake_chat_llm) -> None:
+def test_example_flow_built_by_patches_deploys_then_trimmed_runs(signer: Signer, fake_chat_llm) -> None:
     import secrets
 
     from apps.tenants.tenant_secrets import set_secret
@@ -192,16 +192,12 @@ def test_example_flow_built_by_patches_then_trimmed_to_handlers_deploys_and_runs
     assert {n["id"]: n["config"] for n in graph["nodes"]} == {n["id"]: n["config"] for n in example["nodes"]}
     assert ok(call(token, "save_version", {"flow_id": flow_id}))["version"] == 1
 
-    # ② 핸들러 없는 노드(HTTP — M3 #34; 분류·조건은 #25, 가드레일은 #26에서 생김)가 있어 시험·배포는 「핸들러 없음」으로 거부.
-    no_handler = {"submit"}
-    tried = ok(call(token, "test_turn", {"flow_id": flow_id, "message": "견적 문의"}))
-    refused = ok(call(token, "deploy_version", {"flow_id": flow_id, "version": 1}))
-    assert tried["ran"] is False and {e["node_id"] for e in tried["errors"]} == no_handler
-    assert all(e["code"] == "no_handler" for e in tried["errors"])
-    assert refused["deployed"] is False and {e["node_id"] for e in refused["errors"]} == no_handler
+    # ② 모든 노드 종류에 핸들러가 있다(HTTP 도구 #34까지) → 그린 그대로 배포된다.
+    assert ok(call(token, "deploy_version", {"flow_id": flow_id, "version": 1}))["deployed_version"] == 1
+    no_llm_branch = {"submit"}  # 아래 시험 대화는 LLM 분기 없이 짧게 돌린다
 
-    # ③ 핸들러 있는 노드만 남겨 다시 잇는다: 시작 → 사례 검색 → 일반 답변 →(넘김) 사람 넘김.
-    trim = [{"op": "delete_node", "id": nid} for nid in sorted(no_handler | {"guard", "ask", "draft", "classify", "route", "enough"})]
+    # ③ 짧은 갈래만 남겨 다시 잇는다: 시작 → 사례 검색 → 일반 답변 →(넘김) 사람 넘김.
+    trim = [{"op": "delete_node", "id": nid} for nid in sorted(no_llm_branch | {"guard", "ask", "draft", "classify", "route", "enough"})]
     trim += [
         {"op": "connect", "from": "start", "to": "cases"},
         {"op": "connect", "from": "cases", "to": "general"},

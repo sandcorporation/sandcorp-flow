@@ -189,7 +189,11 @@ def test_save_deploy_rollback_flow(client, admin_token):
 
 
 @pytest.mark.django_db
-def test_invalid_draft_cannot_become_a_version_or_deploy(client, admin_token):
+def test_invalid_draft_cannot_become_a_version_or_deploy(client, admin_token, monkeypatch):
+    from apps.flows.executor import HANDLERS
+    from apps.flows.schema import NodeKind
+
+    monkeypatch.delitem(HANDLERS, NodeKind.HTTP_TOOL)  # 핸들러 없는 종류 흉내(이제 모든 종류에 핸들러가 있다)
     fid = new_flow(client, admin_token, ops=None)
     r = jpost(client, f"{BASE}{fid}/versions/", {}, admin_token)
     assert r.status_code == 422 and r.json()["code"] == "flow_invalid" and r.json()["errors"]

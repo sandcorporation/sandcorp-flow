@@ -8,12 +8,15 @@
 - 조건: ``when`` 식(``apps.flows.expr``)을 위에서부터 계산해 처음 참인 갈래로, 없으면 ``else``.
 - 가드레일: ``apps.flows.guardrail`` — 직전 AI 답변(나가는 말)이나 방문자 입력(들어오는 말)을 검사해 막기·다시 쓰기·가리기.
   뒤에 출력 가드레일이 붙은 AI 답변은 답을 스트림에 흘리지 않고 모아 두었다가(``stream_held``) 가드레일이 통과시킨 글을 내보낸다.
+- HTTP 도구: ``apps.flows.http_tool`` — 테넌트 허용 목록·safe_http로 부르고 2xx면 ``save`` 값을 상태 ``fields``에 더한 뒤
+  ``next``, 실패(차단·시간·크기·HTTP 오류 등)면 ``error`` 갈래(선이 없으면 턴 끝). 이유 코드는 ``record.error``.
 - 사람 넘김: ``create_escalation_node``(``hitl_enabled``가 거짓이면 넘기지 않고 턴을 끝낸다.
   ``dry_run``(시험 한 턴)이면 넘긴 것으로만 적고 Escalation을 만들지 않는다).
 """
 
 from __future__ import annotations
 
+import uuid
 from typing import cast
 
 from apps.agent.nodes import (
@@ -25,18 +28,21 @@ from apps.agent.nodes import (
     source_search_node,
 )
 from apps.flows import guardrail as checks
+from apps.flows import http_tool as http
 from apps.flows.classify import classify as run_classify
 from apps.flows.contract import FlowState, NodeContext, NodeOutcome, register
 from apps.flows.expr import compile_when
 from apps.flows.schema import (
     DEFAULT_HANDLE,
     ELSE_HANDLE,
+    ERROR_HANDLE,
     HANDOFF_HANDLE,
     AiAnswerConfig,
     AiClassifyConfig,
     ConditionConfig,
     GuardrailConfig,
     HandoffConfig,
+    HttpToolConfig,
     KnowledgeSearchConfig,
     NodeKind,
 )
@@ -136,6 +142,27 @@ async def condition(state: FlowState, ctx: NodeContext) -> NodeOutcome:
     return NodeOutcome(update={}, handle=ELSE_HANDLE, record={
         "input": scope, "branch": ELSE_HANDLE, "checked": checked,
         "reason": "참인 갈래가 없어 기본(else) 갈래로"})
+
+
+@register(NodeKind.HTTP_TOOL)
+async def http_tool(state: FlowState, ctx: NodeContext) -> NodeOutcome:
+    config = cast(HttpToolConfig, ctx.node.config)
+    fields = dict(state.get("fields") or {})
+    scope = http.Scope(user_message=state.get("user_message", ""), label=state.get("label") or "",
+                       confidence=state.get("confidence"), fields=fields)
+    result = await http.call(uuid.UUID(str(state["tenant_id"])), config, scope)  # 가림 목록 키는 UUID(기록 쪽과 같게)
+    record: dict[str, object] = {
+        "request": {"method": config.method, "url": result.url}, "status": result.status, "error": result.error,
+        "output": result.saved, "missing": result.missing,
+    }
+    update = {"fields": {**fields, **result.saved}}
+    if result.error is not None:
+        why = f" — {result.detail}" if result.detail else ""
+        record["reason"] = f"호출 실패({result.error}){why} → error 갈래"
+        return NodeOutcome(update=update, handle=ERROR_HANDLE, record=record)
+    saved = len(result.saved) - len(result.missing)
+    record["reason"] = f"HTTP {result.status} 응답" + (f", 값 {saved}/{len(result.saved)}개 저장" if result.saved else "")
+    return NodeOutcome(update=update, handle=DEFAULT_HANDLE, record=record)
 
 
 @register(NodeKind.HANDOFF)

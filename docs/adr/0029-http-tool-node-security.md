@@ -54,3 +54,25 @@ HTTP 도구 노드 말고도 서버가 테넌트가 넣은 URL을 부르는 곳�
 - **dev·test**: 내부 호스트(fake-llm·ollama·로컬 시험 서버)를 써야 하므로 `OUTBOUND_PRIVATE_ALLOWED=True`(dev.py)일 때만 사설 주소·http·임의 포트를 허용한다. 기본(base.py)과 운영(prod.py)은 False로 고정 — env로 바꿀 수 없다. `PLATFORM_DEFAULT_PROVIDERS_ENABLED`와 따로 둔 까닭: 하나는 비용(플랫폼 키 폴백), 하나는 보안(사설 송신)이라 한쪽을 켜려다 다른 쪽이 열리면 안 된다.
 - **사용자 문구**: `user_message(code)`가 사유를 한국어로 만든다(예: 「이 주소는 가져올 수 없습니다: 내부망·사설 주소입니다」). 해석한 IP는 사용자 문구에 넣지 않고 로그에만 남긴다.
 - 네트워크 모듈 import 묶음(`test_only_the_safe_layer_opens_new_outbound_connections`)에서 테넌트 URL을 부르던 모듈을 뺐다. 남은 예외는 플랫폼 고정 주소(인증 서버 token·JWKS)와 예외 타입만 쓰는 `rag/tasks.py`뿐이다.
+
+## 보충 (#34): HTTP 도구 노드 실행 — 호스트 고정, 틀 치환, 리다이렉트, 실패 갈래
+
+- **호스트는 틀의 고정 부분**: `url`의 `https://` 뒤 첫 `/`·`?`·`#`까지(호스트·포트·사용자 정보)에 `{{…}}`가 있으면 저장 때 `invalid_config`.
+  상태 값(`{{state.user_message|label|confidence}}`·`{{state.fields.이름}}`)은 경로·쿼리에만, 실행 때 **한 조각으로** 퍼센트 인코딩한다
+  (`quote(safe="")` + `.` → `%2E`: `/`·`?`·`#`·`&`·`%`·`..`로 경로를 거슬러 오르거나 쿼리를 끼워 넣지 못한다). 치환 뒤 호스트가 틀의 호스트와
+  다르면 실패(닫힌 쪽 이중 확인). 허용 목록만으로는 같은 테넌트의 다른 허용 호스트로 방문자가 요청을 돌릴 수 있어, 고정으로 정했다.
+- **헤더에는 방문자 값을 못 쓴다**(고정 글과 `{{secret.…}}`만, 줄바꿈·`Host`·`Content-Length`·`Transfer-Encoding`·`Connection`·`Upgrade`·`TE` 금지).
+  본문의 참조 값은 상태·비밀 모두 JSON 문자열 안쪽으로 이스케이프한다 — 방문자가 키를 끼워 넣지 못한다. 이스케이프한 비밀이 원문과 다르면
+  파생값으로 `register_revealed`.
+- **틀은 한 번에 치환**한다(정규식 한 번 훑기) — 방문자 글에 `{{secret.…}}`을 넣어도 다시 해석되지 않는다.
+- **리다이렉트와 비밀(#32 함정)**: 보안 계층은 다른 호스트로 갈 때 `Authorization`·`Proxy-Authorization`·`Cookie`만 뗀다. HTTP 도구는 헤더·본문에
+  비밀 참조가 하나라도 있으면 **다른 호스트로의 리다이렉트를 따르지 않는다**(`SafeHttpClient.request(cross_host_redirects=False)` →
+  `cross_host_redirect`, 허용 목록 안의 호스트여도). 헤더 떼기 대신 거부를 고른 까닭: 307·308은 본문을 그대로 싣고 가므로 본문의 비밀까지 막으려면
+  떼는 것으로 모자라고, 비밀 헤더 이름 규칙(이름 패턴)에 기대면 `X-Custom`처럼 이름이 안 맞는 헤더가 샌다. 비밀이 없는 요청은 허용 목록 안에서
+  홉마다 다시 검사하며 따르고, 같은 호스트 리다이렉트는 비밀이 있어도 따른다.
+- **실패 갈래**: 노드의 갈래는 `next`(2xx)·`error`(선택). 차단·시간 초과·크기·HTTP 4xx/5xx·JSON 아님(`save`가 있을 때)·실행 때 없는 비밀·예상 못 한
+  예외는 턴을 깨지 않고 `error`로 간다(선이 없으면 턴 끝). 판단 기록 `record.error`에 이유 코드(safe_http 코드 + `http_error`·`invalid_json`·
+  `unknown_secret`·`internal_error`), 문구는 호스트까지만.
+- **가림**: 헤더·본문은 기록하지 않는다. `record`의 URL·저장 값·문구와 상태 `fields`에 쓰는 응답 값은 이 테넌트 비밀(원문·파생값·조각)로 가린다
+  — 응답이 비밀을 되돌려 보내도(에코 API) 상태·체크포인트·판단 기록·시험 대화 trace에 남지 않는다.
+- **시험 한 턴도 실제로 부른다**(갈래를 운영과 같게 — 사람 넘김처럼 흉내 내면 응답 경로를 시험할 수 없다). 체험 턴 규칙(ADR-0026)은 그대로.

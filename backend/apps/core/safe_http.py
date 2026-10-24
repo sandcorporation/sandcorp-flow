@@ -64,6 +64,7 @@ class SafeHttpErrorCode(StrEnum):
     TOO_LARGE = "too_large"
     TOO_MANY_REDIRECTS = "too_many_redirects"
     BAD_REDIRECT = "bad_redirect"
+    CROSS_HOST_REDIRECT = "cross_host_redirect"
     BAD_RESPONSE = "bad_response"
     INVALID_REQUEST = "invalid_request"
 
@@ -400,10 +401,13 @@ class SafeHttpClient:
         *,
         headers: Mapping[str, str] | None = None,
         body: bytes | None = None,
+        cross_host_redirects: bool = True,
     ) -> SafeResponse:
         """요청 하나. 리다이렉트는 직접 따라가며 홉마다 URL·해석·IP 검사를 다시 한다.
 
-        시간 상한은 모든 홉을 합친 전체 시간이다.
+        시간 상한은 모든 홉을 합친 전체 시간이다. 다른 호스트로 가면 ``Authorization``·``Proxy-Authorization``·
+        ``Cookie``만 뗀다 — 비밀을 다른 헤더·본문에 실었으면 ``cross_host_redirects=False``로 다른 호스트를 아예
+        따르지 않게 한다(``CROSS_HOST_REDIRECT``, HTTP 도구 #34).
         """
         deadline = time.monotonic() + self._limits.total_timeout
         current = url
@@ -412,6 +416,8 @@ class SafeHttpClient:
         previous_host: str | None = None
         for _hop in range(self._limits.max_redirects + 1):
             target = check_url(current, self._allow)
+            if previous_host is not None and target.host != previous_host and not cross_host_redirects:
+                raise SafeHttpError(SafeHttpErrorCode.CROSS_HOST_REDIRECT, f"{previous_host} → {target.host}")
             if previous_host is not None and target.host != previous_host:
                 send_headers = {
                     k: v for k, v in send_headers.items() if k.lower() not in _CREDENTIAL_HEADERS
@@ -644,6 +650,16 @@ def tenant_url_client(schemes: Iterable[str], limits: Limits) -> SafeHttpClient:
     return SafeHttpClient(
         tenant_policy(schemes), resolver=net.resolver, dial=dial, ssl_context=net.tls, limits=limits
     )
+
+
+def allow_list_client(allow: AllowList, limits: Limits | None = None) -> SafeHttpClient:
+    """허용 목록 정책(HTTP 도구, #34)으로 부르는 클라이언트. 해석·연결·TLS는 ``NETWORK``(시험이 대역으로 바꾼다)."""
+    net = NETWORK
+
+    def dial(address: str, port: int, timeout: float) -> socket.socket:
+        return socket.create_connection(net.route(address, port), timeout)
+
+    return SafeHttpClient(allow, resolver=net.resolver, dial=dial, ssl_context=net.tls, limits=limits)
 
 
 def check_tenant_url(url: str, schemes: Iterable[str]) -> None:

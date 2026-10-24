@@ -34,7 +34,7 @@ HTTP 도구 보안은 [ADR-0029](adr/0029-http-tool-node-security.md). 용어는
 
 ## 노드 종류와 config
 
-종류마다 config 모양이 다르다. 모르는 필드는 거부한다. (HTTP 도구는 아직 모양만 있고 실행 핸들러가 없다 — M3.)
+종류마다 config 모양이 다르다. 모르는 필드는 거부한다.
 
 | kind | 이름 | config | 나가는 갈래 |
 |---|---|---|---|
@@ -45,7 +45,7 @@ HTTP 도구 보안은 [ADR-0029](adr/0029-http-tool-node-security.md). 용어는
 | `knowledge_search` | 지식 검색 | `top_k: int = 5`(1~20) | `next` |
 | `ai_classify` | AI 분류·추출 | `instructions: str = ""`, `labels: [str] = []`(분류), `fields: [{name, description = "", type = "string"\|"number"\|"boolean"}] = []`(추출) — **둘 중 하나는 있어야** | `next` |
 | `guardrail` | 가드레일 | `rules: ["banned_words" \| "pii" \| "price_promise"]`(1개 이상, 중복 불가), `action: "block" \| "rewrite" \| "mask" = "rewrite"`, `target: "output" \| "input" = "output"`, `banned_words: [str] = []`(`banned_words` 규칙이면 1개 이상), `block_message: str`(기본 「죄송합니다. 해당 내용은 안내해 드릴 수 없습니다.」). `price_promise`와 `mask`는 함께 못 쓴다. 자세한 동작은 아래 「가드레일」 | `next` |
-| `http_tool` | HTTP 도구 | `method`(GET·POST·PUT·PATCH·DELETE), `url`(https만, user@host 금지), `headers: {str: str}`, `body_template: str \| null` | `next` |
+| `http_tool` | HTTP 도구 | `method: "GET"\|"POST"\|"PUT"\|"PATCH"\|"DELETE" = "GET"`, `url: str`(https만, 호스트 고정, 2000자), `headers: {str: str} = {}`(20개), `body_template: str \| null = null`(16000자), `save: {이름: 경로} = {}`(20개). 자세한 동작은 아래 「HTTP 도구」 | `next`(2xx), `error`(선택 — 실패할 때) |
 
 `next` 갈래는 선이 없어도 된다 — 거기서 턴이 끝난다. AI 답변의 `handoff` 갈래도 선택이다 — 선이 있고 테넌트가 사람 넘김을 켰고 상담시간일 때만 AI가 넘김을 판단하고(넘김 판단이 든 답변 스키마), 선이 없으면 넘김 없는 답변 스키마로 묻는다. AI 답변의 `instructions`는 시스템 프롬프트 맨 끝 「이 단계의 지침」으로 실린다(그 노드의 호출에만). **사람 넘김이 결정된 턴에는 모델이 쓴 답을 방문자에게 흘리지도 저장하지도 않는다** — 넘김 판단(`needs_hitl`)이 답(`response`)보다 먼저 나오는 스키마라, 넘기기로 했으면 그때 답을 막고 넘김 안내만 보인다.
 
@@ -82,6 +82,50 @@ HTTP 도구 보안은 [ADR-0029](adr/0029-http-tool-node-security.md). 용어는
 - 값이 없으면(분류 전·필드 누락) `null`로 읽는다. `<` `<=` `>` `>=`와 `in`은 `null`이 끼면 거짓이고 오류를 내지 않는다.
 
 예) 확신도가 낮으면 사람에게: `confidence < 0.5`. 판단 기록에는 계산한 갈래들(`checked`)과 고른 갈래·이유(`'식'이(가) 참이라 '갈래' 갈래로`)가 남는다.
+
+### HTTP 도구
+
+테넌트 **허용 도메인**(설정 → 허용 도메인)에 있는 HTTPS 호스트만 부른다. 보안 계층(`apps/core/safe_http.py`, ADR-0029)이 해석한
+모든 IP를 검사하고 그 IP로 연결하며, 리다이렉트마다 다시 검사한다. 5초·응답 256KB·리다이렉트 3번.
+
+- **틀 참조**(`{{ … }}`, 공백 허용): `{{secret.이름}}`(헤더·본문만), `{{state.user_message}}`·`{{state.label}}`·`{{state.confidence}}`·
+  `{{state.fields.이름}}`(URL 경로·쿼리, 본문). 그 밖의 모양·닫히지 않은 `{{`는 `invalid_config`. 틀은 한 번에 치환한다(방문자 글에
+  든 `{{secret.…}}`은 다시 해석되지 않는다). 없는 값은 빈 글, 참·거짓은 `true`/`false`, 목록·객체는 JSON.
+- **URL**: 호스트(포트·사용자 정보 포함)는 **고정 글**이어야 한다 — `https://{{…}}/`, `https://api{{…}}.example.com`,
+  `https://api.example.com{{…}}/` 모두 `invalid_config`. 상태 값은 **한 조각**으로 퍼센트 인코딩된다(`/`·`?`·`#`·`&`·`%`·`.`까지) —
+  방문자 글로 호스트를 바꾸거나 경로를 거슬러 오르거나(`..`) 쿼리를 끼워 넣지 못한다.
+- **헤더**: 고정 글과 `{{secret.이름}}`만(방문자 값 금지). 줄바꿈 금지, `Host`·`Content-Length`·`Transfer-Encoding`·`Connection`·`Upgrade`·`TE`는
+  직접 정할 수 없다. 인증 계열 이름이면 값은 참조만(아래 「비밀은 참조만」).
+- **본문**: `body_template`의 참조 값은 **JSON 문자열 안쪽으로 이스케이프**돼 들어간다 — `"{{state.user_message}}"`처럼 따옴표 안에 둔다.
+  본문이 있고 `Content-Type`을 정하지 않았으면 `application/json`.
+- **save**: `{이름: 경로}` — 응답 JSON에서 꺼내 상태 `fields.이름`에 **더한다**(기존 `fields`는 남는다). 조건 노드(`fields.이름`)와 뒤의 HTTP
+  도구(`{{state.fields.이름}}`)가 읽는다. 경로는 `$`로 시작해 `.이름`·`[숫자]`·`['이름']`만 잇는다(`$`는 응답 전체, 와일드카드·`..`·필터·음수
+  없음). 이름은 `[A-Za-z_][A-Za-z0-9_]{0,63}`. 경로에 값이 없으면 `null`(판단 기록 `missing`). 실패하면 `save`의 이름은 모두 `null`.
+- **리다이렉트**: 비밀(헤더·본문)을 실은 요청은 **다른 호스트로의 리다이렉트를 따르지 않는다**(`cross_host_redirect` → `error`) — 보안 계층은
+  다른 호스트로 갈 때 `Authorization`·`Proxy-Authorization`·`Cookie`만 떼므로 `X-Api-Key` 같은 헤더나 307 본문의 비밀이 따라가는 것을 막는다.
+  비밀이 없는 요청은 허용 목록 안에서 따른다. 같은 호스트 리다이렉트는 비밀이 있어도 따른다.
+- **갈래**: 2xx면 `next`. 실패하면 `error`(선택 — 선이 없으면 거기서 턴이 끝난다). 실패는 턴을 깨지 않는다.
+- **판단 기록** `record`: `request {method, url}`(치환한 URL — 비밀은 URL에 못 들어간다), `status`(응답이 없으면 `null`), `error`(이유 코드 또는
+  `null`), `output`(저장한 값), `missing`, `reason`. 헤더·본문은 기록하지 않는다. `url`·`output`·`reason`은 이 테넌트 비밀(원문·파생값·6자 이상
+  조각)로 가린다 — 응답이 비밀을 되돌려 보내도 상태·기록에 남지 않는다.
+- **시험 한 턴**도 실제로 부른다(운영과 같은 갈래). 체험 턴 규칙(ADR-0026)은 그대로다.
+
+`record.error` 이유 코드:
+
+| code | 뜻 |
+|---|---|
+| `host_not_allowed` | 허용 도메인에 없는 호스트(첫 요청이나 리다이렉트 대상). |
+| `blocked_address` | 해석한 IP가 사설·루프백·링크로컬·메타데이터 등(DNS 리바인딩 포함 — 홉마다 다시 해석). |
+| `dns_failed` / `connect_failed` / `tls_failed` | 이름 해석·연결·TLS 실패. |
+| `timeout` | 전체 5초(해석·연결·리다이렉트 포함) 초과. |
+| `too_large` | 응답 본문 256KB 초과. |
+| `too_many_redirects` / `bad_redirect` | 리다이렉트 3번 초과 / `Location` 없음·틀림. |
+| `cross_host_redirect` | 비밀을 실은 요청이 다른 호스트로 리다이렉트됨. |
+| `invalid_url` / `not_https` / `ip_literal` / `userinfo` / `non_default_port` / `invalid_request` / `bad_response` | URL·요청·응답 모양이 틀림(보안 계층). |
+| `http_error` | 응답이 2xx가 아님(`status`에 코드). |
+| `invalid_json` | `save`가 있는데 응답이 JSON이 아님. |
+| `unknown_secret` | 참조한 비밀이 실행 때 없음(저장 뒤 지워짐 — 저장 검증은 `unknown_secret` 노드 오류로 막는다). |
+| `internal_error` | 그 밖의 예상 못 한 실패(예외 이름만). |
 
 ### 비밀은 참조만
 
@@ -158,7 +202,8 @@ N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
  "config": {"instructions": "빠진 요구사항(목적·규모·기한) 중 하나만 짧게 되묻는다.", "await_reply": true}},
 {"id": "submit", "kind": "http_tool", "code": "N-09", "name": "문의 접수",
  "config": {"method": "POST", "url": "https://api.sandcorp.co.kr/inquiries",
-            "headers": {"Authorization": "Bearer {{secret.inquiry_api_key}}"}}}
+            "headers": {"Authorization": "Bearer {{secret.inquiry_api_key}}"},
+            "body_template": "{\"summary\": \"{{state.user_message}}\", \"label\": \"{{state.label}}\"}"}}
 ```
 
 ```json
