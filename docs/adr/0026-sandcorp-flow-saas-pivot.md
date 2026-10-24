@@ -15,7 +15,7 @@ Embed Chat(GraphRAG 멀티테넌트 챗봇, LangGraph·HITL·위젯·Admin UI)�
   고정 챗 그래프는 테넌트가 편집하는 **흐름(Flow)** 으로 바뀐다(ADR-0027).
 - **LLM 비용은 고객 키(BYOK)**: 기존 테넌트별 Provider(ADR-0012)를 그대로 쓴다. 가입 직후에는 **플랫폼 키**로 도는
   **체험 한도**(예: 대화 200턴)를 준다. 한도를 넘으면 테넌트가 자기 키를 넣어야 흐름이 돈다.
-- **플랫폼 키는 OpenAI 하나**(2026-10-24 사용자 결정): 체험 한도·`/try`·「Sandcorp」 테넌트가 대표의 OpenAI 키 하나를 함께 쓴다(LLM·임베딩·OCR). 모델은 설정값(`PLATFORM_LLM_MODEL`, 기본 gpt-4o-mini급)이고, Anthropic 키는 두지 않는다. 키 값은 운영 env에만 있다(이름은 `docs/deployment.md`). 테넌트 BYOK Provider 종류(ADR-0012)는 바꾸지 않는다.
+- **플랫폼 키는 OpenAI 하나**(2026-10-24 사용자 결정): 체험 한도·`/try`·「Sandcorp」 테넌트가 대표의 OpenAI 키 하나를 함께 쓴다(LLM·임베딩·OCR). 모델은 설정값(`PLATFORM_LLM_MODEL`, 기본 gpt-4o-mini급)이고, Anthropic 키는 두지 않는다. 키 값은 운영 env에만 있다(이름은 `docs/deployment.md`). 테넌트 BYOK Provider 종류(ADR-0012: OpenAI·Claude·Custom)는 바꾸지 않는다(2026-10-24 사용자 확인).
 - **운영 박스**: 기존 Oracle A1(4코어, 남은 메모리 약 8.7G, 이미 컨테이너 55개). 운영 compose에는 Ollama·PaddleOCR을
   넣지 않는다(운영은 테넌트 Provider). Jenkins로 배포하며, 실제 배포·서버 설정은 저장소 밖에서 한다.
 - **인증은 sandcorp-auth로 통합**한다(ADR-0028). 고객 가입·테넌트 생성·체험 한도는 sandcorp-auth 다중 사용자화에 막혀 있다.
