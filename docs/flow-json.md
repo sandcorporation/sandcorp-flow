@@ -127,6 +127,7 @@ HTTP 도구 보안은 [ADR-0029](adr/0029-http-tool-node-security.md). 용어는
 | `invalid_json` | `save`가 있는데 응답이 JSON이 아님. |
 | `unknown_secret` | 참조한 비밀이 실행 때 없음(저장 뒤 지워짐 — 저장 검증은 `unknown_secret` 노드 오류로 막는다). |
 | `internal_error` | 그 밖의 예상 못 한 실패(예외 이름만). |
+| `try_restricted` | 체험 테넌트(Try Session, ADR-0030)가 가짜 API 밖의 URL을 불렀다 — 허용 목록·비밀이 있어도 연결하지 않는다. |
 
 ### 가짜 API(예약 호스트)
 
@@ -266,3 +267,6 @@ N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
   (테넌트, 예제, 이름)에서 정해져 다시 돌려도 중복이 없고, 이미 ready면 건너뛴다. 테넌트에 추출·임베딩 Provider가 설정돼 있어야 한다.
 - Sandcorp 테넌트: `manage.py seed_sandcorp [--update-flow] [--skip-knowledge]` — slug `sandcorp` 테넌트, 공개·배포 중 흐름 「Sandcorp 홈 상담」, 지식 ①. 이미 있는 흐름은
   기본으로 건드리지 않는다(`--update-flow`가 설정값으로 다시 만들어 새 버전을 배포한다).
+- 체험 도서관(#134, ADR-0030): `manage.py seed_try_library [--example <id>]... [--force]` — 공유 「체험 도서관」 테넌트에 예제 묶음을 한 번
+  적재한다. 체험 테넌트는 사본마다 재임베딩하지 않고 도서관 그래프를 **자기 예제 문서**로만 좁혀 검색한다. 도서관은 테넌트 Provider 없이
+  플랫폼 키(`PLATFORM_OPENAI_API_KEY`)로 임베딩·추출한다.

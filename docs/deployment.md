@@ -229,6 +229,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     | `PLATFORM_LLM_MODEL` | `gpt-4o-mini` | 체험 테넌트의 챗·자료 정리 모델. |
     | `PLATFORM_EMBED_MODEL` | `text-embedding-3-small` | 체험 테넌트의 임베딩. 본래 1536차원이지만 OpenAI `dimensions` 인자로 테넌트 `embed_dim`(기본 1024)에 맞춰 보낸다 — 인덱스 차원·「Provider 바꾸면 재임베딩」 규칙이 그대로다. |
     | `TRIAL_TURNS` | `200` | 새 조직이 받는 체험 턴(1턴 = 방문자 메시지 하나). 0009 마이그레이션 때 기존 조직도 이 값을 받는다. |
+    | `TRY_TENANT_TTL_HOURS` | `24` | Try Session 체험 테넌트의 수명(ADR-0030). 지나면 `prune_try_tenants`가 테넌트째 지운다. |
     | `PLATFORM_OPENAI_BASE_URL` | `https://api.openai.com/v1` | 바꿀 일 없음(시험·프록시용). |
     | `TENANT_CREATE_LIMIT_PER_USER` | `3` | 온보딩에서 한 계정이 만들 수 있는 조직 수. |
     | `ONBOARDING_RATE_LIMIT_PER_HOUR` | `10` | 온보딩 시도 IP당 시간당 상한. |
@@ -241,6 +242,12 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     3. **claude.ai 클라이언트**: claude.ai 커넥터는 CIMD(Client ID Metadata Document)로 접속한다. 그 클라이언트가 위 리소스·스코프를 받을 수 있게 하고 「일반 사용자 허용」(`allows_members`)을 켠다.
     4. **운영 `.env`**: `AUTH_MCP_RESOURCE`(기본 `https://flow.sandcorp.co.kr/mcp`)는 기본값이면 적지 않는다.
     5. **확인**: `curl -s https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource/mcp`가 `resource`=`https://flow.sandcorp.co.kr/mcp`, `scopes_supported`=`["flow.read","flow.write"]`인 JSON, `curl -si -X POST https://flow.sandcorp.co.kr/mcp`가 401 + `WWW-Authenticate: Bearer resource_metadata="https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource/mcp"`. 그다음 claude.ai → 설정 → 커넥터에 `https://flow.sandcorp.co.kr/mcp`를 더해 로그인하고 `list_tenants`가 내 테넌트를 돌려주는지 본다.
+
+12. [ ] **Try Session 체험 도서관·정리**(#134, ADR-0030) — 10번 플랫폼 키가 들어간 뒤.
+    1. **도서관 적재(1회, 예제 문서가 바뀌면 `--force`)**: `docker compose -f docker-compose.prod.oracle.yml exec api python manage.py seed_try_library`.
+       도서관 테넌트는 Provider 없이 플랫폼 키로 임베딩·추출한다(키가 비면 `KnowledgeSeedError` — 키를 넣고 다시 돌리면 실패분만 이어 적재).
+       확인: 출력 `try library <id> seeded`, 운영자 테넌트 목록에는 도서관이 **나오지 않는다**(숨은 테넌트).
+    2. **24시간 정리**: `python manage.py prune_try_tenants`를 주기로 돌린다(호스트 cron 매시간, 또는 상주 `--every 3600`). 아직 박스에 등록돼 있지 않다.
 
 ## 관련 문서
 - [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md) — 무중단 롤링 설계·기각안
