@@ -88,6 +88,8 @@ HTTP 도구 보안은 [ADR-0029](adr/0029-http-tool-node-security.md). 용어는
 HTTP 도구의 인증 계열 헤더(이름에 `authorization`·`cookie`·`token`·`secret`·`api-key`·`password`가 들어감) 값에는
 `{{secret.이름}}` 참조만 넣는다. 앞에 스킴 한 단어는 된다(`Bearer {{secret.inquiry_api_key}}`). 원문 키를 넣으면
 `invalid_config`. 치환은 실행 때 서버에서만 한다(ADR-0029). url에는 비밀 참조를 넣을 수 없다.
+참조한 이름이 테넌트 비밀(설정 → 비밀, `PUT /api/tenant/secrets/{name}`)에 없으면 `unknown_secret`(노드 오류) — 스키마가 아니라
+테넌트별 검증(`services.validate_for_tenant`)이 낸다.
 
 ## 검증
 
