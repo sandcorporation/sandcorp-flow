@@ -105,7 +105,7 @@ def test_authorize_redirects_to_sandcorp_auth_with_pkce_state_and_nonce() -> Non
     assert params["response_type"] == "code"
     assert params["client_id"] == CLIENT_ID
     assert params["redirect_uri"] == REDIRECT_URI
-    assert params["scope"] == "openid profile email login"
+    assert params["scope"] == "openid profile email login admin"
     assert params["resource"] == FLOW
     assert params["code_challenge_method"] == "S256"
     assert len(params["code_challenge"]) == 43  # base64url(SHA-256), 패딩 없음
