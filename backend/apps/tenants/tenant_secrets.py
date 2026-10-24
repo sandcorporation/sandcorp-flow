@@ -1,16 +1,18 @@
 """테넌트 비밀·허용 도메인(#33, ADR-0029 「비밀」) — deep module.
 
 비밀 값은 **쓰기 전용**이다. 이 모듈 밖으로 평문이 나가는 길은 ``render_secrets`` 하나(요청을 만들 때 서버에서만)이고,
-평문이 이 프로세스를 지나가는 순간(저장·치환) ``register_revealed``로 가림 목록에 올린다. 가림은 두 자리에서 돈다.
+평문이 이 프로세스를 지나가는 순간(저장·치환) ``register_revealed(tenant_id, value)``로 가림 목록에 올린다.
+가림은 두 자리에서 돌고, 범위가 다르다(#115).
 
-- 판단 기록: ``apps.flows.trace.REDACTORS``에 ``redact``가 들어 있다(저장 직전 모든 문자열).
-- 로그: ``install_log_redaction``이 LogRecord 팩토리를 감싸 메시지·예외 본문을 기록이 만들어질 때 가린다
-  (핸들러·포매터와 무관하게 — caplog·Sentry 같은 모든 핸들러가 가린 기록을 받는다).
+- 판단 기록(테넌트가 읽는다): ``apps.flows.trace.REDACTORS``의 ``redact(tenant_id, text)`` — **그 기록의 테넌트 비밀로만**.
+  다른 테넌트 비밀로도 가리면 임의 문자열을 넣어 보고 어디가 가려지는지로 남의 비밀을 한 조각씩 알아낼 수 있다.
+- 로그(운영자만 본다): ``install_log_redaction``이 LogRecord 팩토리를 감싸 ``redact_log``로 가린다 — 프로세스가 본
+  모든 테넌트 비밀(최근 ``MAX_LOG_VALUES``개). 핸들러·포매터와 무관하게 caplog·Sentry 같은 모든 핸들러가 가린 기록을 받는다.
 
 가림은 원문 전체와 **원문의 부분 문자열**(``PARTIAL_MIN``자 이상)을 ``MASK``로 바꾼다 — 잘린 오류 메시지·응답 조각에
 섞인 키 앞부분도 가린다. 목록은 프로세스 단위다: 평문은 그 프로세스에서 복호화(또는 저장 요청으로 수신)되어야만
-그 프로세스의 출력에 나타날 수 있으므로, 「이 프로세스가 본 값」만 등록하면 빠짐이 없다. 테넌트를 가리지 않고 가린다
-(다른 테넌트 문자열이 우연히 가려지는 것은 해가 없다).
+그 프로세스의 출력에 나타날 수 있으므로, 「이 프로세스가 본 값」만 등록하면 빠짐이 없다. 목록은 테넌트마다
+``MAX_TENANT_VALUES``, 로그 공용은 ``MAX_LOG_VALUES``개까지(가장 오래 안 쓰인 값부터 빠진다 — 치환할 때마다 다시 오른다).
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import logging
 import re
 import threading
 import uuid
+from collections import OrderedDict
 from typing import TYPE_CHECKING
 
 from apps.flows.schema import JSON, SECRET_REF_RE
@@ -60,56 +63,112 @@ class DomainExists(DomainError):
 
 # ── 가림 ────────────────────────────────────────────────────────────────────
 
+MAX_TENANT_VALUES = 256
+"""테넌트 하나가 가림 목록에 둘 수 있는 값 수(최근 것부터). 교체를 거듭해도 메모리가 끝없이 자라지 않게."""
+MAX_LOG_VALUES = 1024
+"""로그 가림(프로세스 공용) 목록 상한. 넘으면 가장 오래 안 쓰인 값부터 뺀다."""
+
+
+class _Mask:
+    """값 집합과 그 ``PARTIAL_MIN``자 조각. 읽기는 잠금 없이(얼린 집합을 통째로 바꿔 끼운다), 쓰기는 잠금 안에서."""
+
+    def __init__(self, cap: int) -> None:
+        self._cap = cap
+        self._values: OrderedDict[str, None] = OrderedDict()
+        self.grams: frozenset[str] = frozenset()
+        self.short: frozenset[str] = frozenset()
+
+    def add(self, value: str) -> None:
+        """잠금 안에서 부른다. 이미 있으면 최근으로 옮기기만 한다."""
+        if value in self._values:
+            self._values.move_to_end(value)
+            return
+        self._values[value] = None
+        if len(self._values) > self._cap:
+            self._values.popitem(last=False)
+            self._rebuild()
+        elif len(value) < PARTIAL_MIN:
+            self.short = self.short | {value}
+        else:
+            self.grams = self.grams | _grams_of(value)
+
+    def _rebuild(self) -> None:
+        values = list(self._values)
+        self.short = frozenset(v for v in values if len(v) < PARTIAL_MIN)
+        self.grams = frozenset().union(*(_grams_of(v) for v in values if len(v) >= PARTIAL_MIN))
+
+    def __bool__(self) -> bool:
+        return bool(self.grams or self.short)
+
+    def apply(self, text: str) -> str:
+        grams, short = self.grams, self.short
+        for value in short:
+            text = text.replace(value, MASK)
+        if not grams or len(text) < PARTIAL_MIN:
+            return text
+        covered = [False] * len(text)
+        hit = False
+        for i in range(len(text) - PARTIAL_MIN + 1):
+            if text[i:i + PARTIAL_MIN] in grams:
+                hit = True
+                for j in range(i, i + PARTIAL_MIN):
+                    covered[j] = True
+        if not hit:
+            return text
+        out: list[str] = []
+        prev = False
+        for ch, cov in zip(text, covered):
+            if cov:
+                if not prev:
+                    out.append(MASK)
+            else:
+                out.append(ch)
+            prev = cov
+        return "".join(out)
+
+
+def _grams_of(value: str) -> set[str]:
+    return {value[i:i + PARTIAL_MIN] for i in range(len(value) - PARTIAL_MIN + 1)}
+
+
 _lock = threading.Lock()
-_revealed: set[str] = set()
-_grams: frozenset[str] = frozenset()
-_short: frozenset[str] = frozenset()
+_by_tenant: dict[uuid.UUID, _Mask] = {}
+_log_mask = _Mask(MAX_LOG_VALUES)
 
 
-def register_revealed(value: str) -> None:
-    """이 프로세스에 평문이 지나갔다 — 이후 판단 기록·로그에서 이 값(과 부분 문자열)을 가린다.
+def _key(tenant_id: uuid.UUID | str) -> uuid.UUID:
+    return tenant_id if isinstance(tenant_id, uuid.UUID) else uuid.UUID(str(tenant_id))
 
-    HTTP 도구(#34)가 비밀에서 파생한 값(예: Basic 인증의 base64)을 만들면 그 값도 여기에 등록한다.
+
+def register_revealed(tenant_id: uuid.UUID | str, value: str) -> None:
+    """이 테넌트의 평문이 이 프로세스를 지나갔다 — 이후 **이 테넌트의** 판단 기록과 (프로세스 공용) 로그에서 가린다.
+
+    HTTP 도구(#34)가 비밀에서 파생한 값(예: Basic 인증의 base64)을 만들면 그 값도 같은 테넌트로 여기에 등록한다.
     """
-    global _grams, _short
-    if not value or value in _revealed:
+    if not value:
         return
     with _lock:
-        if value in _revealed:
-            return
-        _revealed.add(value)
-        if len(value) < PARTIAL_MIN:
-            _short = _short | {value}
-        else:
-            _grams = _grams | {value[i:i + PARTIAL_MIN] for i in range(len(value) - PARTIAL_MIN + 1)}
+        key = _key(tenant_id)
+        mask = _by_tenant.get(key)
+        if mask is None:
+            mask = _by_tenant[key] = _Mask(MAX_TENANT_VALUES)
+        mask.add(value)
+        _log_mask.add(value)
 
 
-def redact(text: str) -> str:
-    """등록된 비밀 원문과 그 ``PARTIAL_MIN``자 이상 부분 문자열을 ``MASK``로 바꾼다(겹치는 구간은 하나로)."""
-    grams, short = _grams, _short
-    for value in short:
-        text = text.replace(value, MASK)
-    if not grams or len(text) < PARTIAL_MIN:
-        return text
-    covered = [False] * len(text)
-    hit = False
-    for i in range(len(text) - PARTIAL_MIN + 1):
-        if text[i:i + PARTIAL_MIN] in grams:
-            hit = True
-            for j in range(i, i + PARTIAL_MIN):
-                covered[j] = True
-    if not hit:
-        return text
-    out: list[str] = []
-    prev = False
-    for ch, cov in zip(text, covered):
-        if cov:
-            if not prev:
-                out.append(MASK)
-        else:
-            out.append(ch)
-        prev = cov
-    return "".join(out)
+def redact(tenant_id: uuid.UUID | str, text: str) -> str:
+    """**이 테넌트의** 등록된 비밀 원문과 그 ``PARTIAL_MIN``자 이상 부분 문자열을 ``MASK``로 바꾼다(겹치는 구간은 하나로).
+
+    테넌트가 읽는 출력(판단 기록·시험 대화 trace)에 쓴다. 다른 테넌트 비밀은 건드리지 않는다 — 건드리면 그 출력이
+    「이 조각이 누군가의 비밀인가」를 알려 주는 오라클이 된다(#115).
+    """
+    mask = _by_tenant.get(_key(tenant_id))
+    return mask.apply(text) if mask else text
+
+
+def redact_log(text: str) -> str:
+    """프로세스가 본 모든 테넌트 비밀로 가린다 — 운영자만 보는 로그용(테넌트에게 내보내지 않는다)."""
+    return _log_mask.apply(text)
 
 
 _installed = False
@@ -124,22 +183,22 @@ def install_log_redaction() -> None:
 
     def factory(*args: object, **kwargs: object) -> logging.LogRecord:
         record = base(*args, **kwargs)  # type: ignore[arg-type]  # LogRecord 팩토리 서명 그대로 넘긴다
-        if not (_grams or _short):
+        if not _log_mask:
             return record
         try:
             message = record.getMessage()
         except Exception:  # noqa: BLE001 — 형식이 틀린 기록은 로깅 모듈이 보고하게 그대로 둔다
             return record
-        masked = redact(message)
+        masked = redact_log(message)
         if masked != message:
             record.msg, record.args = masked, None
         if record.exc_info and not record.exc_text:
             text = logging.Formatter().formatException(record.exc_info)
-            masked = redact(text)
+            masked = redact_log(text)
             if masked != text:
                 record.exc_text = masked
         if record.stack_info:
-            record.stack_info = redact(record.stack_info)
+            record.stack_info = redact_log(record.stack_info)
         return record
 
     logging.setLogRecordFactory(factory)
@@ -172,7 +231,7 @@ def set_secret(tenant_id: uuid.UUID, name: str, value: str) -> TenantSecret:
     from apps.tenants.models import TenantSecret
 
     if len(value) >= MIN_VALUE_CHARS:
-        register_revealed(value)  # 검사에 걸려도 이 값은 이미 이 프로세스를 지나갔다(너무 짧은 값은 흔한 낱말을 가린다)
+        register_revealed(tenant_id, value)  # 검사에 걸려도 이 값은 이미 이 프로세스를 지나갔다(너무 짧은 값은 흔한 낱말을 가린다)
     _check_name(name)
     if not MIN_VALUE_CHARS <= len(value) <= MAX_VALUE_CHARS:
         raise SecretError(f"비밀 값은 {MIN_VALUE_CHARS}~{MAX_VALUE_CHARS}자여야 합니다.")
@@ -219,7 +278,7 @@ def render_secrets(tenant_id: uuid.UUID, template: str) -> str:
         raise SecretNotFound(missing[0])
     plain = {name: decrypt_secret(ct) for name, ct in rows.items()}
     for value in plain.values():
-        register_revealed(value)
+        register_revealed(tenant_id, value)
     return SECRET_REF_RE.sub(lambda m: plain[m.group(1)], template)
 
 

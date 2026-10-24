@@ -56,17 +56,57 @@ def test_secret_and_domain_management_are_admin_only_bits():
 # ── 가림(순수) ──────────────────────────────────────────────────────────────
 
 def test_redact_masks_revealed_value_and_its_substrings():
+    import uuid
+
     from apps.tenants.tenant_secrets import MASK, redact, register_revealed
 
+    tid = uuid.uuid4()
     value = "pw-" + pysecrets.token_hex(12)
-    register_revealed(value)
+    register_revealed(tid, value)
 
-    assert redact(f"key={value}; ok") == f"key={MASK}; ok"
-    assert value not in redact(f"[{value}]")
+    assert redact(tid, f"key={value}; ok") == f"key={MASK}; ok"
+    assert value not in redact(tid, f"[{value}]")
+    assert redact(str(tid), value) == MASK  # 문자열 tenant_id도 같은 테넌트
     partial = value[5:15]  # 원문의 10자 부분 문자열(예: 잘린 오류 메시지)
-    out = redact(f"앞부분 {partial} 뒷부분")
+    out = redact(tid, f"앞부분 {partial} 뒷부분")
     assert partial not in out and MASK in out and out.startswith("앞부분 ") and out.endswith(" 뒷부분")
-    assert redact("평범한 문장 그대로") == "평범한 문장 그대로"
+    assert redact(tid, "평범한 문장 그대로") == "평범한 문장 그대로"
+
+
+def test_redact_is_scoped_to_the_tenant_but_log_redaction_is_process_wide():
+    import uuid
+
+    from apps.tenants.tenant_secrets import MASK, redact, redact_log, register_revealed
+
+    a, b = uuid.uuid4(), uuid.uuid4()
+    value = "pw-" + pysecrets.token_hex(12)
+    register_revealed(a, value)
+
+    assert redact(a, value[3:15]) == MASK
+    assert redact(b, value[3:15]) == value[3:15]  # 남의 비밀 조각은 이 테넌트 출력에 아무 흔적도 남기지 않는다
+    assert redact(uuid.uuid4(), value) == value
+    assert redact_log(f"x {value[3:15]} y") == f"x {MASK} y"
+
+
+def test_redaction_lists_are_bounded_least_recently_used_first(monkeypatch):
+    import uuid
+
+    from apps.tenants import tenant_secrets as ts
+
+    monkeypatch.setattr(ts, "_log_mask", ts._Mask(3))
+    monkeypatch.setattr(ts, "MAX_TENANT_VALUES", 2)
+    tid = uuid.uuid4()
+    old, kept, *rest = ["pw-" + pysecrets.token_hex(12) for _ in range(4)]
+    for v in (old, kept):
+        ts.register_revealed(tid, v)
+    ts.register_revealed(tid, kept)  # 다시 치환하면 최근 것이 된다
+    for v in rest:
+        ts.register_revealed(tid, v)
+
+    assert ts.redact_log(old) == old and ts.redact_log(kept) == ts.MASK
+    assert all(ts.redact_log(v) == ts.MASK for v in rest)
+    assert ts.redact(tid, old) == old and ts.redact(tid, kept) == kept  # 테넌트 상한 2: 마지막 둘만
+    assert all(ts.redact(tid, v) == ts.MASK for v in rest)
 
 
 # ── API: 비밀은 쓰기 전용 ───────────────────────────────────────────────────
