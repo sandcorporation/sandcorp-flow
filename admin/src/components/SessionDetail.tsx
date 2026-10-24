@@ -126,7 +126,7 @@ export default function SessionDetail({ sessionId, onBack }: { sessionId: string
         ))}
       </div>
 
-      <div className="max-h-[480px] overflow-y-auto">
+      <div data-log-scroll className="max-h-[480px] overflow-y-auto">
         {subTab === 'history' && <ChatHistory messages={messages} retrievals={retrievals} />}
         {subTab === 'checkpoint' && <CheckpointView sessionId={sessionId} />}
       </div>
