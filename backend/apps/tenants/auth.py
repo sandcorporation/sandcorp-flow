@@ -19,9 +19,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 OPERATOR_SESSION_TYPE = "operator_session"
 
 
-def create_operator_access_token(operator) -> str:
-    """Flow 자기 세션의 Operator Access Token(ADR-0013). sandcorp-auth 로그인 콜백·refresh만 발급한다."""
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+def create_operator_access_token(operator, minutes: int = ACCESS_TOKEN_EXPIRE_MINUTES) -> str:
+    """Flow 자기 세션의 Operator Access Token(ADR-0013). sandcorp-auth 로그인 콜백 뒤 refresh가 발급한다.
+    `minutes`를 바꾸는 곳은 e2e 시드(`seed_e2e_operator`)뿐이다."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=minutes)
     payload = {
         "sub": str(operator.id),
         "type": OPERATOR_SESSION_TYPE,

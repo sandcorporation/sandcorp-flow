@@ -418,3 +418,23 @@ def test_session_token_for_an_operator_without_identity_is_refused() -> None:
     )
 
     assert response.status_code == 401
+
+
+# ── e2e 시드(비밀번호 로그인 대신) ────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_e2e_seed_creates_an_owner_operator_whose_session_opens_the_api(tmp_path) -> None:
+    from django.core.management import call_command
+
+    from apps.tenants.models import Operator
+
+    token_file = tmp_path / "shared" / "operator_token"
+    call_command("seed_e2e_operator", "--sub", "e2e-owner", "--token-file", str(token_file))
+    call_command("seed_e2e_operator", "--sub", "e2e-owner", "--token-file", str(token_file))
+
+    assert Operator.objects.filter(user__sub="e2e-owner", user__acct="owner").count() == 1
+    response = Client().get(
+        "/api/operator/tenants/", HTTP_AUTHORIZATION=f"Bearer {token_file.read_text()}"
+    )
+    assert response.status_code == 200

@@ -100,7 +100,7 @@ services:
       context: ./backend
     command: >
       sh -c "python manage.py migrate --noinput &&
-             python manage.py create_test_operator &&
+             python manage.py seed_e2e_operator --token-file /e2e-shared/operator_token &&
              uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 2"
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
@@ -114,10 +114,9 @@ services:
       OPEN_ROUTER_API_KEY: fake
       OPEN_ROUTER_DEFAULT_MODEL: fake-llm
       OLLAMA_BASE_URL: http://ollama-test:11434
-      E2E_OPERATOR_USERNAME: admin
-      E2E_OPERATOR_PASSWORD: admin123
     volumes:
       - media-e2e:/app/media
+      - e2e-shared:/e2e-shared  # seed_e2e_operator가 Operator 세션 토큰을 쓴다(#21)
     depends_on:
       db-test:
         condition: service_healthy
@@ -128,7 +127,7 @@ services:
       fake-llm:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/api/operator/auth/login || true"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/.well-known/oauth-protected-resource || true"]
       interval: 5s
       timeout: 5s
       retries: 15
@@ -265,8 +264,9 @@ services:
       ADMIN_URL: http://admin-e2e:5174
       WIDGET_URL: http://widget-e2e:5173
       API_URL: http://api-e2e:8000
-      E2E_OPERATOR_USERNAME: admin
-      E2E_OPERATOR_PASSWORD: admin123
+      E2E_OPERATOR_TOKEN_FILE: /e2e-shared/operator_token
+    volumes:
+      - e2e-shared:/e2e-shared:ro
     depends_on:
       api-e2e:
         condition: service_healthy
@@ -290,3 +290,4 @@ services:
 volumes:
   ollama_test_data:
   media-e2e:
+  e2e-shared:

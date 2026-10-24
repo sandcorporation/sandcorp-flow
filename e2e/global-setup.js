@@ -1,26 +1,24 @@
 /**
- * Playwright global setup: E2E 테스트용 Operator 계정 생성.
- * 백엔드 컨테이너에서 manage.py shell로 실행한 후 API가 준비될 때까지 대기.
+ * Playwright global setup: API가 준비되고 시드한 Operator 세션이 통하는지 확인한다.
+ * Operator 비밀번호 로그인은 없다(#21) — api-e2e가 시작할 때 `manage.py seed_e2e_operator`가
+ * 대표 User·Operator를 시드하고 Flow 세션 Access Token을 공유 볼륨 파일에 써 둔다.
  */
 const { request } = require('@playwright/test')
+const { operatorToken } = require('./tests/operatorToken')
 
 const API_URL = process.env.API_URL || 'http://localhost:8000'
-const OPERATOR_USERNAME = process.env.E2E_OPERATOR_USERNAME || 'admin'
-const OPERATOR_PASSWORD = process.env.E2E_OPERATOR_PASSWORD || 'admin123'
 
 module.exports = async function globalSetup() {
-  // Operator 계정이 이미 있으면 통과, 없으면 생성 스크립트가 시작 시 실행됨
-  // api-e2e 서비스가 startup command로 create_test_operator를 실행함
   const api = await request.newContext({ baseURL: API_URL })
 
-  // 로그인 확인 (최대 30초 대기)
+  // 최대 30초 대기
   for (let i = 0; i < 15; i++) {
     try {
-      const res = await api.post('/api/operator/auth/login', {
-        data: { username: OPERATOR_USERNAME, password: OPERATOR_PASSWORD },
+      const res = await api.get('/api/operator/tenants/', {
+        headers: { Authorization: `Bearer ${operatorToken()}` },
       })
       if (res.ok()) {
-        console.log('[global-setup] Operator login OK')
+        console.log('[global-setup] Operator session OK')
         await api.dispose()
         return
       }
@@ -31,5 +29,5 @@ module.exports = async function globalSetup() {
   }
 
   await api.dispose()
-  throw new Error('E2E global setup: operator login failed after 30s')
+  throw new Error('E2E global setup: seeded operator session not accepted after 30s')
 }
