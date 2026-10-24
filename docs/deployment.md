@@ -235,6 +235,12 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     | `TRUSTED_PROXY_COUNT` | `2`(prod 기본) | X-Forwarded-For를 덧붙이는 프록시 단수(NPM→nginx). 프록시 구성이 바뀔 때만. |
 
     확인: Provider 없는 시험 조직의 위젯에서 한 마디 → 답이 오고 관리 화면 상단 「체험 중 — 남은 대화」가 1 줄어든다.
+11. [ ] **MCP 서버 등록**(#74·#75) — 등록 전에는 운영 `/mcp`가 401만 내는 게 정상이다.
+    1. **리소스**: sandcorp-auth에 Flow MCP 리소스 `https://flow.sandcorp.co.kr/mcp`(끝 `/` 없음)를 API 리소스(`…/api`)와 **따로** 등록하고 스코프 `flow.read`(읽기 도구)·`flow.write`(편집·버전 저장·배포·시험 실행)를 둔다.
+    2. **일반 사용자 스코프 허용**: auth의 「일반 사용자(member)가 받을 수 있는 스코프」(지금 `login`·`openid`·`profile`·`email`)에 `flow.read`·`flow.write`를 더한다. 빠지면 멤버 토큰에 스코프가 없어 `/mcp`가 403이다. 실제 편집 판정은 Flow 역할(테넌트 Admin만)이다.
+    3. **claude.ai 클라이언트**: claude.ai 커넥터는 CIMD(Client ID Metadata Document)로 접속한다. 그 클라이언트가 위 리소스·스코프를 받을 수 있게 하고 「일반 사용자 허용」(`allows_members`)을 켠다.
+    4. **운영 `.env`**: `AUTH_MCP_RESOURCE`(기본 `https://flow.sandcorp.co.kr/mcp`)는 기본값이면 적지 않는다.
+    5. **확인**: `curl -s https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource/mcp`가 `resource`=`https://flow.sandcorp.co.kr/mcp`, `scopes_supported`=`["flow.read","flow.write"]`인 JSON, `curl -si -X POST https://flow.sandcorp.co.kr/mcp`가 401 + `WWW-Authenticate: Bearer resource_metadata="https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource/mcp"`. 그다음 claude.ai → 설정 → 커넥터에 `https://flow.sandcorp.co.kr/mcp`를 더해 로그인하고 `list_tenants`가 내 테넌트를 돌려주는지 본다.
 
 ## 관련 문서
 - [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md) — 무중단 롤링 설계·기각안
