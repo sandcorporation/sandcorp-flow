@@ -8,7 +8,7 @@ import pytest
 # ── Issue 139: GET /tenant/sessions/ ──────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_sessions_sorted_escalation_active_idle(client, tenant_agent_token, tenant_with_key):
+def test_sessions_sorted_escalation_active_idle(client, tenant_admin_token, tenant_with_key):
     """escalation(pending) → 활성(SSE) → 나머지 순으로 정렬되고 enrich 필드가 채워진다."""
     from apps.chat.models import ChatSession
     from apps.escalation.models import Escalation
@@ -23,7 +23,7 @@ def test_sessions_sorted_escalation_active_idle(client, tenant_agent_token, tena
     )
     presence.mark_active(str(tenant.id), str(active.id))
 
-    resp = client.get("/api/tenant/sessions/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
+    resp = client.get("/api/tenant/sessions/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
     assert resp.status_code == 200
     data = resp.json()
     order = [r["visitor_id"] for r in data]
@@ -36,7 +36,7 @@ def test_sessions_sorted_escalation_active_idle(client, tenant_agent_token, tena
 
 
 @pytest.mark.django_db
-def test_sessions_pagination(client, tenant_agent_token, tenant_with_key):
+def test_sessions_pagination(client, tenant_admin_token, tenant_with_key):
     """limit/offset로 페이지네이션된다."""
     from apps.chat.models import ChatSession
 
@@ -45,10 +45,10 @@ def test_sessions_pagination(client, tenant_agent_token, tenant_with_key):
         ChatSession.objects.create(tenant_id=tenant.id, visitor_id=f"v{i}")
 
     page1 = client.get(
-        "/api/tenant/sessions/?limit=2&offset=0", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}"
+        "/api/tenant/sessions/?limit=2&offset=0", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}"
     ).json()
     page2 = client.get(
-        "/api/tenant/sessions/?limit=2&offset=2", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}"
+        "/api/tenant/sessions/?limit=2&offset=2", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}"
     ).json()
     assert len(page1) == 2
     assert len(page2) == 1
@@ -57,17 +57,14 @@ def test_sessions_pagination(client, tenant_agent_token, tenant_with_key):
 # ── Issue 140: POST /tenant/sessions/{id}/takeover ────────────────────────────
 
 def _second_agent_token(tenant):
-    from apps.tenants.models import TenantAgent
-    from apps.tenants.auth import create_tenant_agent_token
-    other = TenantAgent(tenant=tenant, username="agent2")
-    other.set_password("pw")
-    other.save()
-    return create_tenant_agent_token(other)
+    from tests.utils import make_membership, member_token
+    other = make_membership(tenant, "member")
+    return member_token(other)
 
 
 @pytest.mark.django_db
 def test_takeover_creates_claimed_escalation_and_notifies_visitor(
-    client, tenant_agent_token, tenant_with_key, redis_subscribe, drain_events
+    client, tenant_admin_token, tenant_with_key, redis_subscribe, drain_events
 ):
     """takeover가 자동-claimed Escalation(trigger=agent)을 만들고 is_hitl을 켜고 hitl_start를 publish한다."""
     from apps.chat.models import ChatSession
@@ -79,7 +76,7 @@ def test_takeover_creates_claimed_escalation_and_notifies_visitor(
 
     resp = client.post(
         f"/api/tenant/sessions/{session.id}/takeover",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     esc = Escalation.objects.get(session=session)
@@ -101,27 +98,27 @@ def test_takeover_creates_claimed_escalation_and_notifies_visitor(
 
 
 @pytest.mark.django_db
-def test_takeover_is_idempotent_for_same_agent(client, tenant_agent_token, tenant_with_key):
+def test_takeover_is_idempotent_for_same_agent(client, tenant_admin_token, tenant_with_key):
     """같은 상담원이 두 번 takeover해도 escalation은 하나(기존 것 반환)."""
     from apps.chat.models import ChatSession
     from apps.escalation.models import Escalation
 
     tenant, _ = tenant_with_key
     session = ChatSession.objects.create(tenant_id=tenant.id, visitor_id="v-idem")
-    a = client.post(f"/api/tenant/sessions/{session.id}/takeover", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
-    b = client.post(f"/api/tenant/sessions/{session.id}/takeover", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
+    a = client.post(f"/api/tenant/sessions/{session.id}/takeover", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
+    b = client.post(f"/api/tenant/sessions/{session.id}/takeover", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
     assert a.json()["escalation_id"] == b.json()["escalation_id"]
     assert Escalation.objects.filter(session=session).count() == 1
 
 
 @pytest.mark.django_db
-def test_takeover_conflicts_when_other_agent_owns(client, tenant_agent_token, tenant_with_key):
+def test_takeover_conflicts_when_other_agent_owns(client, tenant_admin_token, tenant_with_key):
     """다른 상담원이 이미 잡은 세션은 409."""
     from apps.chat.models import ChatSession
 
     tenant, _ = tenant_with_key
     session = ChatSession.objects.create(tenant_id=tenant.id, visitor_id="v-conflict")
-    client.post(f"/api/tenant/sessions/{session.id}/takeover", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
+    client.post(f"/api/tenant/sessions/{session.id}/takeover", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
 
     other_token = _second_agent_token(tenant)
     resp = client.post(f"/api/tenant/sessions/{session.id}/takeover", HTTP_AUTHORIZATION=f"Bearer {other_token}")
@@ -129,7 +126,7 @@ def test_takeover_conflicts_when_other_agent_owns(client, tenant_agent_token, te
 
 
 @pytest.mark.django_db
-def test_takeover_claims_pending_ai_escalation(client, tenant_agent_token, tenant_with_key):
+def test_takeover_claims_pending_ai_escalation(client, tenant_admin_token, tenant_with_key):
     """미claim된 AI pending escalation을 takeover하면 새로 만들지 않고 이어받아 claimed가 된다."""
     from apps.chat.models import ChatSession
     from apps.escalation.models import Escalation
@@ -139,7 +136,7 @@ def test_takeover_claims_pending_ai_escalation(client, tenant_agent_token, tenan
     ai_esc = Escalation.objects.create(
         session=session, trigger_type=Escalation.TRIGGER_AI, status=Escalation.STATUS_PENDING
     )
-    resp = client.post(f"/api/tenant/sessions/{session.id}/takeover", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
+    resp = client.post(f"/api/tenant/sessions/{session.id}/takeover", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
     assert resp.json()["escalation_id"] == str(ai_esc.id)
     ai_esc.refresh_from_db()
     assert ai_esc.status == Escalation.STATUS_CLAIMED
@@ -147,7 +144,7 @@ def test_takeover_claims_pending_ai_escalation(client, tenant_agent_token, tenan
 
 
 @pytest.mark.django_db
-def test_takeover_404_for_unknown_session(client, tenant_agent_token):
+def test_takeover_404_for_unknown_session(client, tenant_admin_token):
     import uuid
-    resp = client.post(f"/api/tenant/sessions/{uuid.uuid4()}/takeover", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
+    resp = client.post(f"/api/tenant/sessions/{uuid.uuid4()}/takeover", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
     assert resp.status_code == 404

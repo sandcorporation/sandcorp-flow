@@ -14,158 +14,6 @@
         "title": "ActionOut",
         "type": "object"
       },
-      "AgentCreateIn": {
-        "properties": {
-          "role": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Role"
-          },
-          "username": {
-            "title": "Username",
-            "type": "string"
-          }
-        },
-        "required": [
-          "username"
-        ],
-        "title": "AgentCreateIn",
-        "type": "object"
-      },
-      "AgentCreatedOut": {
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "is_active": {
-            "title": "Is Active",
-            "type": "boolean"
-          },
-          "role": {
-            "title": "Role",
-            "type": "string"
-          },
-          "temp_password": {
-            "title": "Temp Password",
-            "type": "string"
-          },
-          "username": {
-            "title": "Username",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "username",
-          "is_active",
-          "role",
-          "temp_password"
-        ],
-        "title": "AgentCreatedOut",
-        "type": "object"
-      },
-      "AgentLoginIn": {
-        "properties": {
-          "password": {
-            "title": "Password",
-            "type": "string"
-          },
-          "tenant_name": {
-            "title": "Tenant Name",
-            "type": "string"
-          },
-          "username": {
-            "title": "Username",
-            "type": "string"
-          }
-        },
-        "required": [
-          "tenant_name",
-          "username",
-          "password"
-        ],
-        "title": "AgentLoginIn",
-        "type": "object"
-      },
-      "AgentLoginOut": {
-        "properties": {
-          "access_token": {
-            "title": "Access Token",
-            "type": "string"
-          }
-        },
-        "required": [
-          "access_token"
-        ],
-        "title": "AgentLoginOut",
-        "type": "object"
-      },
-      "AgentOut": {
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "is_active": {
-            "title": "Is Active",
-            "type": "boolean"
-          },
-          "role": {
-            "title": "Role",
-            "type": "string"
-          },
-          "username": {
-            "title": "Username",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "username",
-          "is_active",
-          "role"
-        ],
-        "title": "AgentOut",
-        "type": "object"
-      },
-      "AgentRoleIn": {
-        "properties": {
-          "role": {
-            "title": "Role",
-            "type": "string"
-          }
-        },
-        "required": [
-          "role"
-        ],
-        "title": "AgentRoleIn",
-        "type": "object"
-      },
-      "ChangePasswordIn": {
-        "properties": {
-          "current_password": {
-            "title": "Current Password",
-            "type": "string"
-          },
-          "new_password": {
-            "title": "New Password",
-            "type": "string"
-          }
-        },
-        "required": [
-          "current_password",
-          "new_password"
-        ],
-        "title": "ChangePasswordIn",
-        "type": "object"
-      },
       "ChunkOut": {
         "properties": {
           "chunk_index": {
@@ -447,6 +295,83 @@
         "title": "IdentityIn",
         "type": "object"
       },
+      "InviteCreatedOut": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "expires_at",
+          "created_at",
+          "token",
+          "url"
+        ],
+        "title": "InviteCreatedOut",
+        "type": "object"
+      },
+      "InviteIn": {
+        "properties": {
+          "role": {
+            "default": "member",
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "title": "InviteIn",
+        "type": "object"
+      },
+      "InviteOut": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "expires_at",
+          "created_at"
+        ],
+        "title": "InviteOut",
+        "type": "object"
+      },
       "LoginOut": {
         "properties": {
           "access_token": {
@@ -458,6 +383,186 @@
           "access_token"
         ],
         "title": "LoginOut",
+        "type": "object"
+      },
+      "MeOut": {
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "tenant_name": {
+            "title": "Tenant Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "tenant_name",
+          "role",
+          "name",
+          "email"
+        ],
+        "title": "MeOut",
+        "type": "object"
+      },
+      "MemberOut": {
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "name",
+          "email",
+          "is_active",
+          "role"
+        ],
+        "title": "MemberOut",
+        "type": "object"
+      },
+      "MemberRoleIn": {
+        "properties": {
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "MemberRoleIn",
+        "type": "object"
+      },
+      "MemberTenantOut": {
+        "properties": {
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "tenant_name": {
+            "title": "Tenant Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "tenant_name",
+          "role"
+        ],
+        "title": "MemberTenantOut",
+        "type": "object"
+      },
+      "MemberTicketOut": {
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "tenants": {
+            "items": {
+              "$ref": "#/components/schemas/MemberTenantOut"
+            },
+            "title": "Tenants",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "tenants"
+        ],
+        "title": "MemberTicketOut",
         "type": "object"
       },
       "MemoryIn": {
@@ -629,6 +734,19 @@
           "new_tenant_key"
         ],
         "title": "ResetKeyOut",
+        "type": "object"
+      },
+      "SelectTenantIn": {
+        "properties": {
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id"
+        ],
+        "title": "SelectTenantIn",
         "type": "object"
       },
       "SessionListItemOut": {
@@ -1206,12 +1324,12 @@
       },
       "TenantCreatedOut": {
         "properties": {
-          "agent_temp_password": {
-            "title": "Agent Temp Password",
+          "admin_invite_expires_at": {
+            "title": "Admin Invite Expires At",
             "type": "string"
           },
-          "agent_username": {
-            "title": "Agent Username",
+          "admin_invite_url": {
+            "title": "Admin Invite Url",
             "type": "string"
           },
           "id": {
@@ -1236,8 +1354,8 @@
           "name",
           "is_active",
           "tenant_key",
-          "agent_username",
-          "agent_temp_password"
+          "admin_invite_url",
+          "admin_invite_expires_at"
         ],
         "title": "TenantCreatedOut",
         "type": "object"
@@ -1432,15 +1550,15 @@
       }
     },
     "securitySchemes": {
-      "DualAuth": {
+      "MemberAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "MemberOrTenantKeyAuth": {
         "scheme": "bearer",
         "type": "http"
       },
       "OperatorAuth": {
-        "scheme": "bearer",
-        "type": "http"
-      },
-      "TenantAgentAuth": {
         "scheme": "bearer",
         "type": "http"
       },
@@ -1457,6 +1575,98 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/auth/member/select": {
+      "post": {
+        "description": "고른 테넌트의 세션을 연다(Refresh 쿠키 + Access Token). 멤버가 아닌 테넌트는 403.",
+        "operationId": "apps_tenants_api_member_select_tenant",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectTenantIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Member Select Tenant",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/member/tenants": {
+      "get": {
+        "description": "콜백 뒤 표(`member_ticket` 쿠키)로 고를 수 있는 테넌트 목록. 비어 있으면 온보딩 대상(#41).",
+        "operationId": "apps_tenants_api_member_tenants",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberTicketOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "Member Tenants",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/chat/identity": {
       "post": {
         "description": "TENANT_KEY 인증으로 visitor_id의 검증 해시를 발급한다(유저당 1회, 캐시 가능).",
@@ -1912,443 +2122,6 @@
         ]
       }
     },
-    "/api/tenant/agents/": {
-      "get": {
-        "operationId": "apps_tenants_api_list_agents",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/AgentOut"
-                  },
-                  "title": "Response",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "DualAuth": []
-          }
-        ],
-        "summary": "List Agents",
-        "tags": [
-          "tenant-agents"
-        ]
-      },
-      "post": {
-        "operationId": "apps_tenants_api_create_agent",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentCreateIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentCreatedOut"
-                }
-              }
-            },
-            "description": "Created"
-          }
-        },
-        "security": [
-          {
-            "DualAuth": []
-          }
-        ],
-        "summary": "Create Agent",
-        "tags": [
-          "tenant-agents"
-        ]
-      }
-    },
-    "/api/tenant/agents/auth/login": {
-      "post": {
-        "operationId": "apps_tenants_api_agent_login",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentLoginIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentLoginOut"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          }
-        },
-        "summary": "Agent Login",
-        "tags": [
-          "tenant-agents"
-        ]
-      }
-    },
-    "/api/tenant/agents/auth/logout": {
-      "post": {
-        "operationId": "apps_tenants_api_agent_logout",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "summary": "Agent Logout",
-        "tags": [
-          "tenant-agents"
-        ]
-      }
-    },
-    "/api/tenant/agents/auth/logout-all": {
-      "post": {
-        "operationId": "apps_tenants_api_agent_logout_all",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "TenantAgentAuth": []
-          }
-        ],
-        "summary": "Agent Logout All",
-        "tags": [
-          "tenant-agents"
-        ]
-      }
-    },
-    "/api/tenant/agents/auth/refresh": {
-      "post": {
-        "operationId": "apps_tenants_api_agent_refresh",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentLoginOut"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          }
-        },
-        "summary": "Agent Refresh",
-        "tags": [
-          "tenant-agents"
-        ]
-      }
-    },
-    "/api/tenant/agents/auth/signup": {
-      "post": {
-        "description": "공개 가입(ADR-0025) — 조직 이름·username·password로 Tenant + 첫 Tenant Admin 생성 후 즉시 로그인.\n\n남용 방지: IP당 1시간 1회(성공 가입만 슬롯 소비 — 실패는 안 막음).",
-        "operationId": "apps_tenants_api_agent_signup",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentLoginIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentLoginOut"
-                }
-              }
-            },
-            "description": "Created"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Too Many Requests"
-          }
-        },
-        "summary": "Agent Signup",
-        "tags": [
-          "tenant-agents"
-        ]
-      }
-    },
-    "/api/tenant/agents/me/change-password": {
-      "post": {
-        "operationId": "apps_tenants_api_change_password",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChangePasswordIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Bad Request"
-          }
-        },
-        "security": [
-          {
-            "TenantAgentAuth": []
-          }
-        ],
-        "summary": "Change Password",
-        "tags": [
-          "tenant-agents"
-        ]
-      }
-    },
-    "/api/tenant/agents/{agent_id}/deactivate": {
-      "patch": {
-        "operationId": "apps_tenants_api_deactivate_agent",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "agent_id",
-            "required": true,
-            "schema": {
-              "title": "Agent Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentOut"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Conflict"
-          }
-        },
-        "security": [
-          {
-            "DualAuth": []
-          }
-        ],
-        "summary": "Deactivate Agent",
-        "tags": [
-          "tenant-agents"
-        ]
-      }
-    },
-    "/api/tenant/agents/{agent_id}/role": {
-      "patch": {
-        "operationId": "apps_tenants_api_change_agent_role",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "agent_id",
-            "required": true,
-            "schema": {
-              "title": "Agent Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentRoleIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentOut"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Conflict"
-          }
-        },
-        "security": [
-          {
-            "DualAuth": []
-          }
-        ],
-        "summary": "Change Agent Role",
-        "tags": [
-          "tenant-agents"
-        ]
-      }
-    },
     "/api/tenant/config/": {
       "get": {
         "operationId": "apps_tenants_api_get_config",
@@ -2367,7 +2140,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Get Config",
@@ -2414,7 +2187,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Update Config",
@@ -2445,7 +2218,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "List Documents",
@@ -2495,7 +2268,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Upload Document",
@@ -2533,7 +2306,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Graph Neighbors",
@@ -2561,7 +2334,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Rebuild Graph",
@@ -2599,7 +2372,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Graph Search",
@@ -2627,7 +2400,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Graph Status",
@@ -2669,7 +2442,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Add Url Documents",
@@ -2699,7 +2472,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Delete Document",
@@ -2744,7 +2517,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Update Document",
@@ -2786,7 +2559,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "List Chunks",
@@ -2824,7 +2597,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Refetch Url Document",
@@ -2855,7 +2628,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "List Escalations",
@@ -2938,7 +2711,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Claim Escalation",
@@ -2995,7 +2768,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Send Message",
@@ -3046,7 +2819,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Get Escalation Messages",
@@ -3093,7 +2866,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Resolve Escalation",
@@ -3140,12 +2913,385 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Send Typing Indicator",
         "tags": [
           "escalations"
+        ]
+      }
+    },
+    "/api/tenant/invites/": {
+      "get": {
+        "operationId": "apps_tenants_api_list_invites",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InviteOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "List Invites",
+        "tags": [
+          "tenant-invites"
+        ]
+      },
+      "post": {
+        "operationId": "apps_tenants_api_create_tenant_invite",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteCreatedOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad Request"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Create Tenant Invite",
+        "tags": [
+          "tenant-invites"
+        ]
+      }
+    },
+    "/api/tenant/invites/{invite_id}": {
+      "delete": {
+        "operationId": "apps_tenants_api_revoke_tenant_invite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invite_id",
+            "required": true,
+            "schema": {
+              "title": "Invite Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Revoke Tenant Invite",
+        "tags": [
+          "tenant-invites"
+        ]
+      }
+    },
+    "/api/tenant/members/": {
+      "get": {
+        "operationId": "apps_tenants_api_list_members",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemberOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "List Members",
+        "tags": [
+          "tenant-members"
+        ]
+      }
+    },
+    "/api/tenant/members/auth/logout": {
+      "post": {
+        "operationId": "apps_tenants_api_member_logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Member Logout",
+        "tags": [
+          "tenant-members"
+        ]
+      }
+    },
+    "/api/tenant/members/auth/logout-all": {
+      "post": {
+        "operationId": "apps_tenants_api_member_logout_all",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberAuth": []
+          }
+        ],
+        "summary": "Member Logout All",
+        "tags": [
+          "tenant-members"
+        ]
+      }
+    },
+    "/api/tenant/members/auth/refresh": {
+      "post": {
+        "operationId": "apps_tenants_api_member_refresh",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "Member Refresh",
+        "tags": [
+          "tenant-members"
+        ]
+      }
+    },
+    "/api/tenant/members/me": {
+      "get": {
+        "operationId": "apps_tenants_api_member_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberAuth": []
+          }
+        ],
+        "summary": "Member Me",
+        "tags": [
+          "tenant-members"
+        ]
+      }
+    },
+    "/api/tenant/members/{member_id}/deactivate": {
+      "patch": {
+        "operationId": "apps_tenants_api_deactivate_member",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "title": "Member Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Deactivate Member",
+        "tags": [
+          "tenant-members"
+        ]
+      }
+    },
+    "/api/tenant/members/{member_id}/role": {
+      "patch": {
+        "operationId": "apps_tenants_api_change_member_role",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "title": "Member Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberRoleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Change Member Role",
+        "tags": [
+          "tenant-members"
         ]
       }
     },
@@ -3190,7 +3336,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Provider Models",
@@ -3240,7 +3386,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Provider Quick Setup",
@@ -3267,7 +3413,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Reset Tenant Key",
@@ -3320,7 +3466,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "List Sessions",
@@ -3369,7 +3515,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Get Session Checkpoint",
@@ -3420,7 +3566,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Get Session Messages",
@@ -3469,7 +3615,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Get Session Retrievals",
@@ -3527,7 +3673,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Takeover Session",
@@ -3564,7 +3710,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Update Slug",
@@ -3603,7 +3749,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Tenant Usage",
@@ -3651,7 +3797,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "List Visitors",
@@ -3692,7 +3838,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "List Memories",
@@ -3741,7 +3887,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Delete Memory Entry",
@@ -3795,7 +3941,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "Update Memory",
@@ -3836,7 +3982,7 @@
         },
         "security": [
           {
-            "TenantAgentAuth": []
+            "MemberAuth": []
           }
         ],
         "summary": "List Visitor Sessions",

@@ -16,49 +16,49 @@ def _upload(client, token, name=b"x", filename="doc.txt"):
 # ── Graph Freshness + 엔티티 해소 재구축 (ADR-0016: Community/Global 제거) ──────
 
 @pytest.mark.django_db
-def test_ingest_sets_graph_freshness_stale(client, tenant_agent_token, tenant_with_key):
+def test_ingest_sets_graph_freshness_stale(client, tenant_admin_token, tenant_with_key):
     """문서 업로드 시 Graph Freshness가 stale이 된다 (엔티티 해소 재구축 필요)."""
     from apps.rag.graph_store import GraphStore
 
     tenant, _ = tenant_with_key
-    _upload(client, tenant_agent_token, b"The FCB1010 has footswitches.", "fcb.txt")
+    _upload(client, tenant_admin_token, b"The FCB1010 has footswitches.", "fcb.txt")
     assert GraphStore(str(tenant.id)).get_freshness() == "stale"
 
 
 @pytest.mark.django_db
-def test_rebuild_sets_fresh(client, tenant_agent_token, tenant_with_key):
+def test_rebuild_sets_fresh(client, tenant_admin_token, tenant_with_key):
     """재구축하면 Graph Freshness가 fresh가 된다 (엔티티 해소 수행)."""
     from apps.rag.graph_store import GraphStore
     from apps.rag.community_builder import rebuild_communities
 
     tenant, _ = tenant_with_key
-    _upload(client, tenant_agent_token, b"The FCB1010 has footswitches and pedals.", "fcb.txt")
+    _upload(client, tenant_admin_token, b"The FCB1010 has footswitches and pedals.", "fcb.txt")
 
     rebuild_communities(str(tenant.id))
     assert GraphStore(str(tenant.id)).get_freshness() == "fresh"
 
 
 @pytest.mark.django_db
-def test_graph_rebuild_and_status_endpoints(client, tenant_agent_token, tenant_with_key):
+def test_graph_rebuild_and_status_endpoints(client, tenant_admin_token, tenant_with_key):
     """어드민 graph status/rebuild 엔드포인트: stale → rebuild → fresh."""
-    _upload(client, tenant_agent_token, b"endpoint doc", "e.txt")
+    _upload(client, tenant_admin_token, b"endpoint doc", "e.txt")
 
     r1 = client.get(
         "/api/tenant/documents/graph/status",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert r1.status_code == 200
     assert r1.json()["freshness"] == "stale"
 
     r2 = client.post(
         "/api/tenant/documents/graph/rebuild",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert r2.status_code == 202
 
     r3 = client.get(
         "/api/tenant/documents/graph/status",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert r3.json()["freshness"] == "fresh"
 

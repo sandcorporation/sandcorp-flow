@@ -133,7 +133,7 @@ def test_send_message_unknown_session_returns_404(client):
 
 
 @pytest.mark.django_db(transaction=True)
-async def test_get_session_checkpoint_returns_channel_values(client, tenant_with_key, tenant_agent_token):
+async def test_get_session_checkpoint_returns_channel_values(client, tenant_with_key, tenant_admin_token):
     """run_chat_agent 실행 후 GET /api/tenant/sessions/{id}/checkpoint → channel_values JSON."""
     from asgiref.sync import sync_to_async
     from apps.agent.graph import run_chat_agent_async
@@ -146,7 +146,7 @@ async def test_get_session_checkpoint_returns_channel_values(client, tenant_with
 
     resp = await adb(client.get)(
         f"/api/tenant/sessions/{session.id}/checkpoint",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -155,7 +155,7 @@ async def test_get_session_checkpoint_returns_channel_values(client, tenant_with
 
 
 @pytest.mark.django_db
-def test_get_session_checkpoint_404_when_no_llm_call(client, tenant_with_key, tenant_agent_token):
+def test_get_session_checkpoint_404_when_no_llm_call(client, tenant_with_key, tenant_admin_token):
     """LLM 호출이 없는 세션에 checkpoint 조회 시 404를 반환한다."""
     from apps.chat.models import ChatSession
 
@@ -164,13 +164,13 @@ def test_get_session_checkpoint_404_when_no_llm_call(client, tenant_with_key, te
 
     resp = client.get(
         f"/api/tenant/sessions/{session.id}/checkpoint",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 404
 
 
 @pytest.mark.django_db
-def test_get_session_checkpoint_404_for_other_tenant(client, tenant_agent_token):
+def test_get_session_checkpoint_404_for_other_tenant(client, tenant_admin_token):
     """다른 Tenant의 session_id로 checkpoint 조회 시 404를 반환한다."""
     import secrets
     from apps.tenants.models import Tenant
@@ -182,13 +182,13 @@ def test_get_session_checkpoint_404_for_other_tenant(client, tenant_agent_token)
 
     resp = client.get(
         f"/api/tenant/sessions/{other_session.id}/checkpoint",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 404
 
 
 @pytest.mark.django_db(transaction=True)
-async def test_get_session_retrievals_returns_turns(client, tenant_with_key, tenant_agent_token):
+async def test_get_session_retrievals_returns_turns(client, tenant_with_key, tenant_admin_token):
     """GET /api/tenant/sessions/{id}/retrievals → 턴별 GraphRAG 검색 결과(히스토리에서 복원, issue 207)."""
     from asgiref.sync import sync_to_async
     from apps.agent.graph import run_chat_agent_async
@@ -201,7 +201,7 @@ async def test_get_session_retrievals_returns_turns(client, tenant_with_key, ten
 
     resp = await adb(client.get)(
         f"/api/tenant/sessions/{session.id}/retrievals",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -213,7 +213,7 @@ async def test_get_session_retrievals_returns_turns(client, tenant_with_key, ten
 
 
 @pytest.mark.django_db
-def test_get_session_retrievals_404_for_other_tenant(client, tenant_agent_token):
+def test_get_session_retrievals_404_for_other_tenant(client, tenant_admin_token):
     """다른 Tenant의 session_id로 retrievals 조회 시 404를 반환한다."""
     import secrets
     from apps.tenants.models import Tenant
@@ -225,7 +225,7 @@ def test_get_session_retrievals_404_for_other_tenant(client, tenant_agent_token)
 
     resp = client.get(
         f"/api/tenant/sessions/{other_session.id}/retrievals",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 404
 
@@ -428,13 +428,13 @@ async def test_brand_name_in_connected_event(tenant_with_key):
 
 
 @pytest.mark.django_db
-def test_brand_name_settable_via_config_api(client, tenant_agent_token):
+def test_brand_name_settable_via_config_api(client, tenant_admin_token):
     """Tenant가 어드민 config API로 brand_name을 설정·조회할 수 있다."""
     client.patch(
         "/api/tenant/config/",
         {"brand_name": "내 브랜드"},
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
-    g = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
+    g = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
     assert g.json()["brand_name"] == "내 브랜드"

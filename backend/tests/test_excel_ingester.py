@@ -56,7 +56,7 @@ def test_excel_multi_sheet_and_empty_cells():
 
 
 @pytest.mark.django_db
-def test_xlsx_upload_ingested_to_graph(client, tenant_agent_token, tenant_with_key):
+def test_xlsx_upload_ingested_to_graph(client, tenant_admin_token, tenant_with_key):
     """.xlsx 업로드가 ExcelIngester를 거쳐 그래프 인제스션까지 도달한다(status ready)."""
     from django.core.files.uploadedfile import SimpleUploadedFile
     from apps.rag.models import Document
@@ -70,7 +70,7 @@ def test_xlsx_upload_ingested_to_graph(client, tenant_agent_token, tenant_with_k
     resp = client.post(
         "/api/tenant/documents/",
         {"file": upload},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert resp.status_code == 201
 

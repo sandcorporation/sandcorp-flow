@@ -6,6 +6,7 @@ from django.conf import settings
 from ninja.security import HttpBearer
 
 if TYPE_CHECKING:
+    from apps.tenants.models import Membership
     from apps.tenants.resource_token import AccessToken
 
 logger = logging.getLogger(__name__)
@@ -130,42 +131,68 @@ class TenantKeyAuth(HttpBearer):
         return tenant
 
 
-def create_tenant_agent_token(agent) -> str:
+MEMBER_SESSION_TYPE = "tenant_member"
+
+
+def create_member_access_token(membership: "Membership") -> str:
+    """테넌트 세션 Access Token(ADR-0013). `sub`=멤버십 id. `role`은 화면 게이팅용일 뿐 —
+    인가는 DB의 `membership.role`로 판정한다."""
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
-        "sub": str(agent.id),
-        "tenant_id": str(agent.tenant_id),
-        "type": "tenant_agent",
-        "role": agent.role,  # UI 게이팅용(백엔드 authz는 DB의 agent.role로 판정)
+        "sub": str(membership.id),
+        "tenant_id": str(membership.tenant_id),
+        "type": MEMBER_SESSION_TYPE,
+        "role": membership.role,
         "exp": expire,
     }
     return jwt.encode(payload, settings.JWT_SIGNING_KEY, algorithm=ALGORITHM)
 
 
-def verify_tenant_agent_token(token: str) -> Optional[dict]:
+def verify_member_access_token(token: str) -> Optional[dict]:
     try:
         payload = jwt.decode(token, settings.JWT_SIGNING_KEY, algorithms=[ALGORITHM])
-        if payload.get("type") != "tenant_agent":
+        if payload.get("type") != MEMBER_SESSION_TYPE:
             return None
         return payload
     except JWTError:
         return None
 
 
-class TenantAgentAuth(HttpBearer):
+def active_membership_for_token(token: str) -> "Membership | None":
+    """토큰이 가리키는 멤버십이 지금도 활성(멤버십·Tenant 모두)이면 그것을, 아니면 None."""
+    payload = verify_member_access_token(token)
+    if not payload:
+        return None
+    from apps.tenants.models import Membership
+
+    return (
+        Membership.objects.select_related("tenant", "user")
+        .filter(id=payload["sub"], is_active=True, tenant__is_active=True)
+        .first()
+    )
+
+
+class MemberAuth(HttpBearer):
+    """테넌트 API 가드 — 멤버 세션 Access Token. `request.auth`는 `Membership`."""
+
     def authenticate(self, request, token: str):
-        payload = verify_tenant_agent_token(token)
-        if not payload:
-            return None
-        from apps.tenants.models import TenantAgent
-        try:
-            return TenantAgent.objects.select_related("tenant").get(
-                id=payload["sub"], is_active=True
-            )
-        except TenantAgent.DoesNotExist:
-            return None
+        return active_membership_for_token(token)
+
+
+class MemberOrTenantKeyAuth(HttpBearer):
+    """멤버 세션 또는 TENANT_KEY(Admin 등가 break-glass, ADR-0025 D). `request.auth`는
+    `Membership` 또는 `Tenant`."""
+
+    def authenticate(self, request, token: str):
+        membership = active_membership_for_token(token)
+        if membership is not None:
+            return membership
+        from apps.tenants.models import Tenant
+
+        return Tenant.verify_key(token)
 
 
 operator_auth = OperatorAuth()
 tenant_key_auth = TenantKeyAuth()
-tenant_agent_auth = TenantAgentAuth()
+member_auth = MemberAuth()
+member_or_tenant_key_auth = MemberOrTenantKeyAuth()

@@ -6,8 +6,8 @@
  */
 
 export interface TenantCreatedOut {
-  agent_temp_password: string;
-  agent_username: string;
+  admin_invite_expires_at: string;
+  admin_invite_url: string;
   id: string;
   is_active: boolean;
   name: string;

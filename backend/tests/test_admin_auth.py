@@ -47,57 +47,71 @@ def test_operator_refresh_reuse_is_rejected(client):
     assert r.status_code == 401
 
 
-# ── TenantAgent access/refresh (issue 99) ─────────────────────────────────────
+# ── 멤버(테넌트) access/refresh (issue 99 → #40) ──────────────────────────────
 
-def _make_agent(tenant, username="alice", password="secret123"):
-    from apps.tenants.models import TenantAgent
-    a = TenantAgent(tenant=tenant, username=username)
-    a.set_password(password)
-    a.save()
-    return a
+def _member_login(client, membership):
+    """콜백(#40, test_member_login.py)이 연 테넌트 세션과 같은 상태: Refresh Family + 쿠키."""
+    from apps.tenants.refresh_tokens import issue_session
+    from tests.utils import member_token
 
-
-def _agent_login(client, tenant, username="alice", password="secret123"):
-    return client.post(
-        "/api/tenant/agents/auth/login",
-        {"tenant_name": tenant.name, "username": username, "password": password},
-        content_type="application/json",
-    )
+    client.cookies["member_refresh"] = issue_session(membership)
+    return member_token(membership)
 
 
 @pytest.mark.django_db
-def test_agent_login_sets_httponly_refresh_cookie(client, tenant_with_key):
+def test_member_refresh_rotates_cookie_and_returns_new_access(client, tenant_with_key):
+    from tests.utils import make_membership
+
     tenant, _ = tenant_with_key
-    _make_agent(tenant)
+    _member_login(client, make_membership(tenant))
+    old = client.cookies["member_refresh"].value
 
-    resp = _agent_login(client, tenant)
-
-    assert resp.status_code == 200
-    assert "access_token" in resp.json()
-    assert "agent_refresh" in resp.cookies
-    cookie = resp.cookies["agent_refresh"]
-    assert cookie["httponly"]
-    assert cookie["samesite"].lower() == "strict"
-
-
-@pytest.mark.django_db
-def test_agent_refresh_rotates_cookie_and_returns_new_access(client, tenant_with_key):
-    tenant, _ = tenant_with_key
-    _make_agent(tenant)
-    _agent_login(client, tenant)
-    old = client.cookies["agent_refresh"].value
-
-    r = client.post("/api/tenant/agents/auth/refresh")
+    r = client.post("/api/tenant/members/auth/refresh")
 
     assert r.status_code == 200
     assert "access_token" in r.json()
-    assert client.cookies["agent_refresh"].value != old
+    cookie = r.cookies["member_refresh"]
+    assert cookie.value != old
+    assert cookie["httponly"]
+    assert cookie["samesite"].lower() == "strict"
+    assert cookie["path"] == "/api/tenant/members/auth"
 
 
 @pytest.mark.django_db
-def test_agent_refresh_without_cookie_rejected(client):
-    r = client.post("/api/tenant/agents/auth/refresh")
+def test_member_refresh_without_cookie_rejected(client):
+    r = client.post("/api/tenant/members/auth/refresh")
     assert r.status_code == 401
+
+
+@pytest.mark.django_db
+def test_deactivated_member_cannot_refresh(client, tenant_with_key):
+    from tests.utils import make_membership
+
+    tenant, _ = tenant_with_key
+    m = make_membership(tenant)
+    _member_login(client, m)
+    m.is_active = False
+    m.save()
+
+    assert client.post("/api/tenant/members/auth/refresh").status_code == 401
+
+
+@pytest.mark.django_db
+def test_member_logout_all_revokes_every_device(tenant_with_key):
+    from django.test import Client
+    from tests.utils import make_membership
+
+    tenant, _ = tenant_with_key
+    m = make_membership(tenant)
+    c1, c2 = Client(), Client()
+    access1 = _member_login(c1, m)
+    _member_login(c2, m)
+    raw2 = c2.cookies["member_refresh"].value
+
+    c1.post("/api/tenant/members/auth/logout-all", HTTP_AUTHORIZATION=f"Bearer {access1}")
+
+    c2.cookies["member_refresh"] = raw2
+    assert c2.post("/api/tenant/members/auth/refresh").status_code == 401
 
 
 # ── 로그아웃 3종 (issue 100) ──────────────────────────────────────────────────
@@ -130,25 +144,4 @@ def test_operator_logout_all_revokes_every_device(client):
     # 기기 2도 죽는다
     c2.cookies["op_refresh"] = raw2
     r = c2.post("/api/operator/auth/refresh")
-    assert r.status_code == 401
-
-
-@pytest.mark.django_db
-def test_change_password_revokes_all_agent_sessions(client, tenant_with_key):
-    tenant, _ = tenant_with_key
-    _make_agent(tenant)
-    login = _agent_login(client, tenant)
-    access = login.json()["access_token"]
-    raw = client.cookies["agent_refresh"].value
-
-    client.post(
-        "/api/tenant/agents/me/change-password",
-        {"current_password": "secret123", "new_password": "newpass456!"},
-        content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {access}",
-    )
-
-    # 비번 변경으로 기존 모든 세션의 refresh가 폐기됨
-    client.cookies["agent_refresh"] = raw
-    r = client.post("/api/tenant/agents/auth/refresh")
     assert r.status_code == 401

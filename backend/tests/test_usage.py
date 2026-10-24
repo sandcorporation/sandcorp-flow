@@ -87,7 +87,7 @@ def test_record_embedding_usage_from_response():
 
 
 @pytest.mark.django_db
-def test_tenant_usage_endpoint_returns_only_own(client, tenant_with_key, tenant_agent_token):
+def test_tenant_usage_endpoint_returns_only_own(client, tenant_with_key, tenant_admin_token):
     """테넌트 usage 엔드포인트는 자기 데이터만(다른 테넌트 0)."""
     tenant, _ = tenant_with_key
     other = uuid.uuid4()
@@ -95,7 +95,7 @@ def test_tenant_usage_endpoint_returns_only_own(client, tenant_with_key, tenant_
     record_usage(tenant.id, "embedding", "text-embedding-3-small", input_tokens=7)
     record_usage(other, "chat", "gpt-4o-mini", input_tokens=999)  # 다른 테넌트 — 보이면 안 됨
 
-    resp = client.get("/api/tenant/usage/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
+    resp = client.get("/api/tenant/usage/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
     assert resp.status_code == 200
     data = resp.json()
     assert data["total_tokens"] == 15 + 7

@@ -1,12 +1,12 @@
 from typing import List, Optional
 from ninja import Router, Schema
 from django.shortcuts import get_object_or_404
-from apps.tenants.auth import tenant_agent_auth
+from apps.tenants.auth import member_auth
 from apps.memory.models import VisitorMemory
 from apps.memory.manager import upsert_memory, delete_memory
 
-memory_router = Router(tags=["memory"], auth=tenant_agent_auth)
-session_router = Router(tags=["sessions"], auth=tenant_agent_auth)
+memory_router = Router(tags=["memory"], auth=member_auth)
+session_router = Router(tags=["sessions"], auth=member_auth)
 
 
 class DetailOut(Schema):
@@ -133,10 +133,10 @@ def takeover_session(request, session_id: str):
             claim = EscalationClaim.objects.filter(escalation=active).first()
             if claim is None:
                 # 미claim(AI pending) → 이 상담원이 이어받는다
-                EscalationClaim.objects.create(escalation=active, claimed_by=agent.username)
+                EscalationClaim.objects.create(escalation=active, claimed_by=agent)
                 active.status = Escalation.STATUS_CLAIMED
                 active.save(update_fields=["status"])
-            elif claim.claimed_by != agent.username:
+            elif claim.claimed_by_id != agent.id:
                 return 409, {"detail": "Already claimed by another agent"}
             esc = active  # 같은 상담원 재진입은 멱등
         else:
@@ -145,14 +145,14 @@ def takeover_session(request, session_id: str):
                 trigger_type=Escalation.TRIGGER_AGENT,
                 status=Escalation.STATUS_CLAIMED,
             )
-            EscalationClaim.objects.create(escalation=esc, claimed_by=agent.username)
+            EscalationClaim.objects.create(escalation=esc, claimed_by=agent)
 
         session.is_hitl = True
         session.save(update_fields=["is_hitl"])
         # 방문자 hitl_start·콘솔 델타는 SessionTakenOver 이벤트의 소비자가 발행한다(issue 151).
         record_event(
             SESSION_TAKEN_OVER, aggregate_id=str(session.id), tenant_id=str(tenant.id),
-            payload={"escalation_id": str(esc.id), "claimed_by": agent.username},
+            payload={"escalation_id": str(esc.id), "claimed_by": str(agent.id)},
         )
 
     return 200, {"escalation_id": str(esc.id)}

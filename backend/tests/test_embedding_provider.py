@@ -30,7 +30,7 @@ def test_get_embeddings_default_platform_still_works():
 
 
 @pytest.mark.django_db
-def test_embedding_provider_independent_config_key_encrypted(client, tenant_agent_token, tenant_with_key, monkeypatch):
+def test_embedding_provider_independent_config_key_encrypted(client, tenant_admin_token, tenant_with_key, monkeypatch):
     """Embedding Provider는 LLM과 독립 설정되고, 키는 암호화·마스킹된다."""
     from apps.tenants.models import TenantConfig
     from apps.tenants.crypto import decrypt_secret
@@ -55,11 +55,11 @@ def test_embedding_provider_independent_config_key_encrypted(client, tenant_agen
             "embed_dim": 1536,
         },
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert r.status_code == 200
 
-    g = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}").json()
+    g = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}").json()
     assert g["embed_provider_type"] == "openai"
     assert g["embed_dim"] == 1536
     assert g["embed_api_key"] != "sk-embed-secret"  # 마스킹

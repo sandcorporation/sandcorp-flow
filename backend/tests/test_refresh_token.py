@@ -119,15 +119,14 @@ def test_revoking_one_device_leaves_other_device_alive():
 
 
 @pytest.mark.django_db
-def test_tenant_agent_subject_round_trips():
-    from apps.tenants.models import Tenant, TenantAgent
+def test_membership_subject_round_trips():
+    from apps.tenants.models import Tenant
+    from tests.utils import make_membership
     from apps.tenants.refresh_tokens import issue_session, rotate
 
     import secrets
     tenant = Tenant.objects.create_with_key(name="T", raw_key=secrets.token_urlsafe(16))
-    agent = TenantAgent(tenant=tenant, username="alice")
-    agent.set_password("x")
-    agent.save()
+    agent = make_membership(tenant, "member")
 
     raw = issue_session(agent)
     subject, new_raw = rotate(raw)

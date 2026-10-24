@@ -1,10 +1,11 @@
-"""관리 화면 Operator 로그인 — sandcorp-auth 기밀 클라이언트(ADR-0028, #21).
+"""관리 화면 로그인 — sandcorp-auth 기밀 클라이언트(ADR-0028, #21 대표·#40 고객).
 
 규칙: sandcorp-auth `docs/resource-server-token-validation.md` 7절(관리 화면 로그인)·10절(ID 토큰).
 
 - `start_login()`            : state·PKCE(S256)·nonce를 만들고 `/authorize` 주소를 돌려준다.
-- `complete_login(...)`      : 콜백 쿼리를 검증하고 코드를 교환해, 대표(Operator)면 그 `Operator`를 돌려준다.
-                               아니면 `LoginRejected(reason)`.
+- `complete_login(...)`      : 콜백 쿼리를 검증하고 코드를 교환해, 대표(A1 + `admin`)면 그 `Operator`를,
+                               일반 사용자(`acct="member"`)면 `MemberLogin`(사용자 행 + 초대 토큰)을 돌려준다.
+                               아니면 `LoginRejected(reason)`. 멤버십·테넌트 세션은 `members.py`가 정한다.
 - `owner_operator(...)`      : 대표 `User(iss, sub)`와 거기 이은 `Operator`를 찾거나 만든다.
 
 sandcorp-auth의 액세스·리프레시 토큰은 저장하지 않는다. 확인만 하고 버린 뒤 Flow 자기 세션(ADR-0013)을 연다.
@@ -42,7 +43,7 @@ from apps.tenants.resource_token import (
 )
 
 if TYPE_CHECKING:
-    from apps.tenants.models import Operator
+    from apps.tenants.models import Operator, User
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ ATTEMPT_MAX_AGE_SECONDS = 600
 TOKEN_TIMEOUT_SECONDS = 10
 _ATTEMPT_SALT = "flow.operator-login.attempt"
 
-RejectReason = Literal["denied", "state", "exchange", "token", "member", "admin", "config"]
+RejectReason = Literal["denied", "state", "exchange", "token", "admin", "config"]
 
 
 class LoginRejected(Exception):
@@ -69,9 +70,13 @@ class LoginAttempt:
     state: str
     code_verifier: str
     nonce: str
+    # 팀원 초대 링크로 시작한 로그인이면 그 원문 토큰(#40). 콜백에서 멤버십을 만든다.
+    invite: str | None = None
 
     def dumps(self) -> str:
         payload = {"s": self.state, "v": self.code_verifier, "n": self.nonce}
+        if self.invite:
+            payload["i"] = self.invite
         return signing.dumps(payload, salt=_ATTEMPT_SALT)
 
     @classmethod
@@ -87,7 +92,13 @@ class LoginAttempt:
         state, verifier, nonce = payload.get("s"), payload.get("v"), payload.get("n")
         if not (isinstance(state, str) and isinstance(verifier, str) and isinstance(nonce, str)):
             return None
-        return cls(state=state, code_verifier=verifier, nonce=nonce)
+        invite = payload.get("i")
+        return cls(
+            state=state,
+            code_verifier=verifier,
+            nonce=nonce,
+            invite=invite if isinstance(invite, str) and invite else None,
+        )
 
 
 @dataclass(frozen=True)
@@ -196,7 +207,9 @@ def code_challenge(verifier: str) -> str:
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
 
 
-def start_login(config: ClientConfig | None = None) -> tuple[str, LoginAttempt]:
+def start_login(
+    config: ClientConfig | None = None, invite: str | None = None
+) -> tuple[str, LoginAttempt]:
     config = config or ClientConfig.from_settings()
     if not config.complete:
         raise LoginRejected("config")
@@ -204,6 +217,7 @@ def start_login(config: ClientConfig | None = None) -> tuple[str, LoginAttempt]:
         state=secrets.token_urlsafe(32),
         code_verifier=secrets.token_urlsafe(64),  # 86자 — RFC 7636 43~128자
         nonce=secrets.token_urlsafe(32),
+        invite=invite or None,
     )
     query = urllib.parse.urlencode(
         {
@@ -228,12 +242,21 @@ class IdentityClaims(TypedDict):
     email_verified: NotRequired[bool]
 
 
+@dataclass(frozen=True)
+class MemberLogin:
+    """검증을 통과한 일반 사용자. `invite`는 초대 링크로 시작한 로그인의 원문 토큰."""
+
+    user: User
+    invite: str | None
+
+
 def complete_login(
     query: Mapping[str, str],
     attempt: LoginAttempt | None,
     config: ClientConfig | None = None,
-) -> Operator:
-    """콜백을 끝까지 검증한다. 대표(A1 통과) + `admin`이면 그 Operator, 아니면 LoginRejected."""
+) -> Operator | MemberLogin:
+    """콜백을 끝까지 검증한다. 대표(A1 통과) + `admin`이면 그 Operator, 일반 사용자면 MemberLogin,
+    아니면 LoginRejected."""
     config = config or ClientConfig.from_settings()
     if not config.complete:
         raise LoginRejected("config")
@@ -267,8 +290,12 @@ def complete_login(
         raise LoginRejected("token")
     identity = _verify_id_token(tokens.get("id_token"), validator, config, attempt.nonce, access)
 
-    if access.acct != "owner":  # 일반 사용자 로그인은 #40
-        raise LoginRejected("member")
+    if access.acct == "member":
+        from apps.tenants.members import member_user
+
+        return MemberLogin(
+            user=member_user(validator.issuer, access.sub, identity), invite=attempt.invite
+        )
     if OPERATOR_SCOPE not in access.scopes:
         raise LoginRejected("admin")
     return owner_operator(validator.issuer, access.sub, identity)

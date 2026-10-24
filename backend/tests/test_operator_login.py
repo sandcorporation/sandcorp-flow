@@ -223,24 +223,31 @@ def test_owner_without_admin_scope_is_refused(server: FakeAuthorizationServer) -
 
 
 @pytest.mark.django_db
-def test_member_is_refused_even_though_the_token_is_valid(server: FakeAuthorizationServer) -> None:
-    from apps.tenants.models import Operator, User
+def test_member_never_gets_an_operator_session(server: FakeAuthorizationServer, settings) -> None:
+    """일반 사용자는 고객 경로(#40, test_member_login.py)로 간다 — Operator 세션·Operator 행은 없다."""
+    from apps.tenants.models import Operator
 
+    settings.AUTH_MEMBER_REDIRECT = "/admin-ui/tenant"
     client = Client()
     response = callback(client, server.approve_member(start(client)))
 
-    assert rejected_with(response) == "member"
+    assert urlsplit(response["Location"]).path == "/admin-ui/tenant"
     assert "op_refresh" not in response.cookies
-    assert not User.objects.filter(sub=MEMBER_SUB).exists()  # 일반 사용자 로그인은 #40
     assert not Operator.objects.exists()
 
 
 @pytest.mark.django_db
-def test_member_cannot_pretend_with_admin_scope(server: FakeAuthorizationServer) -> None:
+def test_member_cannot_pretend_with_admin_scope(server: FakeAuthorizationServer, settings) -> None:
+    from apps.tenants.models import Operator
+
+    settings.AUTH_MEMBER_REDIRECT = "/admin-ui/tenant"
     client = Client()
     query = server.approve(start(client), sub=MEMBER_SUB, acct="member", flow_scope="admin login")
 
-    assert rejected_with(callback(client, query)) == "member"
+    response = callback(client, query)
+    assert urlsplit(response["Location"]).path == "/admin-ui/tenant"
+    assert "op_refresh" not in response.cookies
+    assert not Operator.objects.exists()
 
 
 @pytest.mark.django_db

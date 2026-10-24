@@ -5,24 +5,24 @@ set/clear가 동일한 name·path를 쓰도록 한 곳에 모은다. 경로는 �
 """
 from django.conf import settings
 
-from apps.tenants.models import Operator, TenantAgent
+from apps.tenants.models import Membership, Operator
 from apps.tenants.refresh_tokens import REFRESH_ABSOLUTE_LIFETIME
 
 OPERATOR = "operator"
-TENANT_AGENT = "tenant_agent"
+MEMBER = "member"
 
 # (쿠키 이름, 경로)
 _COOKIE = {
     OPERATOR: ("op_refresh", "/api/operator/auth"),
-    TENANT_AGENT: ("agent_refresh", "/api/tenant/agents/auth"),
+    MEMBER: ("member_refresh", "/api/tenant/members/auth"),
 }
 
 
 def _kind(subject) -> str:
     if isinstance(subject, Operator):
         return OPERATOR
-    if isinstance(subject, TenantAgent):
-        return TENANT_AGENT
+    if isinstance(subject, Membership):
+        return MEMBER
     raise TypeError(f"지원하지 않는 subject 타입: {type(subject)!r}")
 
 

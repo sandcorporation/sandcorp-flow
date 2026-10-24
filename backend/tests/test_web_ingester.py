@@ -48,7 +48,7 @@ def _serve_html(html: str):
 
 
 @pytest.mark.django_db
-def test_url_document_fetched_and_ingested(client, tenant_agent_token, tenant_with_key):
+def test_url_document_fetched_and_ingested(client, tenant_admin_token, tenant_with_key):
     """명시적 URL을 추가하면 fetch·본문추출 후 그래프 인제스션까지 도달하고 title이 라벨이 된다."""
     from apps.rag.models import Document
 
@@ -65,7 +65,7 @@ def test_url_document_fetched_and_ingested(client, tenant_agent_token, tenant_wi
             "/api/tenant/documents/url",
             {"urls": [f"{base}/faq"]},
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
         )
         assert resp.status_code == 201
         doc = Document.objects.get(id=resp.json()[0]["id"])
@@ -76,7 +76,7 @@ def test_url_document_fetched_and_ingested(client, tenant_agent_token, tenant_wi
         # 수동 재-fetch → 다시 ready로 도달
         rf = client.post(
             f"/api/tenant/documents/{doc.id}/refetch",
-            HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
         )
         assert rf.status_code == 200
         doc.refresh_from_db()

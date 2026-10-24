@@ -3,12 +3,12 @@ from django.utils import timezone
 from ninja import Router, Schema
 from django.http import StreamingHttpResponse
 
-from apps.tenants.auth import tenant_agent_auth
+from apps.tenants.auth import member_auth
 from apps.chat.sse import publish_hitl_message
 from apps.events.store import record_event
 from apps.events.types import ESCALATION_CLAIMED, ESCALATION_RESOLVED
 
-escalation_router = Router(tags=["escalations"], auth=tenant_agent_auth)
+escalation_router = Router(tags=["escalations"], auth=member_auth)
 
 
 class MessageIn(Schema):
@@ -79,13 +79,13 @@ def claim_escalation(request, escalation_id: str):
 
     try:
         with transaction.atomic():
-            EscalationClaim.objects.create(escalation=esc, claimed_by=request.auth.username)
+            EscalationClaim.objects.create(escalation=esc, claimed_by=request.auth)
             esc.status = Escalation.STATUS_CLAIMED
             esc.save(update_fields=["status"])
             # 콘솔 델타는 EscalationClaimed 이벤트의 console-bridge 소비자가 발행한다(issue 151).
             record_event(
                 ESCALATION_CLAIMED, aggregate_id=str(esc.session_id), tenant_id=str(tenant.id),
-                payload={"escalation_id": str(esc.id), "claimed_by": request.auth.username},
+                payload={"escalation_id": str(esc.id), "claimed_by": str(request.auth.id)},
             )
     except IntegrityError:
         return 409, {"detail": "Already claimed"}
@@ -207,17 +207,10 @@ async def escalation_stream(request, token: str):
     from asgiref.sync import sync_to_async
     from django.http import HttpResponse
     from apps.chat.sse import get_async_redis_client
-    from apps.tenants.auth import verify_tenant_agent_token
-    from apps.tenants.models import TenantAgent
+    from apps.tenants.auth import active_membership_for_token
 
-    payload = verify_tenant_agent_token(token)
-    if not payload:
-        return HttpResponse(status=401)
-    try:
-        agent = await sync_to_async(
-            lambda: TenantAgent.objects.select_related("tenant").get(id=payload["sub"], is_active=True)
-        )()
-    except TenantAgent.DoesNotExist:
+    agent = await sync_to_async(active_membership_for_token)(token)
+    if agent is None:
         return HttpResponse(status=401)
 
     channel = f"hitl:{agent.tenant_id}"

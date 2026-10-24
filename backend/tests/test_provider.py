@@ -45,7 +45,7 @@ def test_resolver_builds_anthropic_native_for_anthropic():
 # ── Issue 92: provider 설정 API — 키 암호화·write-only ─────────────────────────
 
 @pytest.mark.django_db
-def test_llm_provider_config_key_encrypted_and_masked(client, tenant_agent_token, tenant_with_key, monkeypatch):
+def test_llm_provider_config_key_encrypted_and_masked(client, tenant_admin_token, tenant_with_key, monkeypatch):
     """LLM provider 설정 저장 시 키는 암호화되고, GET 응답엔 평문이 노출되지 않는다."""
     from apps.tenants.models import TenantConfig
     from apps.tenants.crypto import decrypt_secret
@@ -68,11 +68,11 @@ def test_llm_provider_config_key_encrypted_and_masked(client, tenant_agent_token
             "extraction_model": "gpt-4o-mini",
         },
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
     assert r.status_code == 200
 
-    g = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}").json()
+    g = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}").json()
     assert g["llm_provider_type"] == "custom"
     assert g["llm_base_url"] == "https://my-endpoint/v1"
     assert g["llm_api_key"] != "sk-tenant-secret"  # 평문 미반환(마스킹)
@@ -83,7 +83,7 @@ def test_llm_provider_config_key_encrypted_and_masked(client, tenant_agent_token
 
 
 @pytest.mark.django_db
-def test_saving_masked_key_preserves_real_key(client, tenant_agent_token, tenant_with_key):
+def test_saving_masked_key_preserves_real_key(client, tenant_admin_token, tenant_with_key):
     """마스킹된 키('********')를 그대로 다시 저장해도 실제 키가 보존된다.
 
     어드민은 GET으로 받은 config(마스킹된 키 포함) 전체를 PATCH로 되돌려 보낸다.
@@ -98,11 +98,11 @@ def test_saving_masked_key_preserves_real_key(client, tenant_agent_token, tenant
         return client.patch(
             "/api/tenant/config/", body,
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
         )
 
     patch({"llm_api_key": "sk-real-llm", "embed_api_key": "sk-real-embed"})
-    masked = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}").json()
+    masked = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}").json()
     assert masked["llm_api_key"] == "********" and masked["embed_api_key"] == "********"
 
     # 어드민처럼 받은 config 전체(마스킹된 키 포함)를 무관한 변경과 함께 되돌려 보낸다
@@ -203,9 +203,9 @@ def test_extraction_falls_back_to_chat_model_when_unset(tenant_with_key):
 
 
 @pytest.mark.django_db
-def test_config_exposes_platform_default_providers_flag(client, tenant_agent_token, settings):
+def test_config_exposes_platform_default_providers_flag(client, tenant_admin_token, settings):
     """어드민 UI가 prod에서 '기본' Provider 옵션을 숨기도록 config가 플래그를 노출한다."""
     settings.PLATFORM_DEFAULT_PROVIDERS_ENABLED = False
-    resp = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}")
+    resp = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}")
     assert resp.status_code == 200
     assert resp.json()["platform_default_providers_enabled"] is False

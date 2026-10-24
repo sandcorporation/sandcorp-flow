@@ -22,7 +22,7 @@ def test_same_name_different_source_creates_separate_mentions(tenant_with_key):
 
 
 @pytest.mark.django_db
-def test_ingest_creates_mentions_from_document(client, tenant_agent_token, tenant_with_key):
+def test_ingest_creates_mentions_from_document(client, tenant_admin_token, tenant_with_key):
     """문서 ingest가 추출 언급을 Entity Mention 노드로 생성한다."""
     from apps.rag.graph_store import GraphStore
 
@@ -32,7 +32,7 @@ def test_ingest_creates_mentions_from_document(client, tenant_agent_token, tenan
     client.post(
         "/api/tenant/documents/",
         {"file": f},
-        HTTP_AUTHORIZATION=f"Bearer {tenant_agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {tenant_admin_token}",
     )
 
     gs = GraphStore(str(tenant.id))
