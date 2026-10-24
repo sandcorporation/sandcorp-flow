@@ -37,6 +37,7 @@ REQUIRED_CLAIMS = ["iss", "sub", "aud", "exp", "iat", "jti", "client_id", "scope
 ACCOUNT_KIND_CLAIM = "acct"
 MEMBER_SUB = re.compile(r"m_[0-7][0-9A-HJKMNP-TV-Z]{25}")
 SCOPES_SUPPORTED = ["admin", "login"]
+METADATA_PATH = "/.well-known/oauth-protected-resource"
 
 
 class Clock(Protocol):
@@ -241,11 +242,14 @@ def www_authenticate(
     *,
     error: Literal["invalid_token", "insufficient_scope"] | None = None,
     scope: str | None = None,
+    metadata_path: str = METADATA_PATH,
 ) -> str:
-    """5절 `WWW-Authenticate` 값: 401 토큰 없음/`invalid_token`, 403 `insufficient_scope`."""
+    """5절 `WWW-Authenticate` 값: 401 토큰 없음/`invalid_token`, 403 `insufficient_scope`.
+
+    `metadata_path`는 리소스별 메타데이터 경로(MCP는 `/.well-known/oauth-protected-resource/mcp`)."""
     if error == "insufficient_scope":
         return f'Bearer error="insufficient_scope", scope="{scope}"'
-    value = f'Bearer resource_metadata="{origin}/.well-known/oauth-protected-resource"'
+    value = f'Bearer resource_metadata="{origin}{metadata_path}"'
     if error == "invalid_token":
         value += ', error="invalid_token"'
     return value
@@ -258,12 +262,14 @@ class ProtectedResourceMetadata(TypedDict):
     bearer_methods_supported: list[str]
 
 
-def protected_resource_metadata(*, resource: str, issuer: str) -> ProtectedResourceMetadata:
-    """6절(RFC 9728) `GET /.well-known/oauth-protected-resource` 본문."""
+def protected_resource_metadata(
+    *, resource: str, issuer: str, scopes: list[str] = SCOPES_SUPPORTED
+) -> ProtectedResourceMetadata:
+    """6절(RFC 9728) `GET /.well-known/oauth-protected-resource[/mcp]` 본문."""
     return {
         "resource": resource,
         "authorization_servers": [issuer],
-        "scopes_supported": list(SCOPES_SUPPORTED),
+        "scopes_supported": list(scopes),
         "bearer_methods_supported": ["header"],
     }
 
@@ -288,6 +294,14 @@ def get_validator() -> ResourceTokenValidator:
             clock=clock,
         )
     return _validator
+
+
+def get_mcp_validator() -> ResourceTokenValidator:
+    """MCP 리소스(`AUTH_MCP_RESOURCE`, #74 결정 2)용 검증기. API 검증기와 JWKS 캐시·발급자·대표를 함께 쓰고
+    audience만 다르다 — 그래서 `use_validator`로 바꾼 시험 검증기를 그대로 따른다."""
+    from django.conf import settings
+
+    return replace(get_validator(), audience=settings.AUTH_MCP_RESOURCE)
 
 
 def use_validator(validator: ResourceTokenValidator | None) -> None:

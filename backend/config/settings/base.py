@@ -152,6 +152,8 @@ AUTH_ISSUER = os.environ.get("AUTH_ISSUER", "https://auth.sandcorp.co.kr")
 AUTH_JWKS_URL = os.environ.get("AUTH_JWKS_URL", f"{AUTH_ISSUER}/.well-known/jwks.json")
 # 이 서비스의 리소스(`aud`). 사이트 원점(메타데이터 주소)은 여기서 뽑는다.
 AUTH_RESOURCE = os.environ.get("AUTH_RESOURCE", "https://flow.sandcorp.co.kr/api")
+# MCP 서버(`/mcp`, #74)의 리소스(`aud`). API와 다른 리소스라 API 토큰은 /mcp에서, MCP 토큰은 /api에서 거부된다.
+AUTH_MCP_RESOURCE = os.environ.get("AUTH_MCP_RESOURCE", "https://flow.sandcorp.co.kr/mcp")
 # 대표 계정 username. 비어 있으면 대표 토큰(acct 없음)은 모두 거부된다.
 AUTH_OWNER_SUB = os.environ.get("AUTH_OWNER_SUB", "")
 # 관리 화면 Operator 로그인 — sandcorp-auth 기밀 클라이언트(#21, 규칙 문서 7절).
