@@ -49,7 +49,9 @@ logger = logging.getLogger(__name__)
 
 LOGIN_SCOPE = "login"
 OPERATOR_SCOPE = "admin"
-REQUESTED_SCOPE = "openid profile email login"
+# Operator(admin-ui) 진입. admin을 요청해야 대표 토큰에 admin이 실린다(auth는 요청한 스코프만 넣는다).
+# 일반 사용자는 admin이 금지 스코프라 고객 진입(#40)은 이 집합을 쓰지 않는다.
+REQUESTED_SCOPE = "openid profile email login admin"
 ATTEMPT_MAX_AGE_SECONDS = 600
 TOKEN_TIMEOUT_SECONDS = 10
 _ATTEMPT_SALT = "flow.operator-login.attempt"
