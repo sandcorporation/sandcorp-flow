@@ -54,7 +54,8 @@ test.describe('흐름 편집기 — 시험 대화·판단 기록(실제 스택)'
     await expect(log.getByText('N-02 되묻기')).toBeVisible()
     await expect(log.getByText('N-03 초안 답변')).toBeVisible()
     await expect(log.getByText('1/1').first()).toBeVisible() // Fake LLM 이 보고한 토큰
-    await expect(log.getByText('단가 미상').first()).toBeVisible() // fake-llm 은 단가표에 없다
+    await expect(log.getByText('$0.0000').first()).toBeVisible() // Fake LLM 모델명이 단가표에 있어 비용이 계산된다(#85)
+    await expect(log.getByText('단가 미상')).toHaveCount(0)
     await expect(log.getByText(/세션 합계/)).toBeVisible()
     expect(await log.innerText()).not.toContain('__flow_finish__')
 
@@ -64,6 +65,14 @@ test.describe('흐름 편집기 — 시험 대화·판단 기록(실제 스택)'
     await expect(page.locator('[data-node-id="start"]')).toHaveAttribute('data-active', 'true')
     await expect(page.locator('[data-node-id="side"]')).not.toHaveAttribute('data-active', 'true')
     await shot(page, 'log-1600x900')
+
+    // 새로고침해도 마지막 시험 세션의 판단 기록이 되돌아온다(저장된 판단 기록에서 복원, #85)
+    await page.reload()
+    await expect(page.locator('.react-flow__node')).toHaveCount(4)
+    await aside.getByRole('tab', { name: '판단 기록' }).click()
+    await expect(aside.getByRole('region', { name: '판단 기록' }).getByText(/^턴 \d$/)).toHaveCount(2)
+    await expect(aside.getByRole('region', { name: '판단 기록' }).getByText(/세션 합계/)).toBeVisible()
+    await shot(page, 'log-restored-1600x900')
 
     // 설정 탭으로 가면 강조가 꺼지고, 새 대화는 시험 대화를 비운다
     await aside.getByRole('tab', { name: '시험 대화' }).click()
@@ -87,7 +96,7 @@ test.describe('흐름 편집기 — 시험 대화·판단 기록(실제 스택)'
         }
         await shot(page, `chat-${theme}-1600x900`)
         await aside.getByRole('tab', { name: '판단 기록' }).click()
-        await aside.getByRole('region', { name: '판단 기록' }).getByRole('button', { name: /N-03 초안 답변/ }).click()
+        await aside.getByRole('region', { name: '판단 기록' }).getByRole('button', { name: /N-03 초안 답변/ }).first().click()
         await page.waitForTimeout(400)
         await shot(page, `log-${theme}-1600x900`)
         if (theme === 'light') {
