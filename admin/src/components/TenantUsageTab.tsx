@@ -8,6 +8,10 @@ import type { TenantUsageOut } from '../generated/model'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
+// 긴 이름이 툴팁(숨겨져 있어도)으로 390폭 밖까지 밀지 않게(#90)
+const TOOLTIP_WRAP = { maxWidth: 260 }
+const TOOLTIP_BOX = { whiteSpace: 'normal' as const, overflowWrap: 'anywhere' as const }
+
 const PERIODS = [{ d: 7, label: '7일' }, { d: 30, label: '30일' }, { d: 90, label: '90일' }]
 
 export default function TenantUsageTab() {
@@ -60,7 +64,7 @@ export default function TenantUsageTab() {
               </Table>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={data.by_call_type}>
-                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="call_type" /><YAxis /><Tooltip />
+                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="call_type" tickFormatter={(v: string) => (v.length > 8 ? `${v.slice(0, 8)}…` : v)} /><YAxis /><Tooltip wrapperStyle={TOOLTIP_WRAP} contentStyle={TOOLTIP_BOX} />
                   <Bar dataKey="total_tokens" fill="hsl(var(--flow-accent))" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -72,7 +76,7 @@ export default function TenantUsageTab() {
               <div className="text-sm font-semibold">일별 추이</div>
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={data.daily}>
-                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><Tooltip />
+                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><Tooltip wrapperStyle={TOOLTIP_WRAP} contentStyle={TOOLTIP_BOX} />
                   <Line type="monotone" dataKey="total_tokens" stroke="hsl(var(--flow-accent))" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>

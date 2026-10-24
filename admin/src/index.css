@@ -151,9 +151,10 @@
   .flow-table { overflow: visible; }
   .flow-table table, .flow-table tbody { display: block; width: 100%; }
   .flow-table thead { display: none; }
-  .flow-table tr { display: block; border: 1px solid hsl(var(--flow-line)); border-radius: 2px; margin-bottom: 8px; padding: 4px 0; background: hsl(var(--flow-surface)); }
+  .flow-table tr { display: block; border: 1px solid hsl(var(--flow-line)) !important; border-radius: 2px; margin-bottom: 8px; padding: 4px 0; background: hsl(var(--flow-surface)); }
   .flow-table td { display: block; padding: 6px 12px; overflow-wrap: anywhere; }
   .flow-table td[data-label]::before { content: attr(data-label); display: block; font-family: var(--flow-font-cond); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; color: hsl(var(--flow-muted)); }
+  .flow-table td:empty { display: none; }
   .flow-table td[colspan] { text-align: center; }
   .flow-table td[colspan]::before { display: none; }
 }
@@ -168,3 +169,6 @@
 @layer base {
   main { overflow-wrap: anywhere; }
 }
+
+/* 안 보이는 차트 툴팁이 위치만으로 문서 폭을 밀지 않게 — 숨은 동안은 아예 그리지 않는다(#90) */
+.recharts-tooltip-wrapper[style*="visibility: hidden"] { display: none !important; }
