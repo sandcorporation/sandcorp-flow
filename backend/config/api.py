@@ -11,6 +11,7 @@ from apps.escalation.api import escalation_router
 from apps.flows.api import deploy_request_router, error_body, flow_router
 from apps.flows.services import FlowServiceError
 from apps.usage.api import tenant_usage_router, operator_usage_router
+from apps.tenants.try_api import try_router
 
 api = NinjaAPI(title="Sandcorp Flow API", version="1.0.0")
 
@@ -47,3 +48,4 @@ api.add_router("/tenant/sessions", session_router)
 api.add_router("/tenant/escalations", escalation_router)
 api.add_router("/tenant/usage", tenant_usage_router)
 api.add_router("/operator/usage", operator_usage_router)
+api.add_router("/try", try_router)  # 공개(인증 없음) — 세션 쿠키로 자기 체험 테넌트만(#135)

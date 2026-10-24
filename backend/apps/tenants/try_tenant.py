@@ -155,7 +155,10 @@ def prune_expired(*, now: dt.datetime | None = None) -> int:
             VisitorMemory.objects.filter(tenant_id=tenant_id).delete()
             TokenUsage.objects.filter(tenant_id=tenant_id).delete()
             Document.objects.filter(tenant_id=tenant_id).delete()
-            Tenant.objects.filter(pk=tenant_id, kind=KIND_TRY).delete()
+            Tenant.objects.filter(pk=tenant_id, kind=KIND_TRY).delete()  # TrySession(쿠키 해시)도 연쇄로
+    from apps.tenants.try_session import prune_ip_days
+
+    prune_ip_days(now=now)  # 하루 비용 누적(TrySpendDay)은 지우지 않는다(#135)
     return len(ids)
 
 

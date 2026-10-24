@@ -1,4 +1,5 @@
 import os
+from decimal import Decimal
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -129,6 +130,13 @@ PLATFORM_EMBED_MODEL = os.environ.get("PLATFORM_EMBED_MODEL", "text-embedding-3-
 TRIAL_TURNS = int(os.environ.get("TRIAL_TURNS", "200"))
 # Try Session 체험 테넌트의 수명(#134, ADR-0030). 이 시간이 지나면 prune_try_tenants가 테넌트째 지운다.
 TRY_TENANT_TTL_HOURS = int(os.environ.get("TRY_TENANT_TTL_HOURS", "24"))
+# Try Session 공개 API 한도(#135, ADR-0030). 날짜는 TRY_QUOTA_TIMEZONE(기본 Asia/Seoul) 기준 하루.
+TRY_SESSION_TURNS = int(os.environ.get("TRY_SESSION_TURNS", "20"))  # 세션(체험 테넌트)당 시험 대화 턴
+TRY_SESSIONS_PER_IP_PER_DAY = int(os.environ.get("TRY_SESSIONS_PER_IP_PER_DAY", "3"))
+TRY_DAILY_BUDGET_USD = Decimal(os.environ.get("TRY_DAILY_BUDGET_USD", "5"))  # 체험 전체 하루 비용 상한
+TRY_QUOTA_TIMEZONE = os.environ.get("TRY_QUOTA_TIMEZONE", "Asia/Seoul")
+# 쿠키로 쓰는 요청(POST·PUT·PATCH)의 Origin 허용 목록(쉼표). 비어 있어도 같은 호스트 Origin은 허용한다.
+TRY_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("TRY_ALLOWED_ORIGINS", "").split(",") if o.strip()]
 
 # 온보딩(member가 조직을 만든다, #41) 남용 방지: 사용자당 만들 수 있는 조직 수, IP당 시간당 시도 수.
 TENANT_CREATE_LIMIT_PER_USER = int(os.environ.get("TENANT_CREATE_LIMIT_PER_USER", "3"))

@@ -37,11 +37,9 @@ def prod_platform(settings):
     return settings
 
 
-def _start(client: Client, template: str = "sandcorp_home", ip: str = "203.0.113.7", **extra):
-    return client.post(
-        f"{BASE}/sessions/", json.dumps({"template": template}), content_type="application/json",
-        HTTP_ORIGIN=ORIGIN, REMOTE_ADDR=ip, **extra,
-    )
+def _start(client: Client, template: str = "sandcorp_home", ip: str = "203.0.113.7", **extra: str):
+    headers = {"HTTP_ORIGIN": ORIGIN, "REMOTE_ADDR": ip, **extra}
+    return client.post(f"{BASE}/sessions/", json.dumps({"template": template}), content_type="application/json", **headers)
 
 
 def _session(ip: str = "203.0.113.7", template: str = "sandcorp_home") -> tuple[Client, dict]:
@@ -56,6 +54,24 @@ def _turn(c: Client, flow_id: str, message: str = "안녕하세요", origin: str
     return c.post(
         f"{BASE}/flows/{flow_id}/test/", json.dumps({"message": message}), content_type="application/json", **extra
     )
+
+
+ANSWER_ONLY = {
+    "nodes": [
+        {"id": "start", "kind": "start", "code": "N-01", "name": "시작", "position": {"x": 0, "y": 0}, "config": {}},
+        {"id": "answer", "kind": "ai_answer", "code": "N-02", "name": "답", "position": {"x": 200, "y": 0}, "config": {}},
+    ],
+    "edges": [{"from": "start", "to": "answer"}],
+}
+
+
+def _answer_only(c: Client, flow_id: str) -> None:
+    """LLM 답 노드 하나짜리로 고친다(Fake가 사용량 gpt-4o-mini 120/30을 보고하는 경로)."""
+    r = c.put(
+        f"{BASE}/flows/{flow_id}/draft/", json.dumps({"graph": ANSWER_ONLY}), content_type="application/json",
+        HTTP_ORIGIN=ORIGIN,
+    )
+    assert r.status_code == 200 and r.json()["valid"], r.content
 
 
 def _set_turns(flow_id: str, n: int) -> None:
@@ -317,6 +333,7 @@ def test_turn_just_under_the_budget_runs_and_adds_its_cost_then_the_next_is_refu
 
     settings.TRY_DAILY_BUDGET_USD = Decimal("5")
     c, s = _session()
+    _answer_only(c, s["flow_id"])
     try_session.add_spend(Decimal("4.999999"))
 
     done = dict(sse_events(_turn(c, s["flow_id"])))["done"]
@@ -340,6 +357,7 @@ def test_spend_survives_the_try_tenant_prune(prod_platform, fake_chat_llm):
     from apps.tenants import try_session, try_tenant
 
     c, s = _session()
+    _answer_only(c, s["flow_id"])
     assert dict(sse_events(_turn(c, s["flow_id"])))["done"]["ran"] is True
     spent = try_session.spent_today()
     assert spent > 0

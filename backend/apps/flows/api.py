@@ -43,6 +43,10 @@ _STATUS_BY_CODE = {
     "approval_required": 409,
     "self_approval": 403,
     "try_restricted": 403,
+    "try_no_session": 401,
+    "try_bad_origin": 403,
+    "try_ip_limit": 429,
+    "unknown_template": 404,
     "flow_invalid": 422,
     "invalid_patch": 422,
     "invalid_name": 422,
@@ -260,7 +264,11 @@ def flows_node_schema(request):
 
 @flow_router.get("/{flow_id}/", response=FlowDetailOut)
 def flows_get(request, flow_id: str):
-    tenant_id = _tenant_id(request.auth)
+    return flow_detail_body(_tenant_id(request.auth), flow_id)
+
+
+def flow_detail_body(tenant_id: uuid.UUID, flow_id: str) -> dict[str, object]:
+    """``FlowDetailOut`` 본문 — 편집기와 체험(``apps.tenants.try_api``)이 같이 쓴다."""
     detail = services.flow_detail(tenant_id, flow_id)
     deployed_id = detail.flow.deployed_version_id
     versions = FlowVersion.objects.for_tenant(tenant_id).filter(flow=detail.flow).select_related("created_by").order_by("number")
@@ -416,7 +424,7 @@ async def _authenticate(request: HttpRequest) -> Membership | Tenant | None:
 async def flows_test_conversation(request: HttpRequest, flow_id: str, body: TestTurnIn):
     """초안으로 시험 한 턴을 돌려 SSE로 흘려보낸다. 실제 사람 넘김·알림은 없고 세션은 ``is_test``다.
 
-    이벤트: ``start``{flow_id} → ``trace``{노드 항목}×N → ``reply``{text} → ``done``{ran, handoff, note, errors, session_id}.
+    이벤트: ``start``{flow_id} → ``trace``{노드 항목}×N → ``reply``{text} → ``done``{ran, handoff, note, code, errors, session_id}.
     초안이 무효이면 ``trace``·``reply`` 없이 ``done``(ran=false, errors)만 온다. 판단 기록 전체는 ``session_id``로
     ``GET /api/tenant/sessions/{id}/decision-traces``에서 다시 읽는다. 체험 턴을 1 쓴다(ADR-0026).
     """
@@ -425,6 +433,11 @@ async def flows_test_conversation(request: HttpRequest, flow_id: str, body: Test
         return HttpResponse(json.dumps({"detail": "Unauthorized"}), status=401, content_type="application/json")
     require_permission(subject, FLOW_EDIT)
     result = await services.run_test_turn(_tenant_id(subject), flow_id, body.message, session_id=body.session_id)
+    return stream_test_turn(flow_id, result)
+
+
+def stream_test_turn(flow_id: str, result: services.TestTurnResult, *, code: str | None = None) -> StreamingHttpResponse:
+    """시험 한 턴 결과를 SSE로 — 편집기와 체험(``apps.tenants.try_api``)이 같이 쓴다. ``code``는 돌지 않은 사유(체험 한도)."""
 
     async def events() -> AsyncIterator[str]:
         yield _sse("start", {"flow_id": flow_id})
@@ -438,6 +451,7 @@ async def flows_test_conversation(request: HttpRequest, flow_id: str, body: Test
                 "ran": result.ran,
                 "handoff": result.handoff,
                 "note": result.note,
+                "code": code,
                 "errors": [e.as_dict() for e in result.errors],
                 "session_id": str(result.session_id) if result.session_id else None,
             },
