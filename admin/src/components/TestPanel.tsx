@@ -80,7 +80,7 @@ export function TestChat({ turns, busy, send, reset, readOnly }: {
         {turns.map((t) => (
           <li key={t.n} className="space-y-1.5 text-sm">
             <p className="ml-6 whitespace-pre-wrap border border-line-soft bg-raised px-2 py-1">{t.message}</p>
-            {t.reply && <p className="mr-6 whitespace-pre-wrap border border-ink bg-background px-2 py-1">{t.reply}</p>}
+            {t.reply && <p data-reply className="mr-6 whitespace-pre-wrap border border-ink bg-background px-2 py-1">{t.reply}</p>}
             {t.pending && !t.reply && <p className="text-xs text-muted-foreground" role="status">돌리는 중…</p>}
             {t.handoff && <p className="text-xs text-muted-foreground">{t.note}</p>}
             {t.errors.map((e, i) => <p key={i} className="hmi-code border-l-2 border-alarm pl-2 text-muted-foreground">{e.code}: {e.message}</p>)}
@@ -132,7 +132,7 @@ export function DecisionLog({ turns, graph, onFocus }: {
                         <span className="font-semibold text-ink">{entryLabel(e, graph)}</span>
                         <span className="text-muted-foreground">{e.handle}</span>
                         <span className="ml-auto text-muted-foreground">{hasUsage && <span>{formatTokens(e.input_tokens, e.output_tokens)}</span>}</span>
-                        {(hasUsage || e.cost_usd !== null) && <span>{formatCost(e.cost_usd, hasUsage)}</span>}
+                        {hasUsage && <span>{formatCost(e.cost_usd, hasUsage)}</span>}
                         <span className="text-muted-foreground">{e.duration_ms}ms</span>
                       </span>
                       {rec.reason !== undefined && <span className="mt-0.5 block break-words text-ink">{short(rec.reason)}</span>}
