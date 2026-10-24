@@ -257,6 +257,13 @@ describe('ConfigTab — Base URL은 custom일 때만 노출', () => {
     expect(screen.getByLabelText('Embedding Base URL')).toBeInTheDocument()
   })
 
+  it('custom LLM Provider 도움말에 스트리밍 사용량 옵션(include_usage)을 안내한다', async () => {
+    renderConfig('ai')
+    expect(screen.queryByText(/stream_options\(include_usage\)/)).toBeNull()
+    await userEvent.selectOptions(await screen.findByLabelText('LLM Provider 타입'), 'custom')
+    expect(screen.getByText(/스트리밍 사용량 집계를 위해 stream_options\(include_usage\)를 보냅니다.*오류가 날 수 있습니다/)).toBeInTheDocument()
+  })
+
   it('custom→openai로 바꾸면 base_url을 비워 저장한다(표준 주소 사용)', async () => {
     mockConfig({ embed_provider_type: 'custom', embed_base_url: 'https://old-custom/v1' })
     renderConfig('ai')

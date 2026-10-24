@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { appsMemoryApiGetSessionDecisionTraces } from '../generated/endpoints/sessions/sessions'
 import { appsTenantsApiGetTrial } from '../generated/endpoints/tenant/tenant'
 import { HttpError } from '../mutator'
 import type { FlowError, FlowGraph } from '@/lib/flowGraph'
 import { streamTestTurn } from '@/lib/testStream'
 import {
-  entryLabel, formatCost, formatTokens, notRunMessage, sessionTotals, turnTotals,
+  entryLabel, formatCost, formatTokens, notRunMessage, restoredTurns, sessionTotals, turnTotals,
   type SseEvent, type TestTurn, type Totals, type TraceEntry,
 } from '@/lib/testTrace'
 import { Button } from './ui/button'
@@ -12,12 +13,36 @@ import { Textarea } from './ui/textarea'
 
 const blank = (n: number, message: string): TestTurn => ({ n, message, reply: '', entries: [], ran: false, handoff: false, note: '', errors: [], failure: '', pending: true })
 
+// 새로고침해도 판단 기록이 남도록, 초안(흐름)마다 마지막 시험 세션 id 를 이 브라우저에 기억한다(없어도 화면은 돈다).
+const sessionKey = (flowId: string) => `flow-test-session:${flowId}`
+const remember = (flowId: string, id: string | null) => {
+  try { if (id) window.localStorage.setItem(sessionKey(flowId), id); else window.localStorage.removeItem(sessionKey(flowId)) } catch { /* 저장소 불가 */ }
+}
+
 /** 시험 대화 상태: 같은 session_id 로 턴을 이어 가고(재개 지점), 「새 대화」로 비운다. */
 export function useTestSession(flowId: string, beforeSend: () => Promise<void>) {
   const [turns, setTurns] = useState<TestTurn[]>([])
   const [busy, setBusy] = useState(false)
   const sessionRef = useRef<string | null>(null)
   const nextN = useRef(1)
+
+  useEffect(() => {
+    let id: string | null = null
+    try { id = window.localStorage.getItem(sessionKey(flowId)) } catch { /* 저장소 불가 */ }
+    if (!id) return
+    let alive = true
+    appsMemoryApiGetSessionDecisionTraces(id)
+      .then((r) => {
+        if (!alive) return
+        const restored = restoredTurns((r.data as { turns: { turn: number; entries: unknown[] }[] }).turns)
+        if (restored.length === 0 || sessionRef.current) return
+        sessionRef.current = id
+        nextN.current = restored[restored.length - 1].n + 1
+        setTurns(restored)
+      })
+      .catch(() => { if (alive) remember(flowId, null) }) // 세션이 없어졌다 — 기억을 지운다
+    return () => { alive = false }
+  }, [flowId])
 
   const patchLast = (f: (t: TestTurn) => TestTurn) => setTurns((ts) => ts.map((t, i) => (i === ts.length - 1 ? f(t) : t)))
 
@@ -30,7 +55,7 @@ export function useTestSession(flowId: string, beforeSend: () => Promise<void>) 
       if (event === 'trace') patchLast((t) => ({ ...t, entries: [...t.entries, data as TraceEntry] }))
       else if (event === 'reply') patchLast((t) => ({ ...t, reply: String(data.text ?? '') }))
       else if (event === 'done') {
-        if (data.session_id) sessionRef.current = String(data.session_id)
+        if (data.session_id) { sessionRef.current = String(data.session_id); remember(flowId, sessionRef.current) }
         done = { ran: !!data.ran, note: String(data.note ?? ''), errors: (data.errors ?? []) as FlowError[] }
         patchLast((t) => ({ ...t, ran: done!.ran, handoff: !!data.handoff, note: done!.note, errors: done!.errors }))
       }
@@ -55,7 +80,7 @@ export function useTestSession(flowId: string, beforeSend: () => Promise<void>) 
     }
   }, [flowId, beforeSend])
 
-  const reset = useCallback(() => { sessionRef.current = null; nextN.current = 1; setTurns([]) }, [])
+  const reset = useCallback(() => { sessionRef.current = null; remember(flowId, null); nextN.current = 1; setTurns([]) }, [flowId])
   return { turns, busy, send, reset }
 }
 

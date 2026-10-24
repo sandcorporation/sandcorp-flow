@@ -7,6 +7,7 @@ import { operatorUsage } from '../api'
 import type { OperatorUsageOut } from '../generated/model'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { CostCell, CostTotal, DailyCostTable } from './UsageCost'
 
 // 긴 이름이 툴팁(숨겨져 있어도)으로 390폭 밖까지 밀지 않게(#90)
 const TOOLTIP_WRAP = { maxWidth: 260 }
@@ -41,12 +42,14 @@ export default function OperatorUsageTab() {
             </CardContent>
           </Card>
 
+          <CostTotal label="전체 테넌트 총 비용(USD)" cost={data.cost_usd} unknown={data.unknown_cost_models} />
+
           <Card>
             <CardContent className="space-y-4 pt-6">
               <div className="text-sm font-semibold">테넌트별</div>
               <Table>
                 <TableHeader>
-                  <TableRow><TableHead>테넌트</TableHead><TableHead>토큰</TableHead><TableHead>호출</TableHead></TableRow>
+                  <TableRow><TableHead>테넌트</TableHead><TableHead>토큰</TableHead><TableHead>호출</TableHead><TableHead>비용</TableHead></TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.by_tenant.map(t => (
@@ -54,6 +57,7 @@ export default function OperatorUsageTab() {
                       <TableCell>{t.tenant_name}</TableCell>
                       <TableCell>{t.total_tokens.toLocaleString()}</TableCell>
                       <TableCell>{t.request_count.toLocaleString()}</TableCell>
+                      <TableCell><CostCell cost={t.cost_usd} unknown={t.unknown_cost_models.length > 0} /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -66,6 +70,8 @@ export default function OperatorUsageTab() {
               </ResponsiveContainer>
             </CardContent>
           </Card>
+
+          <DailyCostTable title="일별 비용(전체)" daily={data.daily} />
 
           <Card>
             <CardContent className="space-y-3 pt-6">
