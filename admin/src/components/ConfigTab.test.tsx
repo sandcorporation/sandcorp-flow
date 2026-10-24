@@ -298,6 +298,15 @@ describe('ConfigTab — 플랫폼 기본 Provider 게이팅', () => {
     await screen.findByLabelText('LLM Provider 타입')
     expect(screen.getByText(/플랫폼 기본\(OpenRouter\)을 씁니다/)).toBeInTheDocument()
   })
+
+  it('OCR은 플랫폼 기본이 없다 — dev에서도 "(미설정)"과 업로드 차단 안내를 보인다(ADR-0020 보충)', async () => {
+    mockConfig({ platform_default_providers_enabled: true })
+    renderConfig('ai')
+    await screen.findByLabelText('OCR Provider 타입')
+    expect(screen.queryByRole('option', { name: /PaddleOCR/ })).toBeNull()
+    expect(screen.queryByText(/PaddleOCR/)).toBeNull()
+    expect(screen.getByText(/미설정 시 이미지·스캔 문서 업로드는 막힙니다/)).toBeInTheDocument()
+  })
 })
 
 describe('ConfigTab — 모델 불러오기', () => {

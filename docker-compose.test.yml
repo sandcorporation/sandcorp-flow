@@ -1,12 +1,10 @@
 name: sandcorp-flow-test
 services:
   # ── 공용 인프라 ──────────────────────────────────────────────────────────
+  # 기본은 CPU. GPU 호스트에선 scripts/test.sh가 docker-compose.test.gpu.yml을 겹쳐 nvidia 런타임을 켠다.
   ollama-test:
     image: ollama/ollama
-    runtime: nvidia
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - OLLAMA_FLASH_ATTENTION=0
     volumes:
       - ollama_test_data:/root/.ollama
@@ -55,23 +53,7 @@ services:
       timeout: 3s
       retries: 10
 
-  # ── PaddleOCR 서비스 (GPU, 테스트용) ────────────────────────────────────────
-  paddle-ocr-test:
-    build:
-      context: ./paddle_service
-      dockerfile: Dockerfile
-    runtime: nvidia
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-    volumes:
-      - paddle_models_test:/root/.paddleocr
-    healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health').status==200 else 1)\""]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 300s
+  # OCR 서비스 없음 — OCR은 테넌트 Vision Provider 하나(ADR-0020 보충). 시험은 transcribe_image Fake.
 
   # Neo4j는 제거됨(ADR-0021) — GraphRAG는 Postgres+pgvector(db-test)로 흡수.
 
@@ -104,7 +86,6 @@ services:
       OPEN_ROUTER_API_KEY: ollama
       OPEN_ROUTER_DEFAULT_MODEL: qwen2.5:3b
       OLLAMA_BASE_URL: http://ollama-test:11434
-      PADDLE_OCR_URL: http://paddle-ocr-test:8080
     depends_on:
       db-test:
         condition: service_healthy
@@ -112,8 +93,6 @@ services:
         condition: service_healthy
       ollama-test-init:
         condition: service_completed_successfully
-      paddle-ocr-test:
-        condition: service_healthy
 
   # ── E2E용 Django API ─────────────────────────────────────────────────────
   api-e2e:
@@ -135,7 +114,6 @@ services:
       OPEN_ROUTER_API_KEY: fake
       OPEN_ROUTER_DEFAULT_MODEL: fake-llm
       OLLAMA_BASE_URL: http://ollama-test:11434
-      PADDLE_OCR_URL: http://paddle-ocr-test:8080
       E2E_OPERATOR_USERNAME: admin
       E2E_OPERATOR_PASSWORD: admin123
     volumes:
@@ -147,8 +125,6 @@ services:
         condition: service_healthy
       ollama-test-init:
         condition: service_completed_successfully
-      paddle-ocr-test:
-        condition: service_healthy
       fake-llm:
         condition: service_healthy
     healthcheck:
@@ -205,7 +181,6 @@ services:
       OPEN_ROUTER_API_KEY: fake
       OPEN_ROUTER_DEFAULT_MODEL: fake-llm
       OLLAMA_BASE_URL: http://ollama-test:11434
-      PADDLE_OCR_URL: http://paddle-ocr-test:8080
     volumes:
       - media-e2e:/app/media
     depends_on:
@@ -315,4 +290,3 @@ services:
 volumes:
   ollama_test_data:
   media-e2e:
-  paddle_models_test:

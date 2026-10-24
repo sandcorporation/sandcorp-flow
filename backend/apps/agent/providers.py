@@ -106,7 +106,7 @@ def extraction_provider(config) -> LLMProvider:
 def ocr_provider(config) -> LLMProvider:
     """OCR(Vision)용 LLM provider. LLM Provider와 독립 설정이며 LLM-shaped(anthropic 포함).
 
-    `ocr_provider_type`이 설정된 경우에만 호출된다(get_ocr_backend이 미설정 시 Paddle/에러로 분기).
+    `ocr_provider_type`이 설정된 경우에만 호출된다(get_ocr_backend이 미설정 시 UnconfiguredOCR로 분기).
     그래서 여기선 플랫폼 기본 폴백 분기가 없다 — 항상 테넌트가 고른 provider를 해석한다.
     """
     from apps.tenants.crypto import decrypt_secret
