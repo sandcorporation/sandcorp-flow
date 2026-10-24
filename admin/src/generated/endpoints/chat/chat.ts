@@ -5,6 +5,9 @@
  * OpenAPI spec version: 1.0.0
  */
 import type {
+  AppsChatApiResolveWidget200,
+  AppsChatApiResolveWidget404,
+  AppsChatApiResolveWidgetParams,
   AppsChatApiSendMessage202,
   AppsChatApiSendMessage404,
   AppsChatApiSendMessage429,
@@ -96,6 +99,59 @@ export const appsChatApiSendMessage = async (messageIn: MessageIn, options?: Req
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
       messageIn,)
+  }
+);}
+
+
+/**
+ * 공개 위젯 진입 가드 — slug가 활성 Tenant로 해석되면 200(+공개 브랜드), 아니면 404.
+
+위젯이 렌더 전에 호출해, 유효하지 않은 slug면 챗 셸 대신 not-found를 띄운다(EventSource는 HTTP
+상태를 못 읽어 404와 일시 오류를 구분 못 하므로, 사전 검증이 필요하다).
+ * @summary Resolve Widget
+ */
+export type appsChatApiResolveWidgetResponse200 = {
+  data: AppsChatApiResolveWidget200
+  status: 200
+}
+
+export type appsChatApiResolveWidgetResponse404 = {
+  data: AppsChatApiResolveWidget404
+  status: 404
+}
+    
+export type appsChatApiResolveWidgetResponseSuccess = (appsChatApiResolveWidgetResponse200) & {
+  headers: Headers;
+};
+export type appsChatApiResolveWidgetResponseError = (appsChatApiResolveWidgetResponse404) & {
+  headers: Headers;
+};
+
+export type appsChatApiResolveWidgetResponse = (appsChatApiResolveWidgetResponseSuccess | appsChatApiResolveWidgetResponseError)
+
+export const getAppsChatApiResolveWidgetUrl = (params: AppsChatApiResolveWidgetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/chat/resolve?${stringifiedParams}` : `/api/chat/resolve`
+}
+
+export const appsChatApiResolveWidget = async (params: AppsChatApiResolveWidgetParams, options?: RequestInit): Promise<appsChatApiResolveWidgetResponse> => {
+  
+  return customInstance<appsChatApiResolveWidgetResponse>(getAppsChatApiResolveWidgetUrl(params),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
   }
 );}
 
