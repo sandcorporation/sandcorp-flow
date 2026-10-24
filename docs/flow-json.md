@@ -104,6 +104,7 @@ HTTP 도구 보안은 [ADR-0029](adr/0029-http-tool-node-security.md). 용어는
 - **리다이렉트**: 비밀(헤더·본문)을 실은 요청은 **다른 호스트로의 리다이렉트를 따르지 않는다**(`cross_host_redirect` → `error`) — 보안 계층은
   다른 호스트로 갈 때 `Authorization`·`Proxy-Authorization`·`Cookie`만 떼므로 `X-Api-Key` 같은 헤더나 307 본문의 비밀이 따라가는 것을 막는다.
   비밀이 없는 요청은 허용 목록 안에서 따른다. 같은 호스트 리다이렉트는 비밀이 있어도 따른다.
+- **`save`가 없으면** 응답 본문은 읽지 않는다 — 2xx이기만 하면 본문이 JSON이 아니어도(HTML 오류 페이지 등) `next`로 간다. 본문을 쓰거나 JSON인지 확인해야 하면 `save`를 두고 (`invalid_json`으로 `error` 갈래를 타게 한다).
 - **갈래**: 2xx면 `next`. 실패하면 `error`(선택 — 선이 없으면 거기서 턴이 끝난다). 실패는 턴을 깨지 않는다.
 - **판단 기록** `record`: `request {method, url}`(치환한 URL — 비밀은 URL에 못 들어간다), `status`(응답이 없으면 `null`), `error`(이유 코드 또는
   `null`), `output`(저장한 값), `missing`, `reason`. 헤더·본문은 기록하지 않는다. `url`·`output`·`reason`은 이 테넌트 비밀(원문·파생값·6자 이상

@@ -38,6 +38,7 @@ _STATUS_BY_CODE = {
     "request_not_found": 404,
     "session_not_found": 404,
     "duplicate_name": 409,
+    "flow_in_use": 409,
     "request_not_pending": 409,
     "approval_required": 409,
     "self_approval": 403,
@@ -275,6 +276,21 @@ def flows_get(request, flow_id: str):
 def flows_rename(request, flow_id: str, body: FlowRenameIn):
     require_permission(request.auth, FLOW_EDIT)
     return _flow_out(services.rename_flow(_tenant_id(request.auth), flow_id, body.name))
+
+
+@flow_router.delete("/{flow_id}/", response={204: None})
+def flows_archive(request, flow_id: str):
+    """흐름 보관(soft delete). 위젯이 쓰는 공개 흐름은 409 — 버전·세션·판단 기록은 남는다."""
+    require_permission(request.auth, FLOW_EDIT)
+    services.archive_flow(_tenant_id(request.auth), flow_id)
+    return 204, None
+
+
+@flow_router.post("/{flow_id}/restore/", response=FlowOut)
+def flows_restore(request, flow_id: str):
+    """보관한 흐름을 되돌린다(화면 없음 — API만)."""
+    require_permission(request.auth, FLOW_EDIT)
+    return _flow_out(services.restore_flow(_tenant_id(request.auth), flow_id))
 
 
 # ── 초안 ─────────────────────────────────────────────────────────────────────

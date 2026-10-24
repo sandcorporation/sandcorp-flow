@@ -4465,6 +4465,35 @@
       }
     },
     "/api/tenant/flows/{flow_id}/": {
+      "delete": {
+        "description": "흐름 보관(soft delete). 위젯이 쓰는 공개 흐름은 409 — 버전·세션·판단 기록은 남는다.",
+        "operationId": "apps_flows_api_flows_archive",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Archive",
+        "tags": [
+          "flows"
+        ]
+      },
       "get": {
         "operationId": "apps_flows_api_flows_get",
         "parameters": [
@@ -4693,6 +4722,44 @@
           }
         ],
         "summary": "Flows Put Draft",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/api/tenant/flows/{flow_id}/restore/": {
+      "post": {
+        "description": "보관한 흐름을 되돌린다(화면 없음 — API만).",
+        "operationId": "apps_flows_api_flows_restore",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Restore",
         "tags": [
           "flows"
         ]

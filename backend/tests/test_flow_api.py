@@ -92,10 +92,15 @@ def test_member_reads_but_every_write_is_403(client, tenant_with_key, tenant_mem
         (f"{BASE}{fid}/deploy/", {"version": 1}, "post"),
         (f"{BASE}{fid}/rollback/", {}, "post"),
         (f"{BASE}{fid}/test/", {"message": "안녕"}, "post"),
+        (f"{BASE}{fid}/", None, "delete"),
+        (f"{BASE}{fid}/restore/", {}, "post"),
         (f"{REQS}00000000-0000-0000-0000-000000000000/approve/", {}, "post"),
         (f"{REQS}00000000-0000-0000-0000-000000000000/reject/", {}, "post"),
     ]
     for url, body, method in writes:
+        if method == "delete":
+            assert client.delete(url, **h(t)).status_code == 403, (method, url)
+            continue
         assert jpost(client, url, body, t, method).status_code == 403, (method, url)
     assert services.get_flow(tenant.id, fid).deployed_version is None
 
@@ -356,3 +361,109 @@ def test_seeded_default_flow_version_is_labelled_as_system(client, tenant_with_k
     flow = ensure_default_flow(tenant.id)
     body = client.get(f"{BASE}{flow.id}/", **h(admin_token)).json()
     assert [(v["number"], v["created_by_name"]) for v in body["versions"]] == [(1, "시스템(기본 흐름)")]
+
+
+# ── 보관(soft delete, #126) ──────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_archive_hides_flow_from_list_and_detail_but_keeps_it(client, tenant_with_key, admin_token):
+    keep = new_flow(client, admin_token, name="남길 흐름")
+    gone = new_flow(client, admin_token, name="지울 흐름")
+    jpost(client, f"{BASE}{gone}/versions/", {}, admin_token)
+
+    r = client.delete(f"{BASE}{gone}/", **h(admin_token))
+
+    assert r.status_code == 204
+    assert [f["id"] for f in client.get(BASE, **h(admin_token)).json()] == [keep]
+    assert client.get(f"{BASE}{gone}/", **h(admin_token)).status_code == 404
+    assert jpost(client, f"{BASE}{gone}/draft/", {"ops": OPS}, admin_token, "patch").status_code == 404
+    assert client.delete(f"{BASE}{gone}/", **h(admin_token)).status_code == 404  # 두 번 보관은 없는 흐름
+    from apps.flows.models import Flow, FlowVersion
+
+    row = Flow.objects.get(pk=gone)
+    assert row.archived_at is not None and FlowVersion.objects.filter(flow=row).count() == 1  # 버전은 남는다
+
+
+@pytest.mark.django_db
+def test_archive_frees_the_name_for_a_new_flow(client, tenant_with_key, admin_token):
+    old = new_flow(client, admin_token, name="봄 이벤트")
+    client.delete(f"{BASE}{old}/", **h(admin_token))
+
+    assert jpost(client, BASE, {"name": "봄 이벤트"}, admin_token).status_code == 201
+
+
+@pytest.mark.django_db
+def test_widget_flow_cannot_be_archived_409(client, tenant_with_key, admin_token):
+    from apps.flows.defaults import ensure_default_flow
+
+    tenant, _ = tenant_with_key
+    ensure_default_flow(tenant.id)
+    public = next(f for f in client.get(BASE, **h(admin_token)).json() if f["is_public"])
+
+    r = client.delete(f"{BASE}{public['id']}/", **h(admin_token))
+
+    assert r.status_code == 409 and r.json()["code"] == "flow_in_use"
+    assert "다른 흐름" in r.json()["detail"]
+    assert any(f["id"] == public["id"] for f in client.get(BASE, **h(admin_token)).json())
+
+
+@pytest.mark.django_db
+def test_other_tenants_flow_cannot_be_archived_404(client, tenant_with_key, admin_token):
+    foreign = make_flow(other_tenant(), SIMPLE, name="남의")
+
+    assert client.delete(f"{BASE}{foreign.id}/", **h(admin_token)).status_code == 404
+    assert jpost(client, f"{BASE}{foreign.id}/restore/", {}, admin_token).status_code == 404
+    from apps.flows.models import Flow
+
+    assert Flow.objects.get(pk=foreign.id).archived_at is None
+
+
+@pytest.mark.django_db
+def test_tenant_key_may_archive(client, tenant_with_key):
+    _, key = tenant_with_key
+    fid = jpost(client, BASE, {"name": "키 흐름"}, key).json()["id"]
+
+    assert client.delete(f"{BASE}{fid}/", **h(key)).status_code == 204
+
+
+@pytest.mark.django_db
+def test_session_traces_stay_readable_after_the_flow_is_archived(client, tenant_with_key, admin_token, fake_chat_llm):
+    fid = new_flow(client, admin_token)
+    done = dict(sse_events(jpost(client, f"{BASE}{fid}/test/", {"message": "안녕하세요"}, admin_token)))["done"]
+
+    assert client.delete(f"{BASE}{fid}/", **h(admin_token)).status_code == 204
+
+    traces = client.get(f"/api/tenant/sessions/{done['session_id']}/decision-traces", **h(admin_token))
+    assert traces.status_code == 200
+    assert [e["node_id"] for e in traces.json()["turns"][0]["entries"]] == ["start", "answer"]
+
+
+@pytest.mark.django_db
+def test_restore_brings_the_flow_back(client, tenant_with_key, admin_token):
+    fid = new_flow(client, admin_token, name="되살릴 흐름")
+    client.delete(f"{BASE}{fid}/", **h(admin_token))
+
+    r = jpost(client, f"{BASE}{fid}/restore/", {}, admin_token)
+
+    assert r.status_code == 200 and r.json()["id"] == fid
+    assert [f["id"] for f in client.get(BASE, **h(admin_token)).json()] == [fid]
+    assert client.get(f"{BASE}{fid}/", **h(admin_token)).status_code == 200
+
+
+@pytest.mark.django_db
+def test_restore_is_refused_when_the_name_was_taken_meanwhile(client, tenant_with_key, admin_token):
+    old = new_flow(client, admin_token, name="같은 이름")
+    client.delete(f"{BASE}{old}/", **h(admin_token))
+    new_flow(client, admin_token, name="같은 이름")
+
+    r = jpost(client, f"{BASE}{old}/restore/", {}, admin_token)
+
+    assert r.status_code == 409 and r.json()["code"] == "duplicate_name"
+
+
+@pytest.mark.django_db
+def test_restoring_a_flow_that_is_not_archived_is_404(client, tenant_with_key, admin_token):
+    fid = new_flow(client, admin_token)
+
+    assert jpost(client, f"{BASE}{fid}/restore/", {}, admin_token).status_code == 404

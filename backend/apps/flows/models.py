@@ -30,6 +30,10 @@ class FlowQuerySet(models.QuerySet["Flow"]):
     def for_tenant(self, tenant_id: uuid.UUID) -> Self:
         return self.filter(tenant_id=tenant_id)
 
+    def active(self) -> Self:
+        """보관(``archived_at``)하지 않은 흐름만. 목록·조회·편집은 모두 이 범위 안에서 한다(#126)."""
+        return self.filter(archived_at__isnull=True)
+
 
 class Flow(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -40,6 +44,8 @@ class Flow(models.Model):
     deployed_version = models.ForeignKey(
         "flows.FlowVersion", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
+    archived_at = models.DateTimeField(null=True, blank=True)
+    """보관한 시각(soft delete, #126). 값이 있으면 목록·MCP·편집에서 빠지지만 버전·세션·판단 기록은 그대로 남는다."""
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -54,7 +60,9 @@ class Flow(models.Model):
     class Meta:
         db_table = "flows"
         constraints = [
-            models.UniqueConstraint(fields=["tenant", "name"], name="flow_unique_name_per_tenant"),
+            models.UniqueConstraint(
+                fields=["tenant", "name"], condition=Q(archived_at__isnull=True), name="flow_unique_name_per_tenant"
+            ),
             models.UniqueConstraint(
                 fields=["tenant"], condition=Q(is_public=True), name="flow_one_public_per_tenant"
             ),

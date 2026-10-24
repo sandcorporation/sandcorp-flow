@@ -1,7 +1,7 @@
 """흐름 도구(#76, 스펙 #74 결정 4·6·7) — ``apps/flows/services.py``를 얇게 감싼다. 편집 규칙은 서비스 층에만 둔다.
 
 - 읽기: ``list_flows``·``get_flow``(``flow.read``). 쓰기: ``create_flow``·``update_flow``·``save_version``·
-  ``deploy_version``·``test_turn``(``flow.write`` + Admin — 디스패처가 판정).
+  ``deploy_version``·``test_turn``·``archive_flow``(``flow.write`` + Admin — 디스패처가 판정).
 - 수정은 ``update_flow`` 하나가 연산 목록(upsert_node·delete_node·connect·disconnect)을 받아 **원자적으로** 적용한다.
   도구를 연산마다 나누지 않은 까닭: 노드를 만들고 선을 잇는 일은 거의 항상 함께라 한 번 호출로 끝나고, 중간에 실패해도
   흐름이 반쯤 바뀐 채로 남지 않는다. 검증은 묶음 끝에 한 번(중간 상태의 오류를 보지 않는다).
@@ -235,3 +235,16 @@ async def test_turn(ctx: ToolContext, args: TestTurnArgs) -> JSONObject:
         "errors": _errors(result.errors),
         "note": result.note,
     }
+
+
+@register(
+    "archive_flow",
+    "흐름을 보관한다(목록·조회에서 빠짐; 버전·세션·판단 기록은 남는다). 위젯이 쓰는 공개 흐름은 거부. "
+    "인자: flow_id. 실패: flow_not_found·flow_in_use.",
+    FlowArgs,
+    scope="flow.write",
+    writes=True,
+)
+async def archive_flow(ctx: ToolContext, args: FlowArgs) -> JSONObject:
+    flow = await _service(lambda: services.archive_flow(_tenant_id(ctx), args.flow_id))
+    return {"archived": True, "id": str(flow.id), "name": flow.name}
