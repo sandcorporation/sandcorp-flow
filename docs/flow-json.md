@@ -5,7 +5,7 @@ HTTP 도구 보안은 [ADR-0029](adr/0029-http-tool-node-security.md). 용어는
 
 - 스키마·검증 코드: `backend/apps/flows/schema.py` (`validate_flow`, `parse_flow`, `flow_hash`, `NodeKind`)
 - 모델: `backend/apps/flows/models.py` (`Flow`, `FlowDraft`, `FlowVersion`), `ChatSession.flow_version`
-- 예제 파일: `backend/apps/flows/examples/sandcorp_home.json` (시험이 유효함을 확인한다)
+- 예제 파일 셋: `backend/apps/flows/examples/{sandcorp_home,shop_support,academy_reservation}.json` (카탈로그 `apps/flows/example_catalog.py`, 시험이 유효함을 확인한다). 아래 「예제」 절
 
 ## 문서 모양
 
@@ -198,12 +198,12 @@ HTTP 도구의 인증 계열 헤더(이름에 `authorization`·`cookie`·`token`
 ## 예제 ① Sandcorp 홈 상담 에이전트
 
 의도 분류 → (프로젝트 문의면) 요구사항이 다 모였나 → 모자라면 **요구사항 되묻기**(답을 기다린 뒤 다시 의도 분류로) /
-다 모였으면 사례 찾기 → 범위·기간 초안 → 가드레일 → 문의 접수(HTTP). 사람을 원하거나 의도가 불확실하면 사람 넘김.
+다 모였으면 사례 찾기 → 범위·기간 초안 → 가드레일 → 문의 접수(HTTP) → 접수 안내(실패면 실패 안내). 사람을 원하거나 의도가 불확실하면 사람 넘김.
 
 ```
 N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
   inquiry → N-04 요구사항이 다 모였나
-              complete → N-06 사례 찾기 → N-07 범위·기간 초안 → N-08 가드레일 → N-09 문의 접수(HTTP)
+              complete → N-06 사례 찾기 → N-07 범위·기간 초안 → N-08 가드레일 → N-09 문의 접수(HTTP) → N-12 접수 안내 / error → N-13 접수 실패 안내
               else     → N-05 요구사항 되묻기(await_reply) ──(다음 턴)──→ N-02 의도 분류
   human   → N-10 사람 넘김
   else    → N-11 일반 답변
@@ -222,9 +222,9 @@ N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
 {"id": "ask", "kind": "ai_answer", "code": "N-05", "name": "요구사항 되묻기",
  "config": {"instructions": "빠진 요구사항(목적·규모·기한) 중 하나만 짧게 되묻는다.", "await_reply": true}},
 {"id": "submit", "kind": "http_tool", "code": "N-09", "name": "문의 접수",
- "config": {"method": "POST", "url": "https://api.sandcorp.co.kr/inquiries",
-            "headers": {"Authorization": "Bearer {{secret.inquiry_api_key}}"},
-            "body_template": "{\"summary\": \"{{state.user_message}}\", \"label\": \"{{state.label}}\"}"}}
+ "config": {"method": "POST", "url": "https://demo-api.flow.sandcorp.co.kr/inquiries",
+            "body_template": "{\"message\": \"{{state.user_message}}\", \"label\": \"{{state.label}}\"}",
+            "save": {"inquiry_no": "$.inquiry_no"}}}
 ```
 
 ```json
@@ -237,3 +237,32 @@ N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
   {"from": "ask", "to": "classify"}
 ]
 ```
+
+**템플릿과 Sandcorp 실제 흐름.** 위 JSON은 템플릿이라 문의 접수가 가짜 API고 비밀 헤더가 없다(비밀 참조가 있으면 어느 테넌트에서나
+`unknown_secret`). Sandcorp 테넌트에 시드되는 실제 흐름(`manage.py seed_sandcorp`)은 같은 흐름에서 `submit`의 `url`만 설정값
+`SANDCORP_INQUIRY_URL`(기본: 위 가짜 API)로 바꾼다. `SANDCORP_INQUIRY_API_KEY`가 있으면 그 값을 테넌트 비밀 `inquiry_api_key`로 저장하고
+`headers: {"Authorization": "Bearer {{secret.inquiry_api_key}}"}`를 더하며, URL 호스트를 허용 도메인에 올린다(흐름 JSON에는 키 값이 들어가지 않는다).
+
+## 예제 ② 쇼핑몰 배송·반품 상담
+
+`shop_support.json`. 의도 분류(주문 조회 / 반품·문의 / 사람 요청, 주문번호 추출) →
+주문번호가 있으면 **주문 조회**(가짜 API `GET /orders/{번호}`, `save`: `found`·`order_status`·`status_label`·`tracking_no`) →
+조건 `fields.found == false`(없음) / `shipping` / `delivered` / 나머지(준비 중)에 따라 각각 안내, 조회 실패(`error` 갈래)는 「잠시 뒤 다시」.
+번호가 없으면 되묻고(`await_reply`) 다시 분류한다. 반품·일반 문의는 정책 지식을 찾아 답하고, 사람을 원하면 넘긴다.
+시험 장면: `10021` 배송 중 · `10024` 배송 완료 · `10027` 준비 중 · `10020` 없음 · `9500`/`9408` 실패.
+**주의:** AI 답변은 상태의 `fields`를 프롬프트로 받지 않는다 — 그래서 상태별로 안내 노드를 따로 두고 지침에 상태를 적었다(송장번호는 말하지 못한다).
+
+## 예제 ③ 학원 수강 상담·레벨 테스트 예약
+
+`academy_reservation.json`. 의도 분류(강좌 문의 / 레벨 테스트 / 사람 요청, `date`·`level`·`name` 추출) →
+레벨 테스트면 `date`·`level`이 다 모였나(안 모였으면 되묻기) → **예약**(가짜 API `POST /reservations`, `save`: `reserved`·`reservation_no`·`time`·`level_label`) →
+`fields.reserved == true`면 확인 안내, 아니면(날짜 모양 오류 등 `error` 포함) 실패 안내. 강좌 문의는 지식 찾기 → 답변 → `price_promise` 가드레일.
+
+## 지식 묶음과 시드
+
+예제마다 작은 문서 셋이 `backend/apps/flows/examples/knowledge/<예제 id>/*.txt`에 있다(파일 이름이 문서 레이블).
+- 예제 id: `sandcorp_home` · `shop_support` · `academy_reservation` (`apps.flows.example_catalog.EXAMPLES`)
+- 적재: `seed_example_knowledge(tenant_id, 예제_id)` 또는 `manage.py seed_examples --tenant <slug|id> [--example <id>]... [--force]`. 문서 id가
+  (테넌트, 예제, 이름)에서 정해져 다시 돌려도 중복이 없고, 이미 ready면 건너뛴다. 테넌트에 추출·임베딩 Provider가 설정돼 있어야 한다.
+- Sandcorp 테넌트: `manage.py seed_sandcorp [--update-flow] [--skip-knowledge]` — slug `sandcorp` 테넌트, 공개·배포 중 흐름 「Sandcorp 홈 상담」, 지식 ①. 이미 있는 흐름은
+  기본으로 건드리지 않는다(`--update-flow`가 설정값으로 다시 만들어 새 버전을 배포한다).
