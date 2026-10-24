@@ -265,7 +265,8 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 - **연결**: claude.ai → 설정 → 커넥터 → 사용자 지정 커넥터 추가 → URL `https://flow.sandcorp.co.kr/mcp`. 커넥터가 `/.well-known/oauth-protected-resource/mcp`를 읽고 sandcorp-auth로 로그인시킨다(일반 사용자 member 토큰, `aud`=`AUTH_MCP_RESOURCE`, 스코프 `flow.read`·`flow.write`). auth 쪽 등록은 [docs/deployment.md](./docs/deployment.md) 「서버 쪽 할 일」 11번.
 - **권한**: 스코프는 상한이고 실제 판정은 멤버십 역할 — 테넌트 **Admin만 편집·배포**, Member는 읽기. 대표 계정도 멤버십이 있는 테넌트만 보인다(Operator 기능 없음).
 - **테넌트 고르기**: 테넌트 도구는 `tenant`(slug) 인자를 받고, 멤버십이 하나면 생략한다. `list_tenants`가 내 테넌트·역할을 보여 준다.
-- **도구**(지금): `list_tenants`, `get_flow_schema`(흐름 JSON 규칙 — 흐름을 고치기 전에 한 번 읽는다). 흐름 읽기·수정·배포 도구는 #76, 문서·지식그래프·상담 읽기 도구는 #77.
+- **도구**(지금): `list_tenants`, `get_flow_schema`(흐름 JSON 규칙 — 흐름을 고치기 전에 한 번 읽는다), 흐름 도구(#76) `list_flows`·`get_flow`(초안·검증 결과·버전 목록, `version`으로 버전 JSON) — 여기까지 읽기, `create_flow`·`update_flow`·`save_version`·`deploy_version`·`test_turn` — 쓰기(Admin). 문서·지식그래프·상담 읽기 도구는 #77.
+- **흐름 고치기**: `update_flow`는 연산 목록(`upsert_node`·`delete_node`·`connect`·`disconnect`)을 한 번에 **원자적으로** 적용한다(하나라도 못 하면 아무것도 안 바뀜). 초안은 틀려도 저장되고 결과에 `errors[{node_id, code, message}]`가 온다 — 도구 오류가 아니다. 버전 저장은 검증 통과한 초안만, 배포는 실행기에 핸들러가 있는 노드만으로 된 버전만(되돌리기는 이전 번호 배포). `test_turn`은 초안으로 한 턴을 돌려 답·지나간 노드를 보여 준다 — 시험 세션이라 운영 대화 목록에 안 섞이고, 사람 넘김은 실제로 넘기지 않으며, 체험 테넌트면 체험 턴 1을 쓴다. 편집 규칙은 `backend/apps/flows/services.py`(흐름 API #28·편집기 #29도 이 층을 쓴다).
 - **전송**: Streamable HTTP의 JSON 응답 모드(POST 한 번에 JSON 한 답, 세션·SSE 없음, 배치 거부, 본문 1 MiB). 코드는 `backend/apps/mcp/`(도구 등록 방법은 `registry.py` 머리말).
 
 ### Visitor

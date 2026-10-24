@@ -86,7 +86,9 @@ HTTP 도구의 인증 계열 헤더(이름에 `authorization`·`cookie`·`token`
 - Flow Version은 바뀌지 않는다. 만들 때 검증하고(무효면 만들지 않음) 해시를 계산한다. 저장 뒤 `save()`나
   `QuerySet.update()`로 고치려 하면 `ImmutableFlowVersionError`.
 - 해시는 정규화 JSON(키 정렬, 공백 없는 구분자, UTF-8)의 SHA-256 16진수. 키 순서·들여쓰기가 달라도 같은 흐름은 같은 해시.
-- 초안은 작업본이라 무효인 JSON도 저장된다. 배포가 초안을 새 버전으로 굳힐 때 검증된다.
+- 초안은 작업본이라 무효인 JSON도 저장된다(저장·패치 결과에 검증 오류 목록이 온다). 「버전 저장」이 초안을 새 버전으로 굳힐 때
+  검증되고, 배포는 거기에 더해 실행기에 핸들러가 있는 노드만으로 된 버전만 받는다(`no_handler` 오류). 편집 규칙은
+  `apps/flows/services.py`(공용 서비스 층 — MCP·흐름 API·편집기가 함께 쓴다).
 - 테넌트당 Flow 하나를 `is_public`으로 정하면 위젯이 그 Flow의 배포 중 버전으로 돈다. 새 ChatSession은 만들어질 때 그
   버전에 고정되고(`flow_version`), 이후 배포가 바뀌어도 그대로다. 공개 흐름이나 배포 중 버전이 없으면 비어 있다.
 - 다른 테넌트의 흐름은 `Flow.objects.for_tenant(tenant_id)`·`FlowVersion.objects.for_tenant(tenant_id)`에 보이지 않고,
