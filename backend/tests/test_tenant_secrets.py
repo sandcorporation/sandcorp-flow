@@ -289,3 +289,75 @@ def test_member_cannot_change_domains_and_other_tenant_rows_are_404(client, tena
     mine = client.post(DOMAINS, {"pattern": "api.example.com"}, content_type="application/json",
                        **_hdr(tenant_admin_token)).json()
     assert client.delete(f"{DOMAINS}{mine['id']}", **_hdr(tenant_member_token)).status_code == 403
+
+
+# ── 가림 범위: 테넌트마다(#115) ─────────────────────────────────────────────
+# 테넌트가 읽는 출력(판단 기록·시험 대화 trace·MCP 응답)의 가림은 그 테넌트 비밀로만 한다. 다른 테넌트 비밀 조각이
+# 이 테넌트 출력에서 가려지면, 임의 문자열을 넣어 보고 어디가 [비밀]로 바뀌는지로 그 비밀을 한 글자씩 알아낼 수 있다.
+
+def _fresh() -> str:
+    return "zx" + pysecrets.token_hex(14)
+
+
+def _reveal(tenant, value: str) -> None:
+    from apps.tenants.tenant_secrets import render_secrets, set_secret
+
+    set_secret(tenant.id, "shop_key", value)
+    render_secrets(tenant.id, "Bearer {{secret.shop_key}}")
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_other_tenants_secret_does_not_mask_this_tenants_test_turn(tenant_with_key, fake_chat_llm, caplog):
+    """A의 비밀 조각을 B가 시험 대화에 넣어도 B의 trace·판단 기록엔 원문 그대로 — 가림 오라클이 없다."""
+    from asgiref.sync import sync_to_async as adb
+
+    from apps.flows import services
+    from apps.flows.models import DecisionTrace
+    from test_flow_services import make_flow, other_tenant
+
+    a, _ = tenant_with_key
+    b = await adb(other_tenant)()
+    secret = _fresh()
+    await adb(_reveal)(a, secret)
+    probe = f"혹시 {secret[2:14]} 맞나요"
+    flow_b = await adb(make_flow)(b)
+
+    result = await services.run_test_turn(b.id, flow_b.id, probe)
+
+    assert result.ran, result
+    dumped = json.dumps(result.trace, ensure_ascii=False)
+    assert probe in dumped and "[비밀]" not in dumped
+    stored = await adb(lambda: json.dumps([r.entries for r in DecisionTrace.objects.filter(tenant_id=b.id)],
+                                          ensure_ascii=False))()
+    assert probe in stored and "[비밀]" not in stored
+
+    # A 자신의 시험 대화에서는 여전히 가려지고, 로그(운영자만 봄)에서도 가려진다.
+    flow_a = await adb(make_flow)(a)
+    mine = await services.run_test_turn(a.id, flow_a.id, probe)
+    assert secret[2:14] not in json.dumps(mine.trace, ensure_ascii=False)
+    with caplog.at_level(logging.INFO):
+        logging.getLogger("apps.flows.http_tool").info("B가 보낸 말 %s", probe)
+    assert secret[2:14] not in caplog.text and "[비밀]" in caplog.text
+
+
+@pytest.mark.django_db
+def test_other_tenants_secret_does_not_mask_this_tenants_mcp_test_turn(signer, fake_chat_llm):
+    """MCP test_turn도 같은 원칙 — B의 응답 trace에 A 비밀 조각이 그대로, A의 응답에선 가려짐."""
+    from test_flow_services import make_flow
+
+    a, b = make_tenant("acme-a"), make_tenant("acme-b")
+    member_of(a, Membership.ROLE_ADMIN)
+    member_of(b, Membership.ROLE_ADMIN)
+    secret = _fresh()
+    _reveal(a, secret)
+    probe = f"주문번호 {secret[5:17]} 확인"
+    token = mcp_token(signer)
+
+    def turn(tenant) -> str:
+        flow = make_flow(tenant)
+        body = call(token, "test_turn", {"tenant": tenant.slug, "flow_id": str(flow.id), "message": probe})
+        return tool_text(body)
+
+    theirs, mine = turn(b), turn(a)
+    assert secret[5:17] in theirs and "[비밀]" not in theirs
+    assert secret[5:17] not in mine
