@@ -38,8 +38,12 @@ def passthrough_guardrail(monkeypatch):
     return passthrough
 
 
-def test_flow_with_unhandled_kind_is_rejected_at_build():
-    """핸들러가 없는 종류(아직 HTTP 도구)가 든 흐름은 지을 때 거부한다 — 실행 중에 조용히 멈추지 않게."""
+def test_flow_with_unhandled_kind_is_rejected_at_build(monkeypatch):
+    """핸들러가 없는 종류가 든 흐름은 지을 때 거부한다 — 실행 중에 조용히 멈추지 않게."""
+    from apps.flows.executor import HANDLERS
+    from apps.flows.schema import NodeKind
+
+    monkeypatch.delitem(HANDLERS, NodeKind.HTTP_TOOL)  # 핸들러 없는 종류 흉내(이제 모든 종류에 핸들러가 있다)
     from apps.flows.executor import UnsupportedNodeKind, flow_builder
 
     flow = _chain([("http_tool", {"method": "GET", "url": "https://example.com/x", "headers": {}})])

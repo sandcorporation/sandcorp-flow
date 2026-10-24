@@ -184,19 +184,17 @@ async def test_classify_failure_does_not_break_the_turn_and_falls_to_else(tenant
 
 @pytest.mark.django_db(transaction=True)
 async def test_example_flow_runs_one_turn_up_to_the_http_node(tenant_with_key, fake_chat_llm):
-    """예제 ①: 분류·조건·가드레일 핸들러가 있어 HTTP 노드(M3, #34) 앞까지 한 턴에 돈다."""
+    """예제 ①: 전체가 지어지고, HTTP 노드 앞까지의 분기가 한 턴에 돈다."""
     import json
     from pathlib import Path
 
-    from apps.flows.executor import UnsupportedNodeKind, compile_flow
+    from apps.flows.executor import compile_flow
 
     tenant, _ = tenant_with_key
     graph = json.loads((Path(__file__).parent.parent / "apps/flows/examples/sandcorp_home.json").read_text())
-    with pytest.raises(UnsupportedNodeKind) as exc:
-        compile_flow(graph)
-    assert "guardrail" not in str(exc.value) and "http_tool" in str(exc.value)  # 남은 건 HTTP뿐
+    compile_flow(graph)  # 모든 노드 종류에 핸들러가 있다(HTTP 도구 #34까지)
 
-    # HTTP 노드(#34)만 빼고 같은 분기를 돈다 — 가격 약속 판정은 걸리지 않게 둔다
+    # HTTP 노드만 빼고 같은 분기를 돈다(HTTP 호출은 test_flow_http_tool.py) — 가격 약속 판정은 걸리지 않게 둔다
     trimmed = {"nodes": [n for n in graph["nodes"] if n["kind"] != "http_tool"],
                "edges": [e for e in graph["edges"] if "submit" not in {e["from"], e["to"]}]}
     fake_chat_llm.by_schema["GuardrailVerdict"] = lambda m, schema: schema(violates=False)
