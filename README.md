@@ -209,7 +209,7 @@ docker compose -f docker-compose.dev.yml up --build
 docker compose exec api python manage.py migrate
 ```
 
-Operator 비밀번호 로그인은 없다(#21). 관리 화면 Operator 로그인은 sandcorp-auth 대표 계정으로 한다 — dev용 기밀 클라이언트를 등록하고 `.env`에 `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`·`AUTH_REDIRECT_URI`(admin dev 서버 주소의 `/api/auth/callback`)·`AUTH_OWNER_SUB`를 채운다. sandcorp-auth 없이 화면만 볼 때는 `docker compose exec api python manage.py seed_e2e_operator --token-file /tmp/op_token`으로 대표 Operator와 세션 토큰을 만들고, 그 값을 브라우저 sessionStorage `op_access`에 넣는다(e2e가 쓰는 방식). 고객(멤버) 화면도 같다 — `seed_e2e_member --token-file …`이 조직·Admin 멤버십과 세션 토큰을 만들고(sessionStorage `agent_access`), `--accept-invite-from <파일>`은 그 파일에 떨어진 초대 원문을 콜백처럼 수락하는 sandcorp-auth 대역이다(e2e `member-team.spec.js`).
+Operator 비밀번호 로그인은 없다(#21). 관리 화면 Operator 로그인은 sandcorp-auth 대표 계정으로 한다 — dev용 기밀 클라이언트를 등록하고 `.env`에 `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`·`AUTH_REDIRECT_URI`(admin dev 서버 주소의 `/api/auth/callback`)·`AUTH_OWNER_SUB`를 채운다. sandcorp-auth 없이 화면만 볼 때는 `docker compose exec api python manage.py seed_e2e_operator --token-file /tmp/op_token`으로 대표 Operator와 세션 토큰을 만들고, 그 값을 브라우저 sessionStorage `op_access`에 넣는다(e2e가 쓰는 방식). 고객(멤버) 화면도 같다 — `seed_e2e_member --token-file …`이 조직·Admin 멤버십과 세션 토큰을 만들고(sessionStorage `agent_access`), `--accept-invite-from <파일>`은 그 파일에 떨어진 초대 원문을 콜백처럼 수락하는 sandcorp-auth 대역이다(e2e `member-team.spec.js`). `--serve-tenants-from <디렉터리>`는 거기에 떨어진 `<id>.req`(조직 이름)마다 새 조직+Admin 멤버십을 만들고 `<id>.token`을 쓰는 대역이다 — e2e 스펙이 자기 조직을 받는 방법(`provisionTenant`, `e2e/tests/memberToken.js`).
 
 접근 경로:
 

@@ -1,84 +1,57 @@
-const { test, expect, request } = require('@playwright/test')
-const { operatorToken } = require('./operatorToken')
+const { test, expect } = require('@playwright/test')
+const { provisionTenant, openMemberSession } = require('./memberToken')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
-const API_URL = process.env.API_URL || 'http://localhost:8000'
 
-/**
- * E2E 테스트용 테넌트와 에이전트를 API로 직접 생성한다.
- */
-async function createTestTenantAndAgent() {
-  const apiContext = await request.newContext({ baseURL: API_URL })
-
-  // Operator 로그인
-  const opToken = operatorToken()
-
-  // 테넌트 생성 (에이전트 계정 포함 반환)
-  const tenantRes = await apiContext.post('/api/operator/tenants/', {
-    headers: { Authorization: `Bearer ${opToken}` },
-    data: { name: `E2E Tenant ${Date.now()}` },
-  })
-  const tenant = await tenantRes.json()
-  await apiContext.dispose()
-
-  return {
-    tenantName: tenant.name,
-    agentUsername: tenant.agent_username,
-    agentPassword: tenant.agent_temp_password,
-    tenantKey: tenant.tenant_key,
-  }
-}
-
-async function loginAsTenantAgent(page, tenantData) {
-  await page.fill('input[placeholder="Tenant 이름"]', tenantData.tenantName)
-  await page.fill('input[placeholder="사용자명"]', tenantData.agentUsername)
-  await page.fill('input[placeholder="비밀번호"]', tenantData.agentPassword)
-  await page.click('button[type="submit"]')
-  await expect(page.locator('a:has-text("문서")')).toBeVisible({ timeout: 5000 })
-}
-
-test.describe('Tenant Agent 플로우', () => {
-  let tenantData
+// 고객 로그인은 sandcorp-auth 콜백뿐이다(#40) — 로그인 화면은 버튼·리다이렉트 시작까지만 보고,
+// 들어간 뒤의 흐름은 시드한 멤버 세션(seed_e2e_member --serve-tenants-from)으로 연다.
+// 팀원 탭(초대·내보내기)은 member-team.spec.js가 덮는다.
+test.describe('고객 Admin 플로우', () => {
+  let tenant
 
   test.beforeAll(async () => {
-    tenantData = await createTestTenantAndAgent()
+    tenant = await provisionTenant(`E2E Tenant ${Date.now()}`)
   })
 
   test.beforeEach(async ({ page }) => {
     await page.goto(`${ADMIN_URL}/admin-ui/`)
-    await page.evaluate(() => localStorage.clear())
+    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear() })
   })
 
-  test('Tenant Agent 로그인 성공', async ({ page }) => {
+  test('로그인 화면은 비밀번호 대신 sandcorp 로그인 버튼을 보여 주고 누르면 인증 서버로 보낸다', async ({ page }) => {
     await page.goto(`${ADMIN_URL}/admin-ui/tenant`)
-    await loginAsTenantAgent(page, tenantData)
+    await expect(page.locator('input[type="password"]')).toHaveCount(0)
+    const button = page.getByRole('link', { name: 'sandcorp 계정으로 로그인' })
+    await expect(button).toBeVisible()
+
+    // 리다이렉트 시작까지만 — 실제 sandcorp-auth는 부르지 않는다(요청만 보고 막는다).
+    let started = ''
+    await page.route('**/api/auth/authorize/member**', (route) => {
+      started = route.request().url()
+      return route.abort()
+    })
+    await button.click()
+    await expect.poll(() => started).toContain('/api/auth/authorize/member')
+  })
+
+  test('시드한 멤버 세션으로 들어가 조직 화면이 열린다', async ({ page }) => {
+    await openMemberSession(page, ADMIN_URL, tenant.token)
+    await expect(page.locator('a:has-text("문서")')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(tenant.name).first()).toBeVisible()
   })
 
   test('설정 탭에서 System Prompt를 수정하고 저장할 수 있다', async ({ page }) => {
-    await page.goto(`${ADMIN_URL}/admin-ui/tenant`)
-    await loginAsTenantAgent(page, tenantData)
+    await openMemberSession(page, ADMIN_URL, tenant.token)
+    await expect(page.locator('a:has-text("문서")')).toBeVisible({ timeout: 10000 })
 
-    // 설정 탭 클릭
     await page.click('a:has-text("설정")')
     const promptInput = page.locator('[data-testid="system-prompt-input"]')
     await expect(promptInput).toBeVisible()
 
-    // System Prompt 수정 ("Slug 저장" 버튼과 모호하지 않게 exact 셀렉터 사용)
+    // "Slug 저장" 버튼과 모호하지 않게 exact 셀렉터 사용
     await promptInput.fill('E2E 테스트용 프롬프트입니다.')
     await page.getByRole('button', { name: '저장', exact: true }).click()
 
     await expect(page.locator('text=저장됨')).toBeVisible({ timeout: 3000 })
-  })
-
-  test('에이전트 탭에서 새 에이전트 계정을 추가할 수 있다', async ({ page }) => {
-    await page.goto(`${ADMIN_URL}/admin-ui/tenant`)
-    await loginAsTenantAgent(page, tenantData)
-
-    await page.click('a:has-text("팀원")')
-    const newUsername = `agent_${Date.now()}`
-    await page.fill('input[placeholder*="사용자명"]', newUsername)
-    await page.click('button:has-text("추가")')
-
-    await expect(page.locator(`text=${newUsername}`).first()).toBeVisible({ timeout: 5000 })
   })
 })

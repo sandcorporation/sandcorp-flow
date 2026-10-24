@@ -1,5 +1,5 @@
 const { test, expect, request } = require('@playwright/test')
-const { operatorToken } = require('./operatorToken')
+const { provisionTenant, openMemberSession } = require('./memberToken')
 
 const WIDGET_URL = process.env.WIDGET_URL || 'http://localhost:5173'
 const API_URL = process.env.API_URL || 'http://localhost:8000'
@@ -8,22 +8,9 @@ const API_URL = process.env.API_URL || 'http://localhost:8000'
 async function setupWidgetTenant() {
   const apiContext = await request.newContext({ baseURL: API_URL })
 
-  const opToken = operatorToken()
+  const tenant = await provisionTenant(`Widget E2E Tenant ${Date.now()}`)
 
-  const tenantRes = await apiContext.post('/api/operator/tenants/', {
-    headers: { Authorization: `Bearer ${opToken}` },
-    data: { name: `Widget E2E Tenant ${Date.now()}` },
-  })
-  const tenant = await tenantRes.json()
-
-  const agentRes = await apiContext.post('/api/tenant/agents/auth/login', {
-    data: {
-      tenant_name: tenant.name,
-      username: tenant.agent_username,
-      password: tenant.agent_temp_password,
-    },
-  })
-  const { access_token: agentToken } = await agentRes.json()
+  const agentToken = tenant.token
 
   await apiContext.patch('/api/tenant/config/', {
     headers: { Authorization: `Bearer ${agentToken}` },

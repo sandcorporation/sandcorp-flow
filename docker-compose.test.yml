@@ -104,6 +104,7 @@ services:
              python manage.py seed_e2e_member --token-file /e2e-shared/member_token &&
              (python manage.py seed_e2e_member --sub m_E2EINVITEE0000000000000001 --name 'E2E 초대받은 사람' --email e2e-invitee@example.com --accept-invite-from /e2e-shared/invite_token --token-file /e2e-shared/invitee_token &) &&
              (python manage.py seed_e2e_member --token-file /dev/null --issue-tickets-to /e2e-shared/onboarding_ticket &) &&
+             (python manage.py seed_e2e_member --token-file /dev/null --serve-tenants-from /e2e-shared/tenant_requests &) &&
              uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 2"
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
@@ -279,6 +280,8 @@ services:
       widget-e2e:
         condition: service_healthy
       worker-e2e:
+        condition: service_started
+      chat-worker-e2e:  # 챗 답변은 taskiq 워커가 만든다 — 없으면 위젯이 답을 못 받는다(#65)
         condition: service_started
       relay-e2e:
         condition: service_started

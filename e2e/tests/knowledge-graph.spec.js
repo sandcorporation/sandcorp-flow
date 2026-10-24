@@ -1,27 +1,18 @@
 const { test, expect, request } = require('@playwright/test')
-const { operatorToken } = require('./operatorToken')
+const { provisionTenant, openMemberSession } = require('./memberToken')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const API_URL = process.env.API_URL || 'http://localhost:8000'
 
 async function setup() {
   const api = await request.newContext({ baseURL: API_URL })
-  const opToken = operatorToken()
-  const tenantRes = await api.post('/api/operator/tenants/', {
-    headers: { Authorization: `Bearer ${opToken}` },
-    data: { name: `KG Inspector E2E ${Date.now()}` },
-  })
-  const tenant = await tenantRes.json()
+  const tenant = await provisionTenant(`KG Inspector E2E ${Date.now()}`)
   await api.dispose()
   return { tenant }
 }
 
 async function loginAsTenantAgent(page, tenant) {
-  await page.goto(`${ADMIN_URL}/admin-ui/tenant`)
-  await page.fill('input[placeholder="Tenant 이름"]', tenant.name)
-  await page.fill('input[placeholder="사용자명"]', tenant.agent_username)
-  await page.fill('input[placeholder="비밀번호"]', tenant.agent_temp_password)
-  await page.click('button[type="submit"]')
+  await openMemberSession(page, ADMIN_URL, tenant.token)
   await expect(page.locator('a:has-text("문서")')).toBeVisible({ timeout: 10000 })
 }
 
@@ -48,14 +39,7 @@ test.describe('Knowledge Graph 인스펙터', () => {
   test('엔티티 검색 → 노드 렌더 → 클릭 시 디테일 패널 표시', async ({ page }) => {
     // 문서 업로드 → Fake 추출이 레이블 Entity를 만든다
     const api = await request.newContext({ baseURL: API_URL })
-    const agentRes = await api.post('/api/tenant/agents/auth/login', {
-      data: {
-        tenant_name: tenant.name,
-        username: tenant.agent_username,
-        password: tenant.agent_temp_password,
-      },
-    })
-    const { access_token: agentToken } = await agentRes.json()
+    const agentToken = tenant.token
     const ts = Date.now()
     const upRes = await api.post('/api/tenant/documents/', {
       headers: { Authorization: `Bearer ${agentToken}` },
