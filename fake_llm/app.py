@@ -88,8 +88,11 @@ def build_completion(body: dict) -> dict:
     }
 
 
-def build_stream_chunks(completion: dict) -> list[dict]:
-    """같은 응답을 OpenAI 스트리밍 청크로 쪼갠다 — 챗 그래프가 stream=true로 부른다(#65: 스트림을 못 받아 위젯이 답을 못 받았다)."""
+def build_stream_chunks(completion: dict, include_usage: bool = False) -> list[dict]:
+    """같은 응답을 OpenAI 스트리밍 청크로 쪼갠다 — 챗 그래프가 stream=true로 부른다(#65: 스트림을 못 받아 위젯이 답을 못 받았다).
+
+    실제 OpenAI처럼 usage 청크는 요청에 stream_options.include_usage가 있을 때만 준다(#86: 늘 주던 대역이 토큰 누락을 숨겼다).
+    """
     choice = completion["choices"][0]
     base = {
         "id": completion["id"],
@@ -97,11 +100,13 @@ def build_stream_chunks(completion: dict) -> list[dict]:
         "created": completion["created"],
         "model": completion["model"],
     }
-    return [
+    chunks = [
         {**base, "choices": [{"index": 0, "delta": {"role": "assistant", "content": choice["message"]["content"]}, "finish_reason": None}]},
         {**base, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
-        {**base, "choices": [], "usage": completion["usage"]},
     ]
+    if include_usage:
+        chunks.append({**base, "choices": [], "usage": completion["usage"]})
+    return chunks
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -116,9 +121,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _send_stream(self, completion):
+    def _send_stream(self, completion, include_usage):
         payload = "".join(
-            f"data: {json.dumps(c, ensure_ascii=False)}\n\n" for c in build_stream_chunks(completion)
+            f"data: {json.dumps(c, ensure_ascii=False)}\n\n" for c in build_stream_chunks(completion, include_usage)
         ) + "data: [DONE]\n\n"
         data = payload.encode("utf-8")
         self.send_response(200)
@@ -144,7 +149,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.rstrip("/").endswith("/chat/completions"):
             completion = build_completion(body)
             if body.get("stream"):
-                self._send_stream(completion)
+                self._send_stream(completion, bool((body.get("stream_options") or {}).get("include_usage")))
             else:
                 self._send_json(200, completion)
         else:
