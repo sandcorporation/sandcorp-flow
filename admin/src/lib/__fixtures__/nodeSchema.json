@@ -223,7 +223,7 @@
  "http_tool": {
   "config": {
    "additionalProperties": false,
-   "description": "HTTP 도구(ADR-0029). 허용 목록·IP 차단은 실행 때(#34). 여기선 모양과 비밀 참조 규칙만.",
+   "description": "HTTP 도구(ADR-0029, #34). 허용 목록·IP 차단·리다이렉트 검사는 실행 때(``apps.flows.http_tool``).\n\n- ``url``: https만. 호스트(·포트·사용자 정보)는 틀의 **고정 부분**이어야 한다 — ``{{state.…}}``는 경로·쿼리에만,\n  값은 실행 때 한 조각으로 퍼센트 인코딩된다(``/``·``?``·``#``·``.``까지). 비밀 참조는 넣을 수 없다.\n- ``headers``: 고정 글과 ``{{secret.이름}}``만(방문자 값은 안 됨). 인증 계열 이름이면 값은 참조(+스킴 한 단어)만.\n- ``body_template``: ``{{secret.…}}``·``{{state.…}}`` 둘 다. 값은 JSON 문자열 안쪽으로 이스케이프돼 들어간다.\n- ``save``: 상태 ``fields.이름`` ← 응답 JSON 경로(``templates.parse_path``). 조건 노드·다음 HTTP 도구가 읽는다.\n- 나가는 갈래: ``next``(2xx), ``error``(차단·시간 초과·크기·HTTP 오류 등, 선택 — 선이 없으면 턴이 끝난다).",
    "properties": {
     "method": {
      "default": "GET",
@@ -238,6 +238,7 @@
      "type": "string"
     },
     "url": {
+     "maxLength": 2000,
      "minLength": 1,
      "title": "Url",
      "type": "string"
@@ -246,12 +247,14 @@
      "additionalProperties": {
       "type": "string"
      },
+     "maxProperties": 20,
      "title": "Headers",
      "type": "object"
     },
     "body_template": {
      "anyOf": [
       {
+       "maxLength": 16000,
        "type": "string"
       },
       {
@@ -260,6 +263,14 @@
      ],
      "default": null,
      "title": "Body Template"
+    },
+    "save": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "maxProperties": 20,
+     "title": "Save",
+     "type": "object"
     }
    },
    "required": [
