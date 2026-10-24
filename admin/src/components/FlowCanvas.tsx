@@ -23,7 +23,7 @@ function FlowNodeCard({ data }: NodeProps<Node<CardData>>) {
     active ? 'outline outline-[3px] outline-run' : selected ? 'outline outline-2 outline-offset-2 outline-ink' : '',
   ].join(' ')
   return (
-    <div className={box} data-node-id={node.id} data-style={style} style={{ minHeight: 78 + Math.max(0, handles.length - 1) * 16 }}>
+    <div className={box} data-node-id={node.id} data-style={style} data-active={active ? "true" : undefined} style={{ minHeight: 78 + Math.max(0, handles.length - 1) * 16 }}>
       {node.kind !== 'start' && <Handle type="target" position={Position.Left} isConnectable={!readOnly} />}
       <div className={`flex items-center gap-1.5 px-2 py-1 text-[0.7rem] font-medium ${bar}`}>
         <span className={style === 'guard' ? 'flex items-center gap-1.5 bg-hazard px-1' : 'flex items-center gap-1.5'}>

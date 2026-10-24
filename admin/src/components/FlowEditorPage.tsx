@@ -12,6 +12,8 @@ import {
 import { fieldErrors } from '@/lib/nodeForm'
 import FlowCanvas from './FlowCanvas'
 import NodeConfigForm from './NodeConfigForm'
+import { DecisionLog, TestChat, useTestSession } from './TestPanel'
+import { turnPath, type TestTurn } from '@/lib/testTrace'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -31,6 +33,8 @@ export default function FlowEditorPage() {
   const [loadError, setLoadError] = useState('')
   const [schemas, setSchemas] = useState<Record<string, { config: object }>>({})
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [rightTab, setRightTab] = useState<'test' | 'log' | 'config'>('config')
+  const [highlight, setHighlight] = useState<{ nodes: Set<string>; edges: Set<string> } | null>(null)
   const [save, setSave] = useState<{ state: SaveState; message: string }>({ state: 'saved', message: '' })
   const graphRef = useRef(graph)
   graphRef.current = graph
@@ -76,6 +80,12 @@ export default function FlowEditorPage() {
       }
     })
   }, [id, load, readOnly])
+
+  const testSession = useTestSession(id, useCallback(() => queue.current, []))
+  const focusTurn = (turn: TestTurn, nodeId: string | null) => {
+    setHighlight(turnPath(turn.entries))
+    if (nodeId && graphRef.current.nodes.some((n) => n.id === nodeId)) setSelectedId(nodeId)
+  }
 
   const addNode = (kind: string, at?: { x: number; y: number }) => {
     const g = graphRef.current
@@ -145,7 +155,9 @@ export default function FlowEditorPage() {
             selectedId={selectedId}
             readOnly={readOnly}
             spotRef={spotRef}
-            onSelect={setSelectedId}
+            activeNodeIds={rightTab === 'log' ? highlight?.nodes : undefined}
+            activeEdgeKeys={rightTab === 'log' ? highlight?.edges : undefined}
+            onSelect={(nid) => { setSelectedId(nid); if (nid) setRightTab('config') }}
             onMoved={(nid, position) => commit([{ op: 'upsert_node', id: nid, position }])}
             onConnect={(from, handle, to) => commit([{ op: 'connect', from, to, handle }])}
             onDelete={(ids, cuts) => {
@@ -157,11 +169,21 @@ export default function FlowEditorPage() {
         </div>
 
         <aside className="min-w-0 space-y-3 border border-line-soft bg-surface p-3 lg:min-h-0 lg:overflow-y-auto" aria-label="노드 설정">
-          {selected ? (
+          <div role="tablist" className="flex border-b border-line-soft">
+            {([['test', '시험 대화'], ['log', '판단 기록'], ['config', '노드 설정']] as const).map(([k, label]) => (
+              <button
+                key={k} type="button" role="tab" aria-selected={rightTab === k} onClick={() => setRightTab(k)}
+                className={`px-3 py-1.5 text-sm ${rightTab === k ? 'border-b-2 border-ink font-semibold text-ink' : 'text-muted-foreground'}`}
+              >{label}</button>
+            ))}
+          </div>
+          {rightTab === 'test' && <TestChat {...testSession} readOnly={readOnly} />}
+          {rightTab === 'log' && <DecisionLog turns={testSession.turns} graph={graph} onFocus={focusTurn} />}
+          {rightTab === 'config' && (selected ? (
             <NodePanel key={selected.id} node={selected} schema={schemas[selected.kind]?.config} errors={errors} readOnly={readOnly} commit={commit} onDeleted={() => setSelectedId(null)} />
           ) : (
             <Overview errors={errors} graph={graph} onPick={setSelectedId} />
-          )}
+          ))}
         </aside>
       </div>
     </div>
