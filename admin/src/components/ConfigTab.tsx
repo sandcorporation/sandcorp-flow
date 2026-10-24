@@ -179,6 +179,8 @@ export default function ConfigTab() {
       <div role="tablist" className="mb-1 flex gap-1 overflow-x-auto border-b border-border">
         {SECTIONS.map(s => (
           <button key={s.id} role="tab" aria-selected={section === s.id} onClick={() => setSection(s.id)}
+            // 좁은 폭에서 탭 줄이 가로로 스크롤될 때 고른 탭이 화면 밖에 남지 않게(#41 「요금」 탭).
+            ref={el => { if (el && section === s.id) el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }) }}
             className={cn('-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors',
               section === s.id ? 'border-primary font-medium text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>
             {s.label}
