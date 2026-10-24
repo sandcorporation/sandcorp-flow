@@ -155,8 +155,8 @@ export default function FlowEditorPage() {
       {save.state === 'failed' && <p role="alert" className="text-sm text-destructive">{save.message}</p>}
 
       <div className="grid gap-3 lg:h-[calc(100dvh-9rem)] lg:min-h-[480px] lg:grid-cols-[220px_minmax(0,1fr)_300px]">
-        <aside className="space-y-4 border border-line-soft bg-surface p-3 lg:min-h-0 lg:overflow-y-auto">
-          <section aria-label="노드 목록" className="space-y-2">
+        <aside className="space-y-4 border border-line-soft bg-surface p-3 lg:flex lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-3 lg:overflow-hidden">
+          <section aria-label="노드 목록" className="space-y-2 lg:max-h-[38%] lg:shrink-0 lg:overflow-y-auto">
           <h2 className="hmi-label">노드 목록</h2>
           {readOnly ? (
             <ul className="space-y-1 text-sm">
@@ -167,7 +167,7 @@ export default function FlowEditorPage() {
           ) : (
             <>
               <p className="text-xs text-muted-foreground">눌러서 더하거나 캔버스로 끌어다 놓습니다.</p>
-              <ul className="grid grid-cols-2 gap-1 lg:grid-cols-1">
+              <ul className="grid grid-cols-2 gap-1">
                 {KINDS.map((k) => (
                   <li key={k.kind}>
                     <button
@@ -176,7 +176,7 @@ export default function FlowEditorPage() {
                       onDragStart={(e) => { e.dataTransfer.setData('application/x-flow-kind', k.kind); e.dataTransfer.effectAllowed = 'copy' }}
                       onClick={() => addNode(k.kind)}
                       title={k.hint}
-                      className="w-full border border-line-soft bg-raised px-2 py-1.5 text-left text-sm hover:bg-accent"
+                      className="w-full truncate border border-line-soft bg-raised px-2 py-1.5 text-left text-xs hover:bg-accent"
                     >
                       {k.label}
                     </button>
@@ -186,7 +186,7 @@ export default function FlowEditorPage() {
             </>
           )}
           </section>
-          <div className="border-t border-line-soft pt-3">
+          <div className="border-t border-line-soft pt-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             <VersionsPanel
               flowId={id} versions={versions} deployedVersion={deployedVersion} pending={pendingRequest}
               requiresApproval={requiresApproval} canDeploy={isAdmin} me={me} testedTurns={testSession.turns.length}

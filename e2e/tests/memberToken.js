@@ -32,18 +32,22 @@ async function takeOnboardingTicket(timeoutMs = 15000) {
 
 /**
  * 스펙 전용 새 조직과 그 Admin 멤버 토큰을 받는다(#65). 조직 이름을 요청 파일로 떨구면 시드(--serve-tenants-from)가
- * 조직+Admin 멤버십을 만들고 토큰을 쓴다. 반환: { name, token }.
+ * 조직+Admin 멤버십을 만들고 토큰을 쓴다. 반환: { name, token, secondToken }.
  */
-async function provisionTenant(name, timeoutMs = 15000) {
+async function provisionTenant(name, timeoutMs = 15000, { defaultFlow = false } = {}) {
   const dir = path.join(DIR, 'tenant_requests')
   fs.mkdirSync(dir, { recursive: true })
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  fs.writeFileSync(path.join(dir, `${id}.req.tmp`), name)
+  fs.writeFileSync(path.join(dir, `${id}.req.tmp`), defaultFlow ? `${name}\ndefault-flow` : name)
   fs.renameSync(path.join(dir, `${id}.req.tmp`), path.join(dir, `${id}.req`))
   const tokenFile = path.join(dir, `${id}.token`)
   const until = Date.now() + timeoutMs
   while (Date.now() < until) {
-    if (fs.existsSync(tokenFile)) return { name, token: fs.readFileSync(tokenFile, 'utf8').trim() }
+    if (fs.existsSync(tokenFile)) {
+      // 같은 조직의 두 번째 Admin(배포 승인은 요청자와 다른 Admin 이 한다, #31) — 첫 토큰보다 먼저 쓰여 있다.
+      const second = path.join(dir, `${id}.admin2.token`)
+      return { name, token: fs.readFileSync(tokenFile, 'utf8').trim(), secondToken: fs.existsSync(second) ? fs.readFileSync(second, 'utf8').trim() : null }
+    }
     await new Promise((r) => setTimeout(r, 200))
   }
   throw new Error('조직 요청이 처리되지 않았습니다(api-e2e 로그 확인)')

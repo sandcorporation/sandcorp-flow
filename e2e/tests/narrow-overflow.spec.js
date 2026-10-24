@@ -23,12 +23,20 @@ const FLOW_NODES = [
 ]
 const FLOW_OUT = { id: 'f-long-0001', name: LONG, is_public: false, deployed_version: 2, updated_at: T0, has_pending_request: false }
 
+const REQ_OUT = { id: 'r-long-0001', flow_id: 'f-long-0001', flow_name: LONG, version: 2, status: 'pending', requested_by_name: LONG, decided_by_name: null, decided_at: null, decision_note: '', created_at: T0 }
+const VERSIONS = [
+  { number: 2, note: LONG, created_by_name: LONG, created_at: T0, deployed: true, hash: 'h2' },
+  { number: 1, note: 'https://example.com/' + 'a'.repeat(120), created_by_name: '김관리', created_at: T0, deployed: false, hash: 'h1' },
+]
+
 const FIXTURES = [
-  [/\/api\/tenant\/flows\/$/, [FLOW_OUT]],
+  [/\/api\/tenant\/flows\/$/, [{ ...FLOW_OUT, has_pending_request: true }]],
+  [/\/api\/tenant\/deploy-requests\/$/, [REQ_OUT]],
+  [/\/api\/tenant\/members\/me$/, { id: 'm1', tenant_id: 't1', tenant_name: LONG, role: 'admin', name: '김관리', email: 'a@example.com' }],
   [/\/api\/tenant\/flows\/[^/]+\/$/, {
     flow: FLOW_OUT,
     draft: { graph: { nodes: FLOW_NODES, edges: [{ from: 'start', to: 'ai_1' }] }, valid: false, errors: [{ node_id: 'guard_1', code: 'unreachable_node', message: LONG }] },
-    versions: [], pending_request: null,
+    versions: VERSIONS, pending_request: REQ_OUT,
   }],
   [/\/api\/operator\/tenants\/$/, [
     { id: 't1', name: LONG, is_active: true, created_at: T0, active_admin_count: 0 },

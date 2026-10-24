@@ -23,7 +23,7 @@ function FlowNodeCard({ data }: NodeProps<Node<CardData>>) {
     active ? 'outline outline-[3px] outline-run' : selected ? 'outline outline-2 outline-offset-2 outline-ink' : '',
   ].join(' ')
   return (
-    <div className={box} data-node-id={node.id} data-style={style} data-active={active ? "true" : undefined} style={{ minHeight: 78 + Math.max(0, handles.length - 1) * 16 }}>
+    <div className={box} data-node-id={node.id} data-style={style} data-active={active ? "true" : undefined} style={{ minHeight: handles.length > 1 ? undefined : 78 }}>
       {node.kind !== 'start' && <Handle type="target" position={Position.Left} isConnectable={!readOnly} />}
       <div className={`flex items-center gap-1.5 px-2 py-1 text-[0.7rem] font-medium ${bar}`}>
         <span className={style === 'guard' ? 'flex items-center gap-1.5 bg-hazard px-1' : 'flex items-center gap-1.5'}>
@@ -44,17 +44,19 @@ function FlowNodeCard({ data }: NodeProps<Node<CardData>>) {
       </div>
       <h5 className="mx-2 mt-1.5 truncate text-[0.88rem] font-semibold text-ink">{node.name || kindLabel(node.kind)}</h5>
       <p className="mx-2 mt-0.5 mb-2 line-clamp-2 break-all text-[0.72rem] text-muted-foreground">{nodeSummary(node)}</p>
-      {handles.map((h, i) => {
-        const top = handles.length === 1 ? '50%' : `${((i + 1) / (handles.length + 1)) * 100}%`
-        return (
-          <div key={h}>
-            <Handle id={h} type="source" position={Position.Right} style={{ top }} isConnectable={!readOnly} />
-            {handles.length > 1 && (
-              <span className="hmi-code pointer-events-none absolute right-2 -translate-y-1/2 bg-raised px-0.5 text-muted-foreground" style={{ top }}>{h}</span>
-            )}
-          </div>
-        )
-      })}
+      {handles.length === 0 ? null : handles.length === 1 ? (
+        <Handle id={handles[0]} type="source" position={Position.Right} style={{ top: '50%' }} isConnectable={!readOnly} />
+      ) : (
+        // 갈래가 여럿이면 제목·요약 아래에 갈래마다 한 줄을 따로 둔다 — 제목과 갈래 이름이 겹치지 않는다(#98).
+        <div className="mb-1 border-t border-line-soft pt-0.5" data-testid="exit-rows">
+          {handles.map((h) => (
+            <div key={h} className="relative flex h-4 items-center justify-end pr-3">
+              <span className="hmi-code truncate text-muted-foreground" data-exit={h}>{h}</span>
+              <Handle id={h} type="source" position={Position.Right} style={{ top: '50%' }} isConnectable={!readOnly} />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
