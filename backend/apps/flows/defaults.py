@@ -6,7 +6,13 @@ config는 #22 스키마에 정의된 필드만 쓴다(모르는 필드는 거부
 
 from __future__ import annotations
 
+import uuid
+from typing import TYPE_CHECKING
+
 from apps.flows.schema import HANDOFF_HANDLE, JSON
+
+if TYPE_CHECKING:
+    from apps.flows.models import Flow
 
 DEFAULT_FLOW_NAME = "기본 흐름"
 
@@ -27,3 +33,25 @@ DEFAULT_FLOW: JSON = {
         {"from": "answer", "to": "handoff", "handle": HANDOFF_HANDLE},
     ],
 }
+
+
+def ensure_default_flow(tenant_id: uuid.UUID) -> Flow:
+    """흐름이 하나도 없는 테넌트에 기본 흐름을 만들어 배포 중·공개로 둔다. 이미 흐름이 있으면 그것을 돌려준다(멱등).
+
+    테넌트 행을 잠가 동시에 두 번 불려도 하나만 만든다. 새 테넌트 생성 경로(온보딩·Operator)와 같은 트랜잭션에서 부른다.
+    """
+    from django.db import transaction
+
+    from apps.flows.models import Flow, FlowDraft, FlowVersion
+    from apps.tenants.models import Tenant
+
+    with transaction.atomic():
+        Tenant.objects.select_for_update().only("id").get(pk=tenant_id)
+        existing = Flow.objects.for_tenant(tenant_id).order_by("created_at").first()
+        if existing is not None:
+            return existing
+        flow = Flow.objects.create(tenant_id=tenant_id, name=DEFAULT_FLOW_NAME, is_public=True)
+        FlowDraft.objects.create(flow=flow, graph=DEFAULT_FLOW)
+        flow.deployed_version = FlowVersion.objects.create(flow=flow, graph=DEFAULT_FLOW)
+        flow.save(update_fields=["deployed_version", "updated_at"])
+        return flow

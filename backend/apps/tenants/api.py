@@ -3,6 +3,7 @@ from typing import List, Literal
 from ninja import Router, Schema
 from urllib.parse import urlencode
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
@@ -560,8 +561,12 @@ def operator_logout_all(request, response: HttpResponse):
 
 @operator_router.post("/tenants/", response={201: TenantCreatedOut}, auth=operator_auth)
 def create_tenant(request, body: TenantIn):
+    from apps.flows.defaults import ensure_default_flow
+
     raw_key = secrets.token_urlsafe(32)
-    tenant = Tenant.objects.create_with_key(name=body.name, raw_key=raw_key)
+    with transaction.atomic():
+        tenant = Tenant.objects.create_with_key(name=body.name, raw_key=raw_key)
+        ensure_default_flow(tenant.id)
     invite, raw_invite = create_invite(tenant, Membership.ROLE_ADMIN)
     return 201, {
         "id": str(tenant.id),
