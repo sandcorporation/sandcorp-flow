@@ -65,15 +65,21 @@ gunicorn/gevent→uvicorn + Celery worker-chat→taskiq로 전환하는 **첫 �
 ## 1회 설정
 
 ### A1 호스트
+**배포 디렉터리 = Jenkins 잡 `sandcorp-flow`의 워크스페이스**다(따로 clone하지 않는다). Jenkins 에이전트
+컨테이너에 `/opt` 마운트가 없어서다.
+- 에이전트 안 경로: `/home/jenkins/agent/workspace/sandcorp-flow`(= `$WORKSPACE`). 호스트 실경로: `/var/jenkins_home/workspace/sandcorp-flow`.
+- **전제: 호스트에 심볼릭 링크 `/home/jenkins/agent/workspace → /var/jenkins_home/workspace`**. compose는 상대
+  bind mount(`backend/nginx/nginx.oracle.conf` 등)를 에이전트 안 절대경로로 풀어 호스트 docker 데몬에 넘기므로,
+  호스트에도 같은 경로가 있어야 같은 파일이 붙는다. 링크가 없으면 nginx가 설정 없이 뜬다.
+- `.env`·`media`는 워크스페이스에 상주한다(Clean before checkout 끔이라 SCM 체크아웃이 지우지 않는다).
+
 ```bash
-# 1) 배포 디렉토리(.env·media·release fetch가 여기 산다)
-git clone git@github.com:sandcorporation/sandcorp-flow.git /opt/sandcorp-flow
+# 1) .env 작성 — 워크스페이스(호스트 경로)에 템플릿 복사 후 채운다 (아래 "환경변수" 참조). 이미지·git에 절대 포함 금지
+cd /var/jenkins_home/workspace/sandcorp-flow
+cp .env.prod.example .env && chmod 600 .env && vi .env
+#    NGINX_PORT를 비어 있는 호스트 포트로 정한다(운영 18095). NPM이 이 포트로 붙는다. Oracle 보안목록엔 열지 말 것.
 
-# 2) .env 작성 — 템플릿 복사 후 채운다 (아래 "환경변수" 참조). 이미지·git에 절대 포함 금지
-cp /opt/sandcorp-flow/.env.prod.example /opt/sandcorp-flow/.env && vi /opt/sandcorp-flow/.env
-#    NGINX_PORT(기본 8080)를 정한다. NPM이 이 포트로 붙는다. Oracle 보안목록엔 열지 말 것.
-
-# 3) GHCR pull 인증 (classic PAT, read:packages, org면 SSO authorize)
+# 2) GHCR pull 인증 (classic PAT, read:packages, org면 SSO authorize)
 echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
 ```
 
@@ -86,14 +92,12 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
   - **Execute shell**:
     ```bash
     set -euo pipefail
-    DEPLOY_DIR=/opt/sandcorp-flow
-    cd "$DEPLOY_DIR"
-    git fetch --quiet origin release
-    git reset --hard --quiet FETCH_HEAD     # untracked .env·media 보존
+    cd "$WORKSPACE"                         # SCM 체크아웃이 이미 release SHA에 맞춰 둠
     SHA="$(git rev-parse HEAD)"             # = 빌드 이미지 태그
     echo "▶ deploy release @ $SHA"
     IMAGE_TAG="$SHA" bash scripts/deploy.sh "$SHA"
     ```
+    셸 단계에는 git 자격이 없어 `git fetch`/`reset`을 하지 않는다 — 브랜치 맞추기는 Jenkins SCM 체크아웃이 한다.
 - **GHCR login**: Jenkins 컨테이너 안(빌드 실행 유저)에서 1회. 컨테이너를 자주 재생성하면 Execute
   shell 맨 앞에서 Credential로 매번 login하는 게 견고: `echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USER" --password-stdin`.
 
@@ -133,7 +137,7 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
 bridge·relay 5개는 합치면 메모리를 ~250M 더 아끼지만 이벤트 소비 구조(ADR) 변경이라 후속 후보로만 남긴다.
 `deploy.resources.limits`는 compose v2가 컨테이너 cgroup 한도로 적용한다(swarm 아님).
 
-## 환경변수 (`/opt/sandcorp-flow/.env`)
+## 환경변수 (워크스페이스 `.env`)
 
 | 키 | 필수 | 비고 |
 |---|---|---|
@@ -180,7 +184,7 @@ bridge·relay 5개는 합치면 메모리를 ~250M 더 아끼지만 이벤트 �
 # langfuse.env(시크릿: PG/Clickhouse/MinIO 비번·NEXTAUTH_SECRET·SALT·ENCRYPTION_KEY 64hex) 작성 후
 docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
 # Langfuse UI(NPM 별도 호스트, 오퍼레이터 전용)에서 프로젝트 API 키 발급 →
-# /opt/sandcorp-flow/.env 에 LANGFUSE_HOST·PUBLIC_KEY·SECRET_KEY 입력 후 재배포
+# 워크스페이스 .env 에 LANGFUSE_HOST·PUBLIC_KEY·SECRET_KEY 입력 후 재배포
 ```
 - env 미설정이면 앱은 **완전 no-op**(코드는 가드형). `LANGFUSE_CAPTURE_CONTENT=false`로 본문 마스킹.
 - 전용 데이터스토어(postgres·redis·clickhouse·minio)라 운영 pg/redis와 분리. Clickhouse가 메모리를 쓰므로 A1 여유 확인.
@@ -191,16 +195,16 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
 
 1. **DNS**: `flow.sandcorp.co.kr` A 레코드 → NPM이 있는 A1 공인 IP(다른 sandcorp.co.kr 서브도메인과 같은 방식).
 2. **A1 호스트 준비(1회)**
-   - [ ] `git clone git@github.com:sandcorporation/sandcorp-flow.git /opt/sandcorp-flow` (이미 있으면 생략)
-   - [ ] `cp .env.prod.example .env` 후 아래 필수 키를 채운다. 파일 권한 600.
+   - [x] 배포 디렉터리 = Jenkins 워크스페이스 `/var/jenkins_home/workspace/sandcorp-flow`, 호스트 심볼릭 링크 `/home/jenkins/agent/workspace → /var/jenkins_home/workspace`(위 「A1 호스트」).
+   - [x] 워크스페이스에 `cp .env.prod.example .env` 후 아래 필수 키를 채운다. 파일 권한 600.
    - [ ] `docker login ghcr.io`(Jenkins 실행 유저, `read:packages` PAT) 확인. 이미지 이름은 `sandcorp-flow-{api,admin,widget}`.
    - [ ] `docker rollout` 플러그인이 Jenkins 컨테이너에 있는지 확인(이미 다른 잡이 쓰면 생략).
-3. **운영 `.env` 필수 키**(이름만): `DJANGO_SETTINGS_MODULE=config.settings.prod`, `SECRET_KEY`(생성 후 **영구 고정**), `ALLOWED_HOSTS`(`flow.sandcorp.co.kr,127.0.0.1,localhost`), `CSRF_TRUSTED_ORIGINS`(`https://flow.sandcorp.co.kr`), `DB_HOST`·`DB_PORT`·`DB_NAME=sandcorp_flow`·`DB_USER`·`DB_PASSWORD`, `REDIS_URL`, `EVENTS_TOPIC`, `NGINX_PORT`. `AUTH_OWNER_SUB=farrar142`(#20). `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`·`AUTH_REDIRECT_URI`·`AUTH_WEBHOOK_SECRET`(#21, 7번). 이후 티켓이 더할 이름: `PLATFORM_*`(#39).
-4. **NGINX_PORT 정하기**: 박스에서 비어 있는 호스트 포트(`ss -ltn`)를 골라 `.env`에 쓴다. Oracle 보안목록에는 열지 않는다.
-5. **NPM**: Proxy Host `flow.sandcorp.co.kr` → Forward `<A1 호스트>:<NGINX_PORT>`(http), Websockets 켬, SSL Let's Encrypt + Force SSL, Advanced 칸에 `proxy_buffering off; proxy_request_buffering off; proxy_read_timeout 3600s;`(SSE).
-6. **Jenkins 잡**: 위 「Jenkins」 절의 freestyle 잡을 이 저장소용으로 새로 만든다(SCM `git@github.com:sandcorporation/sandcorp-flow.git`, 브랜치 `*/release`, Clean before checkout 끔, GitHub hook trigger, Execute shell은 위 스크립트에서 `DEPLOY_DIR=/opt/sandcorp-flow`). 저장소 쪽 GitHub 웹훅(Settings → Webhooks)에 Jenkins `/github-webhook/` 주소, 이벤트는 push.
+3. [x] **운영 `.env` 필수 키**(16개 투입, `NGINX_PORT=18095`)(이름만): `DJANGO_SETTINGS_MODULE=config.settings.prod`, `SECRET_KEY`(생성 후 **영구 고정**), `ALLOWED_HOSTS`(`flow.sandcorp.co.kr,127.0.0.1,localhost`), `CSRF_TRUSTED_ORIGINS`(`https://flow.sandcorp.co.kr`), `DB_HOST`·`DB_PORT`·`DB_NAME=sandcorp_flow`·`DB_USER`·`DB_PASSWORD`, `REDIS_URL`, `EVENTS_TOPIC`, `NGINX_PORT`. `AUTH_OWNER_SUB=farrar142`(#20). `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`·`AUTH_REDIRECT_URI`·`AUTH_WEBHOOK_SECRET`(#21, 7번). 이후 티켓이 더할 이름: `PLATFORM_*`(#39).
+4. [x] **NGINX_PORT 정하기**(18095): 박스에서 비어 있는 호스트 포트(`ss -ltn`)를 골라 `.env`에 쓴다. Oracle 보안목록에는 열지 않는다.
+5. [x] **NPM**(NPMplus 호스트 19·인증서 27, `flow.sandcorp.co.kr` → `172.17.0.1:18095`): Proxy Host `flow.sandcorp.co.kr` → Forward `<A1 호스트>:<NGINX_PORT>`(http), Websockets 켬, SSL Let's Encrypt + Force SSL, Advanced 칸에 `proxy_buffering off; proxy_request_buffering off; proxy_read_timeout 3600s;`(SSE).
+6. [x] **Jenkins 잡** `sandcorp-flow`: 위 「Jenkins」 절의 freestyle 잡(SCM `git@github.com:sandcorporation/sandcorp-flow.git`, 브랜치 `*/release`, Clean before checkout 끔, GitHub hook trigger, Execute shell은 위 스크립트 — `cd $WORKSPACE`, fetch/reset 없음). 저장소 쪽 GitHub 웹훅(Settings → Webhooks)에 Jenkins `/github-webhook/` 주소, 이벤트는 push.
 7. **sandcorp-auth 등록**(ADR-0028):
-   - [ ] **리소스**: sandcorp-auth에 Flow 리소스 `https://flow.sandcorp.co.kr/api`(스코프 `admin`·`login`)가 등록돼 있는지 확인한다. 토큰의 `aud`가 이 값과 정확히 같아야 한다(끝 `/` 없음).
+   - [x] **리소스**(auth 리소스 id 6): sandcorp-auth에 Flow 리소스 `https://flow.sandcorp.co.kr/api`(스코프 `admin`·`login`)가 등록돼 있는지 확인한다. 토큰의 `aud`가 이 값과 정확히 같아야 한다(끝 `/` 없음).
    - [ ] **운영 `.env`**(#20): `AUTH_OWNER_SUB=farrar142`(대표 username). `AUTH_ISSUER`(기본 `https://auth.sandcorp.co.kr`)·`AUTH_JWKS_URL`(기본 `<AUTH_ISSUER>/.well-known/jwks.json`)·`AUTH_RESOURCE`(기본 `https://flow.sandcorp.co.kr/api`)는 기본값이면 적지 않는다. `AUTH_OWNER_SUB`가 비면 대표 토큰이 모두 401이다.
    - [ ] **확인**: `curl -s https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource`가 `resource`=`https://flow.sandcorp.co.kr/api`인 JSON을 돌려주고, `curl -sI https://flow.sandcorp.co.kr/api/operator/tenants/`가 401 + `WWW-Authenticate: Bearer resource_metadata="https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource"`인지 본다(nginx `location = /.well-known/oauth-protected-resource`가 api로 넘긴다).
    - [ ] **로그인 클라이언트**(#21, sandcorp-auth 규칙 문서 7절) — 아래 순서대로 한다.
@@ -212,7 +216,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
      2. **탈퇴 웹훅 비밀 발급**: `manage.py clients webhook --client-id <id> --url https://flow.sandcorp.co.kr/api/auth/webhook`. 웹훅 수신부는 별도 티켓이다(지금 Flow엔 그 경로가 없다) — 비밀만 받아 둔다.
      3. **운영 `.env`에 넣기**: `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`(1에서 발급), `AUTH_REDIRECT_URI=https://flow.sandcorp.co.kr/api/auth/callback`, `AUTH_WEBHOOK_SECRET`(2에서 발급). `AUTH_AUTHORIZE_URL`(기본 `<AUTH_ISSUER>/authorize`)·`AUTH_TOKEN_URL`(기본 `<AUTH_ISSUER>/token`)·`AUTH_LOGIN_REDIRECT`(기본 `/admin-ui/operator`)는 기본값이면 적지 않는다. 클라이언트 값이 비면 로그인 버튼이 「설정되지 않음」 거절 화면으로 간다.
    - [ ] **확인**: `https://flow.sandcorp.co.kr/admin-ui/operator` → 「sandcorp 계정으로 로그인」 → sandcorp-auth 로그인·동의 → Tenants 화면. 대표가 아닌 계정이면 「로그인할 수 없습니다」.
-8. **첫 배포 확인**: `main` push → Actions 3개 이미지 빌드 → `release` 갱신 → Jenkins 실행. 끝나면 `curl -sI https://flow.sandcorp.co.kr/api/health`가 200, `https://flow.sandcorp.co.kr/admin-ui/`가 열리는지, `docker compose -f docker-compose.prod.oracle.yml ps`에서 전부 Up/healthy인지, `docker stats --no-stream`이 위 상한 안인지 본다.
+8. **첫 배포 확인**: `main` push → Actions 3개 이미지 빌드 → `release` 갱신(release 잡도 self-hosted `arm64-builder` 러너 — 비공개 저장소라 GitHub 호스팅 러너는 과금 막힘) → Jenkins 실행. 끝나면 `curl -sI https://flow.sandcorp.co.kr/api/health`가 200, `https://flow.sandcorp.co.kr/admin-ui/`가 열리는지, `docker compose -f docker-compose.prod.oracle.yml ps`에서 전부 Up/healthy인지, `docker stats --no-stream`이 위 상한 안인지 본다.
 9. **Operator 계정**: 만들 것이 없다. Operator 비밀번호 로그인은 없고(#21), 7번 등록을 마친 뒤 대표 계정으로 관리 화면에 로그인하면 첫 로그인 때 Flow 쪽 사용자·Operator 행이 생긴다. `createsuperuser`는 쓰지 않는다.
 
 ## 관련 문서

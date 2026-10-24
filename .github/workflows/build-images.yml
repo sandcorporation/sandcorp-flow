@@ -89,15 +89,22 @@ jobs:
   release:
     needs: build
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    # 비공개 저장소라 GitHub 호스팅 러너(ubuntu-latest)는 과금 대상 — 결제·한도에 막히지 않게 self-hosted에서 돈다.
+    # 러너 이미지에 gh가 없을 수 있어 curl로 REST를 직접 부른다.
+    runs-on: [self-hosted, arm64-builder]
     permissions:
       contents: write
     steps:
       - name: release 브랜치를 빌드된 SHA로 갱신(웹훅 → Jenkins 배포)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
         run: |
-          gh api -X PATCH "repos/${{ github.repository }}/git/refs/heads/release" \
-            -f sha='${{ github.sha }}' -F force=true \
-          || gh api -X POST "repos/${{ github.repository }}/git/refs" \
-            -f ref='refs/heads/release' -f sha='${{ github.sha }}'
+          set -euo pipefail
+          api() { curl -fsS -X "$1" "https://api.github.com/repos/$REPO/$2" \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" -d "$3"; }
+          api PATCH git/refs/heads/release "{\"sha\":\"$SHA\",\"force\":true}" >/dev/null \
+            || api POST git/refs "{\"ref\":\"refs/heads/release\",\"sha\":\"$SHA\"}" >/dev/null
+          echo "release → $SHA"
