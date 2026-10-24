@@ -3,6 +3,7 @@
 // 이 facade는 친근한 함수명 + .data 언랩 + 일부 특수 계약(409/404/친절 에러)만 담당한다.
 import { setAccess, clearAccess, getAccess, onAccessChange } from './auth'
 import { HttpError } from './mutator'
+import { getRole, registerRoleLoader, setRole } from './roleStore'
 
 import {
   appsTenantsApiOperatorLogout,
@@ -172,10 +173,12 @@ export async function getTrial() {
 export async function agentLogout() {
   await appsTenantsApiMemberLogout()
   clearAccess('agent')
+  setRole(null)
 }
 export async function agentLogoutAll() {
   await appsTenantsApiMemberLogoutAll()
   clearAccess('agent')
+  setRole(null)
 }
 // sandcorp-auth 계정 관리 화면(이름·이메일·탈퇴는 거기서 한다).
 export const ACCOUNT_URL = 'https://auth.sandcorp.co.kr/account'
@@ -203,17 +206,17 @@ export async function createInvite(role: 'admin' | 'member' = 'member') {
 export async function revokeInvite(inviteId: string) {
   await appsTenantsApiRevokeTenantInvite(inviteId)
 }
-// 현재 로그인한 멤버의 역할 — Access Token(JWT)의 role 클레임에서 읽어 UI 게이팅에 쓴다.
+// 현재 로그인한 멤버의 역할 — 서버 진실(members/me 의 DB 역할)을 읽어 둔 공용 상태(#120).
+// 토큰 claims 의 role 은 발급 시점 값이라 쓰지 않는다. 아직 못 읽었으면 null(쓰기 컨트롤 숨김).
+// 화면에서는 `useAgentRole()` 훅으로 읽는다(변경 시 다시 그려진다).
 export function currentAgentRole(): 'admin' | 'member' | null {
-  const tok = getAccess('agent')
-  if (!tok) return null
-  try {
-    const payload = JSON.parse(atob(tok.split('.')[1]))
-    return payload.role ?? null
-  } catch {
-    return null
-  }
+  return getRole()
 }
+registerRoleLoader(async () => {
+  if (!getAccess('agent')) return null
+  const me = await memberMe()
+  return me.role === 'admin' || me.role === 'member' ? me.role : null
+})
 // ── Tenant Config ─────────────────────────────────────────────────────────
 
 export async function getTenantConfig() {

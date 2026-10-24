@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { getTenantConfig, updateTenantConfig, resetTenantKey, updateTenantSlug, fetchProviderModels, quickSetupOpenAI, currentAgentRole } from '../api'
+import { getTenantConfig, updateTenantConfig, resetTenantKey, updateTenantSlug, fetchProviderModels, quickSetupOpenAI } from '../api'
 import type { TenantConfigOut } from '../generated/model'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import PricingSection from './PricingSection'
 import SecretsSection from './SecretsSection'
+import { useIsAdmin } from '../lib/useAgentRole'
 
 type DaySchedule = { enabled?: boolean; start?: string; end?: string }
 const WEEKDAYS: [string, string][] = [
@@ -51,7 +52,7 @@ export default function ConfigTab() {
     model_id: '', system_prompt: '', agent_display_name: '상담원',
     webhook_url: '', webhook_type: '', welcome_message: '',
   } as unknown as TenantConfigOut)
-  const isAdmin = currentAgentRole() === 'admin'  // Slug 변경·키 재발급은 Admin 전용(ADR-0025)
+  const isAdmin = useIsAdmin()  // Slug 변경·키 재발급은 Admin 전용(ADR-0025)
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
   const [newKey, setNewKey] = useState<string | null>(null)

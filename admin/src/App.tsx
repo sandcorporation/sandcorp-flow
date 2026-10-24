@@ -18,6 +18,7 @@ import FlowEditorPage from './components/FlowEditorPage'
 import TenantUsageTab from './components/TenantUsageTab'
 import OperatorUsageTab from './components/OperatorUsageTab'
 import { getAccess, bootSilentRefresh } from './auth'
+import { setRole } from './roleStore'
 import { operatorLogout, operatorLogoutAll, agentLogout, agentLogoutAll, memberMe, memberLoginUrl, ACCOUNT_URL } from './api'
 
 const ICON = 'h-4 w-4'
@@ -62,6 +63,7 @@ export default function App() {
     memberMe()
       .then((me) => {
         setTenantName(me.tenant_name)
+        if (me.role === 'admin' || me.role === 'member') setRole(me.role)
         const who = me.name || me.email
         if (who) { localStorage.setItem('agent_username', who); setAgentUsername(who) }
       })
@@ -83,6 +85,7 @@ export default function App() {
     setAgentAuthed(true)
   }
   const endAgentSession = () => {
+    setRole(null)
     localStorage.removeItem('agent_username')
     setAgentAuthed(false)
     setAgentUsername(null)
