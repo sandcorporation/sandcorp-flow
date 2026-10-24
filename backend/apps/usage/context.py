@@ -45,3 +45,33 @@ def override_call_type(call_type: str):
         yield
     finally:
         _current.reset(token)
+
+
+# ── 노드 단위 사용량 수집 ──────────────────────────────────────────────────────
+# 실행기가 노드를 돌리는 동안 LLM 경계가 보고한 호출을 모은다(판단 기록의 노드별 토큰·비용). 롤업(record_usage)과 별개다.
+
+@dataclass(frozen=True)
+class LLMCall:
+    model: str
+    input_tokens: int
+    output_tokens: int
+
+
+_collector: contextvars.ContextVar[list[LLMCall] | None] = contextvars.ContextVar("usage_collector", default=None)
+
+
+@contextlib.contextmanager
+def collect_calls():
+    """블록 안에서 보고된 LLM 호출을 모아 준다(리스트는 블록이 끝난 뒤에도 읽는다)."""
+    calls: list[LLMCall] = []
+    token = _collector.set(calls)
+    try:
+        yield calls
+    finally:
+        _collector.reset(token)
+
+
+def note_call(call: LLMCall) -> None:
+    calls = _collector.get()
+    if calls is not None:
+        calls.append(call)

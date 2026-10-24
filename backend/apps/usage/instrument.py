@@ -5,7 +5,7 @@ UsageRecordingCallback을 LLM 경계(llm.py)의 invoke/stream config에 부착�
 """
 from langchain_core.callbacks import BaseCallbackHandler
 
-from .context import get_usage_context
+from .context import LLMCall, get_usage_context, note_call
 from .recording import record_usage
 
 
@@ -29,11 +29,20 @@ def _extract(response) -> tuple[str, int, int]:
         return "unknown", 0, 0
 
 
+def report_llm_usage(model: str, input_tokens: int, output_tokens: int) -> None:
+    """LLM 경계가 Provider 응답의 usage를 보고하는 한 곳 — 일 롤업에 더하고 지금 도는 노드의 수집기에 남긴다.
+
+    langchain 콜백과 (시험의) 결정적 Fake가 같은 함수를 부른다. sync(DB 쓰기)라 async 호출부는 sync_to_async로.
+    """
+    if not (input_tokens or output_tokens):
+        return
+    note_call(LLMCall(model, int(input_tokens or 0), int(output_tokens or 0)))
+    ctx = get_usage_context()
+    if ctx and ctx.tenant_id:
+        record_usage(ctx.tenant_id, ctx.call_type, model, input_tokens, output_tokens)
+
+
 class UsageRecordingCallback(BaseCallbackHandler):
     def on_llm_end(self, response, **kwargs) -> None:
-        ctx = get_usage_context()
-        if not ctx or not ctx.tenant_id:
-            return
         model, input_t, output_t = _extract(response)
-        if input_t or output_t:
-            record_usage(ctx.tenant_id, ctx.call_type, model, input_t, output_t)
+        report_llm_usage(model, input_t, output_t)

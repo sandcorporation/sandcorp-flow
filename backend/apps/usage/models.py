@@ -21,6 +21,8 @@ class TokenUsage(models.Model):
     output_tokens = models.BigIntegerField(default=0)
     total_tokens = models.BigIntegerField(default=0)
     request_count = models.IntegerField(default=0)
+    # 단가 표(pricing.py)로 계산한 USD 합계. 표에 없는 모델의 호출은 더하지 않는다(비용 모름 ≠ 0원).
+    cost_usd = models.DecimalField(max_digits=14, decimal_places=6, default=0)
 
     class Meta:
         db_table = "token_usage"
