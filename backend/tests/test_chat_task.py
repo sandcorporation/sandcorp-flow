@@ -10,7 +10,7 @@ def _make_session(tenant):
 
 @pytest.mark.django_db(transaction=True)
 async def test_chat_task_runs_agent_and_saves(tenant_with_key, fake_chat_llm):
-    """chat_task.kiq → run_chat_agent_async → assistant 메시지 저장."""
+    """chat_task.kiq → run_chat_turn_async → assistant 메시지 저장."""
     from apps.chat.chat_task import chat_task
     from apps.chat.models import ChatMessage
     from apps.agent.nodes import HITLResponse

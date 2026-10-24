@@ -75,7 +75,7 @@ def test_non_anthropic_providers_get_no_marker():
 
 
 # ── Issue 201: 빌드된 그래프의 여러 플로우에서 안정 prefix 검증 (FakeLLM 캡처) ──
-# 단위 테스트는 _assemble_lc_messages를 손으로 부른다. 여기선 build_graph/run_chat_agent_async가
+# 단위 테스트는 _assemble_lc_messages를 손으로 부른다. 여기선 run_chat_turn_async(흐름 실행기)가
 # 실제로 LLM에 보낸 messages를 fake가 캡처해, 그래프 종단에서 prefix 불변식을 잠근다.
 import pytest
 from asgiref.sync import sync_to_async
@@ -97,12 +97,12 @@ def _chat_calls(captured):
 async def test_capture_harness_records_graph_messages(tenant_with_key, fake_chat_llm):
     """캡처 하네스: 그래프가 LLM에 보낸 messages가 (schema, messages)로 기록되고 system이 맨 앞."""
     from langchain_core.messages import SystemMessage
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
 
     tenant, _ = tenant_with_key
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-cap")
-    await run_chat_agent_async(session, "안녕")
+    await run_chat_turn_async(session, "안녕")
 
     calls = _chat_calls(fake_chat_llm.captured)
     assert len(calls) >= 1
@@ -113,14 +113,14 @@ async def test_capture_harness_records_graph_messages(tenant_with_key, fake_chat
 async def test_graph_system_prefix_stable_across_hitl_and_multiturn(tenant_with_key, fake_chat_llm):
     """HITL-on/off 두 경로 + 멀티턴에서 system prefix가 byte-동일(캐싱 안정 prefix)."""
     from apps.tenants.models import TenantConfig
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
 
     tenant, _ = tenant_with_key
     # HITL-on(기본): 같은 세션 2턴(멀티턴, history 누적)
     s1 = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-mt")
-    await run_chat_agent_async(s1, "안녕")
-    await run_chat_agent_async(s1, "또 질문이요")
+    await run_chat_turn_async(s1, "안녕")
+    await run_chat_turn_async(s1, "또 질문이요")
     # HITL-off로 전환 후 새 세션 1턴
     def _off():
         c = TenantConfig.objects.get(tenant=tenant)
@@ -128,7 +128,7 @@ async def test_graph_system_prefix_stable_across_hitl_and_multiturn(tenant_with_
         c.save()
     await adb(_off)()
     s2 = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-off")
-    await run_chat_agent_async(s2, "안녕")
+    await run_chat_turn_async(s2, "안녕")
 
     prefixes = _chat_prefixes(fake_chat_llm.captured)
     assert len(prefixes) >= 3
@@ -139,14 +139,14 @@ async def test_graph_system_prefix_stable_across_hitl_and_multiturn(tenant_with_
 async def test_graph_volatile_in_trailing_not_system(tenant_with_key, fake_chat_llm):
     """Visitor Memory(휘발성)는 그래프 종단에서 trailing 턴에만, system prefix엔 없다."""
     from apps.memory.manager import upsert_memory
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
 
     tenant, _ = tenant_with_key
     await adb(upsert_memory)(str(tenant.id), "v-mem", "이름", "홍길동")
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-mem")
-    await run_chat_agent_async(session, "내 이름 기억해?")
+    await run_chat_turn_async(session, "내 이름 기억해?")
 
     calls = _chat_calls(fake_chat_llm.captured)
     system = calls[0][0].content
@@ -163,7 +163,7 @@ async def test_graph_system_prefix_stable_on_source_fallback(tenant_with_key, fa
     """원문 폴백(2번째 call_llm, RAG 증가)에서도 두 call의 system prefix byte-동일, RAG는 trailing에만."""
     from apps.rag.graph_store import GraphStore
     from apps.rag.ingesters import get_embeddings
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import HITLResponse
     from apps.chat.models import ChatSession
 
@@ -182,7 +182,7 @@ async def test_graph_system_prefix_stable_on_source_fallback(tenant_with_key, fa
         context_sufficient=False, in_scope=True)
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-fb")
-    await run_chat_agent_async(session, "지원 해상도 알려줘")
+    await run_chat_turn_async(session, "지원 해상도 알려줘")
 
     calls = _chat_calls(fake_chat_llm.captured)
     assert len(calls) == 2, f"폴백이면 call_llm 2회여야: {len(calls)}"
@@ -195,13 +195,13 @@ async def test_graph_system_prefix_stable_on_source_fallback(tenant_with_key, fa
 async def test_graph_offhours_notice_in_trailing_not_system(tenant_with_key, fake_chat_llm, monkeypatch):
     """영업시간 외 운영 안내는 trailing 턴에만, system prefix 불변."""
     from apps.tenants import business_hours
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
 
     monkeypatch.setattr(business_hours, "is_open", lambda config, now: False)
     tenant, _ = tenant_with_key  # hitl_enabled 기본 True → 시간 외 운영 안내 주입
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-oh")
-    await run_chat_agent_async(session, "안녕")
+    await run_chat_turn_async(session, "안녕")
 
     calls = _chat_calls(fake_chat_llm.captured)
     assert "운영 안내" in calls[0][-1].content       # 안내는 trailing
@@ -212,7 +212,7 @@ async def test_graph_offhours_notice_in_trailing_not_system(tenant_with_key, fak
 async def test_graph_system_prefix_stable_with_topic_scope_on(tenant_with_key, fake_chat_llm):
     """주제범위 ON: scope 지침(테넌트 불변)이 안정 prefix에 포함되고 모든 턴에서 byte-동일(캐싱 안 깨짐)."""
     from apps.tenants.models import TenantConfig
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
 
     tenant, _ = tenant_with_key
@@ -225,8 +225,8 @@ async def test_graph_system_prefix_stable_with_topic_scope_on(tenant_with_key, f
     await adb(_enable)()
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-sc")
-    await run_chat_agent_async(session, "배송 문의요")
-    await run_chat_agent_async(session, "또 질문이요")
+    await run_chat_turn_async(session, "배송 문의요")
+    await run_chat_turn_async(session, "또 질문이요")
 
     prefixes = _chat_prefixes(fake_chat_llm.captured)
     assert len(prefixes) >= 2

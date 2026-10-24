@@ -91,7 +91,7 @@ def _enable_scope(tenant, *, hitl: bool, scope="주문·배송·반품 문의"):
 @pytest.mark.django_db(transaction=True)
 async def test_off_topic_refused_end_to_end_hitl_on(tenant_with_key, fake_chat_llm):
     """토글 ON + in_scope=False(HITL 경로) → assistant 응답이 거절(범위 인용), 모델 off-topic 미노출."""
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import HITLResponse
     from apps.chat.models import ChatSession
 
@@ -102,7 +102,7 @@ async def test_off_topic_refused_end_to_end_hitl_on(tenant_with_key, fake_chat_l
         needs_hitl=False, hitl_reason="", context_sufficient=True, in_scope=False)
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-blue")
-    answer = await run_chat_agent_async(session, "파란색에 대해 다섯 문장으로 설명해줘")
+    answer = await run_chat_turn_async(session, "파란색에 대해 다섯 문장으로 설명해줘")
 
     assert "파란색" not in answer            # off-topic 모델 응답이 안 나간다
     assert "주문·배송·반품 문의" in answer    # 범위를 인용한 거절
@@ -111,7 +111,7 @@ async def test_off_topic_refused_end_to_end_hitl_on(tenant_with_key, fake_chat_l
 @pytest.mark.django_db(transaction=True)
 async def test_off_topic_refused_end_to_end_hitl_off(tenant_with_key, fake_chat_llm):
     """토글 ON + in_scope=False(HITL-off/PlainResponse 경로)도 거절."""
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import PlainResponse
     from apps.chat.models import ChatSession
 
@@ -121,7 +121,7 @@ async def test_off_topic_refused_end_to_end_hitl_off(tenant_with_key, fake_chat_
         response="파란색은...", context_sufficient=True, in_scope=False)
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-blue2")
-    answer = await run_chat_agent_async(session, "파란색 설명해줘")
+    answer = await run_chat_turn_async(session, "파란색 설명해줘")
     assert "파란색" not in answer
     assert "주문·배송·반품 문의" in answer
 
@@ -129,7 +129,7 @@ async def test_off_topic_refused_end_to_end_hitl_off(tenant_with_key, fake_chat_
 @pytest.mark.django_db(transaction=True)
 async def test_in_scope_answered_when_enabled(tenant_with_key, fake_chat_llm):
     """토글 ON + in_scope=True → 정상 답변(거절 안 함)."""
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import HITLResponse
     from apps.chat.models import ChatSession
 
@@ -140,14 +140,14 @@ async def test_in_scope_answered_when_enabled(tenant_with_key, fake_chat_llm):
         context_sufficient=True, in_scope=True)
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-ship")
-    answer = await run_chat_agent_async(session, "배송 얼마나 걸려요?")
+    answer = await run_chat_turn_async(session, "배송 얼마나 걸려요?")
     assert answer == "배송은 보통 2-3일 걸립니다."
 
 
 @pytest.mark.django_db(transaction=True)
 async def test_off_topic_answered_when_toggle_off(tenant_with_key, fake_chat_llm):
     """토글 OFF(기본) → 범위 밖이어도 답함(현행 무변경)."""
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import HITLResponse
     from apps.chat.models import ChatSession
 
@@ -157,7 +157,7 @@ async def test_off_topic_answered_when_toggle_off(tenant_with_key, fake_chat_llm
         context_sufficient=True, in_scope=False)
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-off")
-    answer = await run_chat_agent_async(session, "파란색 설명해줘")
+    answer = await run_chat_turn_async(session, "파란색 설명해줘")
     assert answer == "파란색은 차가운 색입니다."
 
 
@@ -170,7 +170,7 @@ async def test_off_topic_refusal_published_once_even_when_context_insufficient(
     거절은 종단이라 source_search 폴백을 타면 안 된다 — 안 그러면 거절이 두 번 흘러 위젯에 중복 렌더된다.
     """
     from apps.agent import nodes
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import HITLResponse
     from apps.chat.models import ChatSession
 
@@ -189,7 +189,7 @@ async def test_off_topic_refusal_published_once_even_when_context_insufficient(
     monkeypatch.setattr(nodes, "apublish_done", _adone)
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-once")
-    answer = await run_chat_agent_async(session, "파란색 설명해줘")
+    answer = await run_chat_turn_async(session, "파란색 설명해줘")
 
     assert "주문·배송·반품 문의" in answer                       # 거절
     refusals = [t for t in tokens if "관련 문의를 도와드려요" in t]
@@ -222,7 +222,7 @@ def test_blank_custom_falls_back_to_standard():
 async def test_custom_refusal_message_end_to_end(tenant_with_key, fake_chat_llm):
     """config.scope_refusal_message가 있으면 거절이 그 문구로 나간다."""
     from apps.tenants.models import TenantConfig
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import HITLResponse
     from apps.chat.models import ChatSession
 
@@ -240,7 +240,7 @@ async def test_custom_refusal_message_end_to_end(tenant_with_key, fake_chat_llm)
         context_sufficient=True, in_scope=False)
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-custom")
-    answer = await run_chat_agent_async(session, "파란색 설명해줘")
+    answer = await run_chat_turn_async(session, "파란색 설명해줘")
     assert answer == "저희는 OO 쇼핑 관련 문의만 도와드려요."
 
 

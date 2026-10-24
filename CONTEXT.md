@@ -199,7 +199,7 @@ _Avoid_: 임시 저장본
 테넌트 설정 「배포에 관리자 승인 필요」가 켜졌을 때만 생기는 단계. 배포 권한이 없는 멤버가 요청하고, 권한 있는 멤버가 승인하면 배포된다.
 
 **Executor**
-대화 턴마다 Flow Version JSON을 LangGraph StateGraph로 해석해 돌리는 실행기. 체크포인트·HITL·SSE는 기존 것을 재사용한다.
+대화 턴마다 Flow Version JSON을 LangGraph StateGraph로 해석해 돌리는 실행기. 체크포인트·HITL·SSE는 기존 것을 재사용한다. 운영 챗의 한 턴은 이것으로 돈다(#72) — 세션에 고정된 버전, 없으면 첫 턴에 공개 흐름 배포 중 버전에 고정, 공개 흐름이 없으면 기본 흐름.
 _Avoid_: 컴파일러(코드를 만들지 않는다)
 
 **Node / Node Kind / Node Handler**

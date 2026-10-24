@@ -131,7 +131,7 @@ def test_webhook_not_sent_when_type_is_empty(tenant_with_key, webhook_server):
 async def test_webhook_sent_when_escalation_created_by_agent(tenant_with_key, webhook_server, drain_events):
     """AI escalation → SessionEscalated 이벤트 → webhook 소비자가 웹훅을 전송한다(컷오버 151)."""
     from asgiref.sync import sync_to_async
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
     from apps.escalation.models import Escalation
     from apps.tenants.models import TenantConfig
@@ -148,7 +148,7 @@ async def test_webhook_sent_when_escalation_created_by_agent(tenant_with_key, we
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-webhook-agent")
 
-    await run_chat_agent_async(session, "상담원 연결해 주세요")
+    await run_chat_turn_async(session, "상담원 연결해 주세요")
     await adb(drain_events)()  # 이벤트 → relay → webhook 소비자
 
     escalation = await adb(lambda: Escalation.objects.filter(session=session).first())()

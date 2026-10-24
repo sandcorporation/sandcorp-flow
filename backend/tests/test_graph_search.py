@@ -61,7 +61,7 @@ def test_vector_search_is_tenant_isolated(client, tenant_admin_token, tenant_wit
 async def test_chat_answers_from_graph_local_search(client, tenant_admin_token, tenant_with_key):
     """업로드한 문서 내용을 그래프 Local Search로 끌어와 chat이 답한다 (assistant 메시지 저장)."""
     from asgiref.sync import sync_to_async
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession, ChatMessage
     adb = sync_to_async
 
@@ -75,7 +75,7 @@ async def test_chat_answers_from_graph_local_search(client, tenant_admin_token, 
     )
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-graph-chat")
-    await run_chat_agent_async(session, "환불 정책 알려줘")
+    await run_chat_turn_async(session, "환불 정책 알려줘")
 
     assert await adb(ChatMessage.objects.filter(session=session, role=ChatMessage.ROLE_ASSISTANT).exists)()
 

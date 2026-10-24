@@ -2,7 +2,7 @@
 
 - 지식 검색: ``local_search_node``.
 - AI 답변: ``call_llm_structured``(넘김 갈래에 선이 있고 이 턴에 넘김이 가능할 때) 또는 ``call_llm_plain``. 검색한 턴에
-  근거가 모자라면 ``source_search_node``로 원문을 보태 한 번 더 묻는다(build_graph의 원문 폴백과 같다). LLM 클라이언트는
+  근거가 모자라면 ``source_search_node``로 원문을 보태 한 번 더 묻는다(옛 build_graph의 원문 폴백과 같다). LLM 클라이언트는
   만들지 않는다 — 기존 함수가 ContextVar의 ``chat_provider``를 꺼내 쓴다.
 - 사람 넘김: ``create_escalation_node``(``hitl_enabled``가 거짓이면 넘기지 않고 턴을 끝낸다.
   ``dry_run``(시험 한 턴)이면 넘긴 것으로만 적고 Escalation을 만들지 않는다).

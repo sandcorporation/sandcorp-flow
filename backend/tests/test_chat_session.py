@@ -136,13 +136,13 @@ def test_send_message_unknown_session_returns_404(client):
 async def test_get_session_checkpoint_returns_channel_values(client, tenant_with_key, tenant_admin_token):
     """run_chat_agent 실행 후 GET /api/tenant/sessions/{id}/checkpoint → channel_values JSON."""
     from asgiref.sync import sync_to_async
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
     adb = sync_to_async
 
     tenant, _ = tenant_with_key
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-checkpoint-api")
-    await run_chat_agent_async(session, "안녕하세요")
+    await run_chat_turn_async(session, "안녕하세요")
 
     resp = await adb(client.get)(
         f"/api/tenant/sessions/{session.id}/checkpoint",
@@ -191,13 +191,13 @@ def test_get_session_checkpoint_404_for_other_tenant(client, tenant_admin_token)
 async def test_get_session_retrievals_returns_turns(client, tenant_with_key, tenant_admin_token):
     """GET /api/tenant/sessions/{id}/retrievals → 턴별 GraphRAG 검색 결과(히스토리에서 복원, issue 207)."""
     from asgiref.sync import sync_to_async
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
     adb = sync_to_async
 
     tenant, _ = tenant_with_key
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-retr-api")
-    await run_chat_agent_async(session, "안녕하세요")
+    await run_chat_turn_async(session, "안녕하세요")
 
     resp = await adb(client.get)(
         f"/api/tenant/sessions/{session.id}/retrievals",
@@ -234,14 +234,15 @@ def test_get_session_retrievals_404_for_other_tenant(client, tenant_admin_token)
 async def test_checkpoint_has_messages_but_not_lc_messages(tenant_with_key):
     """Checkpoint channel_values에 대화는 messages로만 남고 lc_messages(프롬프트 조립물)는 없다."""
     from asgiref.sync import sync_to_async
-    from apps.agent.graph import run_chat_agent_async, _create_checkpointer
+    from apps.agent.graph import _create_checkpointer
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
     adb = sync_to_async
 
     tenant, _ = tenant_with_key
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-lc-messages")
-    await run_chat_agent_async(session, "안녕하세요")
-    await run_chat_agent_async(session, "또 질문이요")
+    await run_chat_turn_async(session, "안녕하세요")
+    await run_chat_turn_async(session, "또 질문이요")
 
     def _read():
         saver, conn = _create_checkpointer()
@@ -264,17 +265,17 @@ async def test_checkpoint_has_messages_but_not_lc_messages(tenant_with_key):
 async def test_multi_turn_creates_multiple_assistant_replies(tenant_with_key):
     """agent를 두 번 실행하면 각각 assistant 메시지가 저장되고 히스토리가 누적된다."""
     from asgiref.sync import sync_to_async
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession, ChatMessage
     adb = sync_to_async
 
     tenant, _ = tenant_with_key
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-multiturn")
 
-    await run_chat_agent_async(session, "안녕하세요")
+    await run_chat_turn_async(session, "안녕하세요")
     assert await adb(ChatMessage.objects.filter(session=session, role=ChatMessage.ROLE_ASSISTANT).count)() == 1
 
-    await run_chat_agent_async(session, "감사합니다")
+    await run_chat_turn_async(session, "감사합니다")
     assert await adb(ChatMessage.objects.filter(session=session, role=ChatMessage.ROLE_ASSISTANT).count)() == 2
 
 

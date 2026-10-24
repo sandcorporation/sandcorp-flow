@@ -12,7 +12,7 @@ adb = sync_to_async
 async def test_off_hours_uses_plain_graph_no_escalation(tenant_with_key, fake_chat_llm, monkeypatch):
     """시간 외(is_open=False)면 plain 그래프 → '상담원' 요청에도 escalation이 생기지 않는다."""
     from apps.tenants import business_hours
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import PlainResponse
     from apps.chat.models import ChatSession
     from apps.escalation.models import Escalation
@@ -27,7 +27,7 @@ async def test_off_hours_uses_plain_graph_no_escalation(tenant_with_key, fake_ch
 
     tenant, _ = tenant_with_key  # hitl_enabled 기본 True
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-off")
-    answer = await run_chat_agent_async(session, "상담원 연결해줘")
+    answer = await run_chat_turn_async(session, "상담원 연결해줘")
 
     assert not await adb(Escalation.objects.filter(session=session).exists)()
     assert answer
@@ -38,7 +38,7 @@ async def test_off_hours_uses_plain_graph_no_escalation(tenant_with_key, fake_ch
 async def test_open_hours_allows_escalation(tenant_with_key, fake_chat_llm, monkeypatch):
     """상담시간 내(is_open=True)면 structured 그래프 → '상담원' 요청이 escalation을 만든다."""
     from apps.tenants import business_hours
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
     from apps.escalation.models import Escalation
 
@@ -46,7 +46,7 @@ async def test_open_hours_allows_escalation(tenant_with_key, fake_chat_llm, monk
 
     tenant, _ = tenant_with_key
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-on")
-    await run_chat_agent_async(session, "상담원 연결해줘")  # 기본 Fake: '상담원' → needs_hitl=True
+    await run_chat_turn_async(session, "상담원 연결해줘")  # 기본 Fake: '상담원' → needs_hitl=True
 
     assert await adb(Escalation.objects.filter(session=session).exists)()
 
@@ -56,7 +56,7 @@ async def test_off_hours_no_notice_when_hitl_disabled(tenant_with_key, fake_chat
     """HITL 자체가 꺼진 테넌트는 시간 외 안내를 주입하지 않는다."""
     from apps.tenants import business_hours
     from apps.tenants.models import TenantConfig
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.agent.nodes import PlainResponse
     from apps.chat.models import ChatSession
 
@@ -76,5 +76,5 @@ async def test_off_hours_no_notice_when_hitl_disabled(tenant_with_key, fake_chat
     fake_chat_llm.override = fake
 
     session = await adb(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-disabled")
-    await run_chat_agent_async(session, "상담원 연결해줘")
+    await run_chat_turn_async(session, "상담원 연결해줘")
     assert "운영 안내" not in captured["joined"]

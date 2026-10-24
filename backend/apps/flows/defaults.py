@@ -1,6 +1,6 @@
 """기본 흐름(#23): 시작 → 지식 검색 → AI 답변 → [AI가 넘김을 판단하면] 사람 넘김.
 
-운영 챗의 build_graph(local_search → call_llm → [원문 폴백] → create_escalation | save_messages)와 같은 동작이다.
+옛 운영 챗 build_graph(#72에서 제거, local_search → call_llm → [원문 폴백] → create_escalation | save_messages)와 같은 동작이다.
 config는 #22 스키마에 정의된 필드만 쓴다(모르는 필드는 거부된다).
 """
 

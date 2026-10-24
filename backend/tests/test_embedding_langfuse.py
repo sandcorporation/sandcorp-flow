@@ -223,7 +223,7 @@ async def test_graph_emits_local_search_retrieval_span(tenant_with_key, fake_cha
     """빌드된 그래프 구동 시 local_search가 Langfuse retrieval span으로 발행된다."""
     from asgiref.sync import sync_to_async
     from apps.usage import langfuse_client
-    from apps.agent.graph import run_chat_agent_async
+    from apps.flows.chat_turn import run_chat_turn_async
     from apps.chat.models import ChatSession
 
     fake = _FakeLangfuse()
@@ -231,6 +231,6 @@ async def test_graph_emits_local_search_retrieval_span(tenant_with_key, fake_cha
 
     tenant, _ = tenant_with_key
     session = await sync_to_async(ChatSession.objects.create)(tenant_id=tenant.id, visitor_id="v-rag")
-    await run_chat_agent_async(session, "안녕")
+    await run_chat_turn_async(session, "안녕")
 
     assert "graphrag_local_search" in [s["name"] for s in fake.spans]
