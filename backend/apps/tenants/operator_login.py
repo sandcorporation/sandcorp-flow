@@ -49,14 +49,20 @@ logger = logging.getLogger(__name__)
 
 LOGIN_SCOPE = "login"
 OPERATOR_SCOPE = "admin"
-# Operator(admin-ui) 진입. admin을 요청해야 대표 토큰에 admin이 실린다(auth는 요청한 스코프만 넣는다).
-# 일반 사용자는 admin이 금지 스코프라 고객 진입(#40)은 이 집합을 쓰지 않는다.
-REQUESTED_SCOPE = "openid profile email login admin"
+# 진입마다 요청 스코프가 다르다(ADR-0028). 대표(Operator)는 `admin`을 함께 요청하고, 고객(member)은
+# 요청하지 않는다 — member가 `admin`을 요청하면 sandcorp-auth가 `invalid_scope`로 돌려보낸다.
+OPERATOR_REQUESTED_SCOPE = "openid profile email login admin"
+MEMBER_REQUESTED_SCOPE = "openid profile email login"
+LoginEntry = Literal["operator", "member"]
+REQUESTED_SCOPE: dict[LoginEntry, str] = {
+    "operator": OPERATOR_REQUESTED_SCOPE,
+    "member": MEMBER_REQUESTED_SCOPE,
+}
 ATTEMPT_MAX_AGE_SECONDS = 600
 TOKEN_TIMEOUT_SECONDS = 10
 _ATTEMPT_SALT = "flow.operator-login.attempt"
 
-RejectReason = Literal["denied", "state", "exchange", "token", "admin", "config"]
+RejectReason = Literal["denied", "state", "exchange", "token", "admin", "member", "owner", "config"]
 
 
 class LoginRejected(Exception):
@@ -74,9 +80,13 @@ class LoginAttempt:
     nonce: str
     # 팀원 초대 링크로 시작한 로그인이면 그 원문 토큰(#40). 콜백에서 멤버십을 만든다.
     invite: str | None = None
+    # 어느 화면에서 시작했나 — 요청 스코프와 콜백이 받을 계정 종류가 여기서 정해진다.
+    entry: LoginEntry = "operator"
 
     def dumps(self) -> str:
-        payload = {"s": self.state, "v": self.code_verifier, "n": self.nonce}
+        payload: dict[str, str] = {
+            "s": self.state, "v": self.code_verifier, "n": self.nonce, "e": self.entry,
+        }
         if self.invite:
             payload["i"] = self.invite
         return signing.dumps(payload, salt=_ATTEMPT_SALT)
@@ -95,7 +105,9 @@ class LoginAttempt:
         if not (isinstance(state, str) and isinstance(verifier, str) and isinstance(nonce, str)):
             return None
         invite = payload.get("i")
+        entry: LoginEntry = "member" if payload.get("e") == "member" else "operator"
         return cls(
+            entry=entry,
             state=state,
             code_verifier=verifier,
             nonce=nonce,
@@ -210,8 +222,13 @@ def code_challenge(verifier: str) -> str:
 
 
 def start_login(
-    config: ClientConfig | None = None, invite: str | None = None
+    config: ClientConfig | None = None,
+    invite: str | None = None,
+    entry: LoginEntry = "operator",
 ) -> tuple[str, LoginAttempt]:
+    """`entry="operator"`는 관리 화면 대표 로그인, `"member"`는 고객 로그인(초대 링크 포함)."""
+    if invite:
+        entry = "member"  # 초대는 언제나 고객 진입이다
     config = config or ClientConfig.from_settings()
     if not config.complete:
         raise LoginRejected("config")
@@ -220,13 +237,14 @@ def start_login(
         code_verifier=secrets.token_urlsafe(64),  # 86자 — RFC 7636 43~128자
         nonce=secrets.token_urlsafe(32),
         invite=invite or None,
+        entry=entry,
     )
     query = urllib.parse.urlencode(
         {
             "response_type": "code",
             "client_id": config.client_id,
             "redirect_uri": config.redirect_uri,
-            "scope": REQUESTED_SCOPE,
+            "scope": REQUESTED_SCOPE[attempt.entry],
             "resource": config.resource,
             "state": attempt.state,
             "nonce": attempt.nonce,
@@ -292,12 +310,17 @@ def complete_login(
         raise LoginRejected("token")
     identity = _verify_id_token(tokens.get("id_token"), validator, config, attempt.nonce, access)
 
-    if access.acct == "member":
+    # ADR-0028: Operator는 `acct` 없음(A1) + `admin`뿐이다. 진입과 계정 종류가 엇갈리면 거절한다.
+    if attempt.entry == "member":
+        if access.acct != "member":
+            raise LoginRejected("owner")  # 대표는 고객 화면으로 들어오지 않는다
         from apps.tenants.members import member_user
 
         return MemberLogin(
             user=member_user(validator.issuer, access.sub, identity), invite=attempt.invite
         )
+    if access.acct == "member":
+        raise LoginRejected("member")  # 고객은 관리 화면(Operator)으로 들어오지 않는다
     if OPERATOR_SCOPE not in access.scopes:
         raise LoginRejected("admin")
     return owner_operator(validator.issuer, access.sub, identity)

@@ -214,7 +214,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
      1. **기밀(confidential) 클라이언트 등록**: 토큰 엔드포인트 인증 `client_secret_basic`, 인가 코드 + PKCE(S256).
         - 리디렉션 URI: `https://flow.sandcorp.co.kr/api/auth/callback`(끝 `/` 없음, 문자 하나까지 일치). Operator 전용이 아니라 일반 사용자(#40)도 같은 콜백을 쓴다.
         - 리소스: `https://flow.sandcorp.co.kr/api`, 이 클라이언트가 받을 스코프 `admin`·`login`.
-        - 요청 스코프: Operator(admin-ui) 진입은 `openid profile email login admin`, 고객 진입(#40)은 `openid profile email login`(일반 사용자는 admin 금지). Flow가 `/authorize`에 `resource=https://flow.sandcorp.co.kr/api`와 함께 보낸다).
+        - 요청 스코프: 관리 화면(Operator) 진입은 `openid profile email login admin`, 고객 진입은 `openid profile email login`(Flow가 `/authorize`에 `resource=https://flow.sandcorp.co.kr/api`와 함께 보낸다).
         - 「일반 사용자 허용」(`allows_members=True`): `manage.py clients members --client-id <id> --allow`. 일반 사용자는 지금은 거절 화면으로 가고(#40에서 연다), 대표만 Operator 세션을 받는다.
      2. **탈퇴 웹훅 비밀 발급**: `manage.py clients webhook --client-id <id> --url https://flow.sandcorp.co.kr/api/auth/webhook`. 웹훅 수신부는 별도 티켓이다(지금 Flow엔 그 경로가 없다) — 비밀만 받아 둔다.
      3. **운영 `.env`에 넣기**: `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`(1에서 발급), `AUTH_REDIRECT_URI=https://flow.sandcorp.co.kr/api/auth/callback`, `AUTH_WEBHOOK_SECRET`(2에서 발급). `AUTH_AUTHORIZE_URL`(기본 `<AUTH_ISSUER>/authorize`)·`AUTH_TOKEN_URL`(기본 `<AUTH_ISSUER>/token`)·`AUTH_LOGIN_REDIRECT`(기본 `/admin-ui/operator`)는 기본값이면 적지 않는다. 클라이언트 값이 비면 로그인 버튼이 「설정되지 않음」 거절 화면으로 간다.

@@ -22,7 +22,8 @@ from apps.tenants.refresh_tokens import (
 )
 from apps.tenants.models import Membership, Operator, Tenant, TenantConfig, TenantInvite
 from apps.tenants.operator_login import (
-    ATTEMPT_MAX_AGE_SECONDS, LoginAttempt, LoginRejected, MemberLogin, complete_login, start_login,
+    ATTEMPT_MAX_AGE_SECONDS, LoginAttempt, LoginEntry, LoginRejected, MemberLogin, complete_login,
+    start_login,
 )
 
 operator_router = Router(tags=["operator"])
@@ -188,7 +189,7 @@ def _invite_out(invite: TenantInvite) -> dict:
 
 
 def _invite_url(request, raw: str) -> str:
-    return request.build_absolute_uri(f"/api/auth/authorize?{urlencode({'invite': raw})}")
+    return request.build_absolute_uri(f"/api/auth/authorize/member?{urlencode({'invite': raw})}")
 
 
 def _invite_created(request, invite: TenantInvite, raw: str) -> dict:
@@ -375,12 +376,11 @@ def _member_landing(login: MemberLogin) -> HttpResponseRedirect:
     return response
 
 
-@auth_router.get("/authorize", auth=None, include_in_schema=False)
-def login_authorize(request, invite: str | None = None):
+def _start(entry: LoginEntry, invite: str | None = None) -> HttpResponseRedirect:
     try:
-        url, attempt = start_login(invite=invite)
+        url, attempt = start_login(invite=invite, entry=entry)
     except LoginRejected as exc:
-        return _login_redirect(exc.reason)
+        return _rejected_redirect(attempt_entry=entry, reason=exc.reason)
     response = HttpResponseRedirect(url)
     response.set_cookie(
         LOGIN_ATTEMPT_COOKIE,
@@ -394,13 +394,33 @@ def login_authorize(request, invite: str | None = None):
     return response
 
 
+def _rejected_redirect(attempt_entry: LoginEntry, reason: str) -> HttpResponseRedirect:
+    """거절은 시작한 화면으로 돌려보낸다(관리 화면 / 고객 화면)."""
+    if attempt_entry == "member":
+        return _redirect(settings.AUTH_MEMBER_REDIRECT, login_error=reason)
+    return _login_redirect(reason)
+
+
+@auth_router.get("/authorize", auth=None, include_in_schema=False)
+def login_authorize(request, invite: str | None = None):
+    """관리 화면(Operator) 진입 — `admin`까지 요청한다. `invite`가 붙으면 고객 진입으로 바꾼다
+    (#61에서 나간 옛 초대 링크 호환)."""
+    return _start("member" if invite else "operator", invite)
+
+
+@auth_router.get("/authorize/member", auth=None, include_in_schema=False)
+def login_authorize_member(request, invite: str | None = None):
+    """고객(member) 진입 — `admin`을 요청하지 않는다. 초대 링크도 이 주소다."""
+    return _start("member", invite)
+
+
 @auth_router.get("/callback", auth=None, include_in_schema=False)
 def login_callback(request):
     attempt = LoginAttempt.loads(request.COOKIES.get(LOGIN_ATTEMPT_COOKIE))
     try:
         outcome = complete_login(request.GET.dict(), attempt)
     except LoginRejected as exc:
-        return _login_redirect(exc.reason)
+        return _rejected_redirect(attempt.entry if attempt else "operator", exc.reason)
     if isinstance(outcome, MemberLogin):
         return _member_landing(outcome)
     response = _login_redirect()

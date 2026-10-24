@@ -50,7 +50,7 @@ describe('AgentsTab — 팀원(멤버십)·초대 링크 (issue 210 → #40)', (
     vi.mocked(api.currentAgentRole).mockReturnValue('admin')
     vi.mocked(api.createInvite).mockResolvedValue({
       id: 'i1', role: 'admin', expires_at: '2026-10-31T00:00:00Z', created_at: '', token: 'tok',
-      url: 'http://flow/api/auth/authorize?invite=tok',
+      url: 'http://flow/api/auth/authorize/member?invite=tok',
     })
     render(<AgentsTab />)
 
@@ -59,7 +59,7 @@ describe('AgentsTab — 팀원(멤버십)·초대 링크 (issue 210 → #40)', (
     await userEvent.click(screen.getByRole('button', { name: '초대 링크 만들기' }))
 
     expect(api.createInvite).toHaveBeenCalledWith('admin')
-    expect(await screen.findByLabelText('초대 링크')).toHaveValue('http://flow/api/auth/authorize?invite=tok')
+    expect(await screen.findByLabelText('초대 링크')).toHaveValue('http://flow/api/auth/authorize/member?invite=tok')
     expect(screen.queryByPlaceholderText('현재 비밀번호')).toBeNull()  // 비밀번호 계정은 없다
   })
 })

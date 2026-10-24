@@ -96,7 +96,7 @@ def test_create_tenant_returns_admin_invite_link_not_password(client, operator_t
         "/api/operator/tenants/", {"name": "Invite Corp"}, content_type="application/json"
     ).json()
 
-    assert "/api/auth/authorize?invite=" in data["admin_invite_url"]
+    assert "/api/auth/authorize/member?invite=" in data["admin_invite_url"]
     assert "agent_temp_password" not in data and "agent_username" not in data
     invite = TenantInvite.objects.get(tenant_id=data["id"])
     assert invite.role == "admin"
