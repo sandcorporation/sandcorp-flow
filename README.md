@@ -189,6 +189,7 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 | `AUTH_ISSUER` | sandcorp-auth 발급자(`iss` 정확히 일치) | `https://auth.sandcorp.co.kr`(기본) |
 | `AUTH_JWKS_URL` | 공개 키 JWKS(600초 캐시) | `https://auth.sandcorp.co.kr/.well-known/jwks.json`(기본) |
 | `AUTH_RESOURCE` | 이 서비스의 리소스(`aud` 정확히 일치). 원점이 401 `resource_metadata` 주소가 된다 | `https://flow.sandcorp.co.kr/api`(기본) |
+| `AUTH_MCP_RESOURCE` | MCP 서버(`/mcp`)의 리소스(`aud`). API 리소스와 따로 둔다(#74) | `https://flow.sandcorp.co.kr/mcp`(기본) |
 | `AUTH_OWNER_SUB` | 대표 계정 username(A1). **비우면 대표 토큰이 모두 거부**된다 | `farrar142` |
 | `AUTH_CLIENT_ID` / `AUTH_CLIENT_SECRET` | 관리 화면 로그인용 sandcorp-auth 기밀 클라이언트(#21). 비우면 로그인 버튼이 「설정되지 않음」 거절 화면 | (sandcorp-auth에서 발급) |
 | `AUTH_REDIRECT_URI` | 로그인 콜백 주소. sandcorp-auth 등록값과 문자 하나까지 일치 | `https://flow.sandcorp.co.kr/api/auth/callback`(기본) |
@@ -259,6 +260,13 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 2. **문서 탭**: PDF/TXT/이미지/**Excel** 업로드 또는 **웹 URL** 추가(레이블 지정 가능) → 그래프 자동 구축.
 3. **🕸️ 지식그래프 탭**: 엔티티 검색(다국어 의미 검색) → 노드-엣지 그래프로 탐색, 노드 클릭으로 이웃 확장.
 4. 그래프 신선도 확인 후 **재구축** 트리거. **HITL 탭**에서 에스컬레이션 수락·응대.
+
+### MCP — claude.ai에서 흐름 다루기 (#74)
+- **연결**: claude.ai → 설정 → 커넥터 → 사용자 지정 커넥터 추가 → URL `https://flow.sandcorp.co.kr/mcp`. 커넥터가 `/.well-known/oauth-protected-resource/mcp`를 읽고 sandcorp-auth로 로그인시킨다(일반 사용자 member 토큰, `aud`=`AUTH_MCP_RESOURCE`, 스코프 `flow.read`·`flow.write`). auth 쪽 등록은 [docs/deployment.md](./docs/deployment.md) 「서버 쪽 할 일」 11번.
+- **권한**: 스코프는 상한이고 실제 판정은 멤버십 역할 — 테넌트 **Admin만 편집·배포**, Member는 읽기. 대표 계정도 멤버십이 있는 테넌트만 보인다(Operator 기능 없음).
+- **테넌트 고르기**: 테넌트 도구는 `tenant`(slug) 인자를 받고, 멤버십이 하나면 생략한다. `list_tenants`가 내 테넌트·역할을 보여 준다.
+- **도구**(지금): `list_tenants`, `get_flow_schema`(흐름 JSON 규칙 — 흐름을 고치기 전에 한 번 읽는다). 흐름 읽기·수정·배포 도구는 #76, 문서·지식그래프·상담 읽기 도구는 #77.
+- **전송**: Streamable HTTP의 JSON 응답 모드(POST 한 번에 JSON 한 답, 세션·SSE 없음, 배치 거부, 본문 1 MiB). 코드는 `backend/apps/mcp/`(도구 등록 방법은 `registry.py` 머리말).
 
 ### Visitor
 - Tenant 사이트에 임베드된 위젯이 **`/chatbot/{slug}/`**(필요 시 `?visitor_id=`·`hash`)로 연결 → 지식그래프 RAG로 응답, HITL이 켜져 있으면 필요 시 사람 전환.

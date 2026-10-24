@@ -2,6 +2,7 @@ from django.http import HttpRequest, JsonResponse
 from django.urls import path
 from django.views.decorators.http import require_GET
 
+from apps.mcp.views import mcp_endpoint, oauth_protected_resource_mcp
 from config.api import api
 
 
@@ -18,4 +19,7 @@ def oauth_protected_resource(request: HttpRequest) -> JsonResponse:
 urlpatterns = [
     path("api/", api.urls),
     path(".well-known/oauth-protected-resource", oauth_protected_resource),
+    # MCP 서버(#74): API와 다른 리소스(aud …/mcp)라 메타데이터도 경로별(RFC 9728 3.1).
+    path("mcp", mcp_endpoint),
+    path(".well-known/oauth-protected-resource/mcp", oauth_protected_resource_mcp),
 ]
