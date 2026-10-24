@@ -46,6 +46,7 @@ class FlowState(ChatState):
     - ``rag_searched``: 이 턴에 지식 검색을 했는가(원문 폴백은 검색을 한 턴에만).
     - ``trace``: 이 턴에 지난 노드들.
     - ``node_instructions``: 지금 도는 AI 답변 노드의 ``instructions``(프롬프트 끝에 실린다). 노드마다 핸들러가 넣는다.
+    - ``stream_held``: 방금 AI 답변이 답을 방문자 스트림에 내보내지 않고 모아 두었다(뒤의 출력 가드레일이 검사한 뒤 내보낸다, #26).
     - ``label``·``fields``·``confidence``: AI 분류·추출 노드의 결과(#25). 조건 노드가 읽는다.
     """
 
@@ -58,6 +59,7 @@ class FlowState(ChatState):
     rag_searched: bool
     trace: list[TraceEntry]
     node_instructions: str
+    stream_held: bool
     label: str
     confidence: float
     fields: dict[str, object]
@@ -71,6 +73,8 @@ class NodeContext:
     node: Node
     outgoing: Mapping[str, str]
     """handle → 다음 노드 id. 선이 있는 갈래만 들어 있다."""
+    hold_stream: bool = False
+    """AI 답변 전용: ``next``가 출력 가드레일이라 답을 스트림에 흘리지 않고 모아 둔다(#26)."""
 
 
 @dataclass(frozen=True)

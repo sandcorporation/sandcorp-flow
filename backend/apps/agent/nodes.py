@@ -198,6 +198,23 @@ def _scope_gate(state: dict, in_scope: bool, model_response: str) -> tuple:
     )
 
 
+async def _emit(state: dict, sid: str, text: str) -> None:
+    """방문자 스트림에 토큰을 낸다. 뒤에 출력 가드레일이 붙은 AI 답변(``hold_stream``)은 내지 않고 모아 둔다(#26)."""
+    if not state.get("hold_stream"):
+        await apublish_token(sid, text)
+
+
+async def _emit_done(state: dict, sid: str) -> None:
+    if not state.get("hold_stream"):
+        await apublish_done(sid)
+
+
+async def publish_answer(sid: str, text: str) -> None:
+    """모아 둔(또는 가드레일이 바꾼) 답을 방문자 스트림에 한 번에 내보낸다."""
+    await apublish_token(sid, text)
+    await apublish_done(sid)
+
+
 async def _aoneshot_route(state: dict, schema) -> tuple:
     """킬스위치(CHAT_STREAMING_ENABLED=False) 경로 — 단일 호출·one-shot publish(async)."""
     sid = state["session_id"]
@@ -209,12 +226,12 @@ async def _aoneshot_route(state: dict, schema) -> tuple:
         final["response"] = final_response
         final["needs_hitl"] = False  # 범위 밖은 상담원 escalation하지 않는다
         final["context_sufficient"] = True  # 거절은 종단 — 원문 폴백 재호출(중복 거절)을 막는다
-        await apublish_token(sid, final_response)
-        await apublish_done(sid)
+        await _emit(state, sid, final_response)
+        await _emit_done(state, sid)
         return final, final_response
     if final_response and not _will_source_fallback(state, result):
-        await apublish_token(sid, final_response)
-        await apublish_done(sid)
+        await _emit(state, sid, final_response)
+        await _emit_done(state, sid)
     return final, final_response
 
 
@@ -247,23 +264,23 @@ async def _astream_and_route(state: dict, schema) -> tuple:
         if streaming:
             resp = chunk.get("response") or ""
             if len(resp) > published:
-                await apublish_token(sid, resp[published:])
+                await _emit(state, sid, resp[published:])
                 published = len(resp)
     response = final.get("response") or ""
     refused, final_response = _scope_gate(state, final.get("in_scope", True), response)
     if refused:
         # 백스톱: 모델 응답을 무시하고 결정적 거절을 발행(스트리밍은 위에서 억제됨). 거절은 종단이라
         # context_sufficient=True로 둬 원문 폴백 재호출(거절 중복 publish)을 막는다.
-        await apublish_token(sid, final_response)
-        await apublish_done(sid)
+        await _emit(state, sid, final_response)
+        await _emit_done(state, sid)
         return {**final, "response": final_response, "needs_hitl": False, "context_sufficient": True}, final_response
     if streaming:
         if published > 0:  # 흘린 게 있을 때만 done(빈 응답=needs_hitl 무-멘트는 무발행)
-            await apublish_done(sid)
+            await _emit_done(state, sid)
     elif response and not _will_fallback_dict(state, final) and not final.get("needs_hitl", False):
         # 자동 저하: 안전 종단인데 못 흘림(제어필드 늦음/부분없음) → one-shot
-        await apublish_token(sid, response)
-        await apublish_done(sid)
+        await _emit(state, sid, response)
+        await _emit_done(state, sid)
     return final, response
 
 

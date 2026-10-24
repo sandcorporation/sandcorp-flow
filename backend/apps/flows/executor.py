@@ -32,7 +32,7 @@ from apps.flows.contract import (
 )
 from apps.usage.context import collect_calls
 from apps.usage.pricing import cost_usd
-from apps.flows.schema import JSON, MAX_STEPS_PER_TURN, FlowGraph, Node, NodeKind, flow_hash, parse_flow
+from apps.flows.schema import DEFAULT_HANDLE, JSON, MAX_STEPS_PER_TURN, FlowGraph, Node, NodeKind, flow_hash, parse_flow
 
 if TYPE_CHECKING:
     from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -74,8 +74,8 @@ def _str_or_none(value: Decimal | None) -> str | None:
     return None if value is None else _dec_str(value)
 
 
-def _make_step(node: Node, handler: NodeHandler, outgoing: dict[str, str]):
-    ctx = NodeContext(node=node, outgoing=outgoing)
+def _make_step(node: Node, handler: NodeHandler, outgoing: dict[str, str], *, hold_stream: bool = False):
+    ctx = NodeContext(node=node, outgoing=outgoing, hold_stream=hold_stream)
 
     async def step(state: FlowState) -> dict[str, object]:
         steps = state.get("steps", 0)
@@ -127,6 +127,14 @@ def _route(state: FlowState) -> str:
     return state["route"]
 
 
+def _holds_stream(flow: FlowGraph, node: Node) -> bool:
+    """AI 답변 바로 뒤가 출력 가드레일이면 답을 흘리지 않고 모아 둔다 — 막힌 원문이 토큰으로 먼저 나가면 늦다(#26)."""
+    if node.kind is not NodeKind.AI_ANSWER:
+        return False
+    nxt = flow.nodes.get(flow.outgoing(node.id).get(DEFAULT_HANDLE, ""))
+    return bool(nxt and nxt.kind is NodeKind.GUARDRAIL and nxt.config.target == "output")  # type: ignore[attr-defined]
+
+
 def _build(flow: FlowGraph) -> StateGraph:
     missing = sorted({n.kind.value for n in flow.nodes.values() if n.kind not in HANDLERS})
     if missing:
@@ -140,7 +148,8 @@ def _build(flow: FlowGraph) -> StateGraph:
     targets[END] = END
 
     for node in flow.nodes.values():
-        graph.add_node(node.id, _make_step(node, HANDLERS[node.kind], flow.outgoing(node.id)))
+        graph.add_node(node.id, _make_step(node, HANDLERS[node.kind], flow.outgoing(node.id),
+                                           hold_stream=_holds_stream(flow, node)))
         graph.add_conditional_edges(node.id, _route, targets)
     graph.add_node(FINISH_NODE, _finish)
     graph.add_edge(FINISH_NODE, END)
@@ -184,6 +193,7 @@ def turn_input(base: dict[str, object], hitl_enabled: bool, *, dry_run: bool = F
         "steps": 0,
         "step_limit_exceeded": False,
         "rag_searched": False,
+        "stream_held": False,
         "trace": [],
     }
 

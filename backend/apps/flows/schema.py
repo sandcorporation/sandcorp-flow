@@ -178,9 +178,48 @@ class AiClassifyConfig(NodeConfig):
 GuardrailRule = Literal["banned_words", "pii", "price_promise"]
 
 
+DEFAULT_BLOCK_MESSAGE = "죄송합니다. 해당 내용은 안내해 드릴 수 없습니다."
+
+
 class GuardrailConfig(NodeConfig):
+    """가드레일(ADR-0027, #26). ``target``의 글을 ``rules``로 검사하고 걸리면 ``action``으로 처리한다.
+
+    - ``banned_words``(금지어 목록)·``pii``(전화번호·주민등록번호·카드번호·이메일)는 결정적 검사, ``price_promise``는 LLM 판정.
+    - ``block``: ``block_message``로 바꿈. ``rewrite``: LLM으로 고쳐 씀(고친 글에도 결정적 규칙이 남으면 막기로). ``mask``: 걸린
+      부분만 가림(금지어·개인정보만 — 가격 약속은 부분을 가릴 수 없다).
+    - ``output``: 직전 AI 답변(나가는 말), ``input``: 방문자 입력(들어오는 말). 입력을 막으면 ``block_message``로 답하고 턴이 끝난다.
+    """
+
     rules: list[GuardrailRule] = Field(min_length=1)
-    action: Literal["block", "rewrite"] = "rewrite"
+    action: Literal["block", "rewrite", "mask"] = "rewrite"
+    target: Literal["output", "input"] = "output"
+    banned_words: list[str] = Field(default_factory=list)
+    block_message: str = DEFAULT_BLOCK_MESSAGE
+
+    @field_validator("banned_words")
+    @classmethod
+    def _words(cls, words: list[str]) -> list[str]:
+        cleaned = [w.strip() for w in words]
+        if any(not w for w in cleaned):
+            raise ValueError("banned_words에 빈 단어를 넣을 수 없습니다")
+        return cleaned
+
+    @field_validator("block_message")
+    @classmethod
+    def _message(cls, message: str) -> str:
+        if not message.strip():
+            raise ValueError("block_message는 비워 둘 수 없습니다")
+        return message
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "GuardrailConfig":
+        if len(set(self.rules)) != len(self.rules):
+            raise ValueError("rules에 같은 규칙이 두 번 있습니다")
+        if "banned_words" in self.rules and not self.banned_words:
+            raise ValueError("banned_words 규칙을 쓰려면 banned_words 목록이 필요합니다")
+        if self.action == "mask" and "price_promise" in self.rules:
+            raise ValueError("가격 약속은 부분을 가릴 수 없습니다 — action을 block이나 rewrite로 하세요")
+        return self
 
 
 class HttpToolConfig(NodeConfig):
@@ -413,6 +452,7 @@ def _build(data: object) -> tuple[FlowGraph | None, list[FlowError]]:
     if len(starts) == 1 and starts[0].id in nodes:
         errors.extend(_reachability_errors(graph, starts[0].id))
     errors.extend(_cycle_errors(graph))
+    errors.extend(_guardrail_errors(graph))
     return (None if errors else graph), errors
 
 
@@ -429,6 +469,19 @@ def _reachability_errors(graph: FlowGraph, start_id: str) -> list[FlowError]:
         for nid in graph.nodes
         if nid not in seen
     ]
+
+
+def _guardrail_errors(graph: FlowGraph) -> list[FlowError]:
+    """출력 가드레일은 답을 보낸 뒤 턴이 끝나는 AI 답변(await_reply) 바로 뒤에 둘 수 없다 — 검사 전에 답이 이미 나간다."""
+    errors: list[FlowError] = []
+    for node in graph.nodes.values():
+        if node.kind is not NodeKind.AI_ANSWER or not node.config.waits_for_reply():
+            continue
+        nxt = graph.nodes.get(graph.outgoing(node.id).get(DEFAULT_HANDLE, ""))
+        if nxt and nxt.kind is NodeKind.GUARDRAIL and nxt.config.target == "output":  # type: ignore[attr-defined]
+            errors.append(FlowError(nxt.id, "guardrail_after_await_reply",
+                                    f"'{node.id}'는 답을 보낸 뒤 턴을 끝내므로 출력 가드레일을 바로 붙일 수 없습니다(target을 input으로 하거나 await_reply를 끄세요)"))
+    return errors
 
 
 def _cycle_errors(graph: FlowGraph) -> list[FlowError]:

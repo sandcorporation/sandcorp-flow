@@ -193,7 +193,7 @@ def test_deploy_and_rollback(tenant_with_key):
 
 def test_deploy_refuses_a_version_with_nodes_lacking_handlers(tenant_with_key):
     tenant, _ = tenant_with_key
-    ops = [node("start", "start", 1), node("guard", "guardrail", 2, {"rules": ["pii"]}), link("start", "guard")]
+    ops = [node("start", "start", 1), node("guard", "http_tool", 2, {"url": "https://example.com/x"}), link("start", "guard")]
     flow = make_flow(tenant, ops)
     services.save_version(tenant.id, flow.id)  # 스키마는 통과 — 버전 저장은 된다
 
@@ -281,7 +281,7 @@ async def test_test_turn_refuses_flows_with_missing_handlers_without_a_session(t
     from apps.chat.models import ChatSession
 
     tenant, _ = tenant_with_key
-    ops = [node("start", "start", 1), node("guard", "guardrail", 2, {"rules": ["pii"]}), link("start", "guard")]
+    ops = [node("start", "start", 1), node("guard", "http_tool", 2, {"url": "https://example.com/x"}), link("start", "guard")]
     flow = await adb(make_flow)(tenant, ops)
 
     result = await services.run_test_turn(tenant.id, flow.id, "안녕")
