@@ -244,7 +244,7 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 - **로그인**: 고객은 sandcorp-auth 계정으로 로그인합니다(`/admin-ui/tenant` → **sandcorp 계정으로 로그인**). Flow에는 비밀번호가 없습니다. 콜백은 속한 조직(Membership)이 하나면 바로 그 조직 화면을, 여럿이면 **조직 선택**을, 없으면 **조직 만들기**(#41)(`TenantOnboarding`, 조직 만들기 온보딩은 #41)를 보여줍니다. 콜백 거절(`?login_error=`)은 사유별 문구로 안내하고, 상단 바에는 조직 이름·내 이름·**내 계정**(`https://auth.sandcorp.co.kr/account`)·**조직 바꾸기**가 있습니다.
 - **조직 만들기(온보딩, #41)**: 속한 조직이 없는 사람은 조직 이름과 공개 주소(`/chatbot/<slug>`, 이름에서 제안)를 넣어 조직을 만들고, 첫 관리자로 바로 들어갑니다. 계정당 조직 수(`TENANT_CREATE_LIMIT_PER_USER`)와 IP당 시도 수에 상한이 있습니다. 새 조직은 기존 챗 설정 그대로 시작합니다(기본 흐름은 #23).
 - **체험 한도(#41, ADR-0026)**: 자기 LLM 키가 없는 조직은 플랫폼 OpenAI 키로 방문자 대화 `TRIAL_TURNS`(기본 200)턴을 체험합니다(문서 임베딩·자료 정리 포함, 스캔 OCR 제외). 관리 화면 상단 배너가 남은 턴을 보이고, 다 쓰면 「설정에서 LLM 키를 넣어 주세요」로 바뀝니다. 방문자에게는 한도·키 이야기 없이 「상담 준비 중」 문구만 갑니다. 키를 넣으면 한도와 무관하게 자기 키(BYOK)로 돕니다. 설정의 **요금** 탭은 「요금제 준비 중」과 체험 상태를 보입니다.
-- **Operator 프로비저닝**: Operator로 로그인 → **Tenant 추가** → `TENANT_KEY`와 **첫 Admin 초대 링크**가 **1회** 표시. 링크를 고객에게 직접 전달하면, 고객이 그 링크로 로그인해 Admin이 됩니다. `TENANT_KEY`는 해시만 저장(분실 시 재발급), HMAC 신원검증 API·break-glass에만 사용(브라우저 비노출).
+- **Operator 프로비저닝**: Operator로 로그인 → **Tenant 추가** → `TENANT_KEY`와 **첫 Admin 초대 링크**가 **1회** 표시. 링크를 고객에게 직접 전달하면, 고객이 그 링크로 로그인해 Admin이 됩니다. `TENANT_KEY`는 해시만 저장(분실 시 재발급), HMAC 신원검증 API·break-glass에만 사용(브라우저 비노출). 마지막 Admin이 탈퇴한 Tenant는 목록에 **「주인 없음」** 배지(활성 Admin 0)가 붙고, 「주인 없음만 보기」 필터와 행의 **Admin 초대 링크 만들기**(7일·1회용)로 복구합니다.
 
 ### 권한 (Tenant Admin / Tenant Member)
 - 멤버(Membership)는 **Admin / Member** 역할을 가집니다(권한 비트 기반, ADR-0025). **Admin은 전 권한**, **Member는 팀원 관리·`TENANT_KEY` 회전·Slug 변경만 제외한 전부**(문서·HITL·프롬프트/HITL 설정·Provider 키·조회 등 일상 운영은 다 가능).

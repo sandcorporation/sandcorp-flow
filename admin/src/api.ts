@@ -11,6 +11,7 @@ import {
   appsTenantsApiCreateTenant,
   appsTenantsApiDeleteTenant,
   appsTenantsApiSuspendTenant,
+  appsTenantsApiOperatorAdminInvite,
 } from './generated/endpoints/operator/operator'
 import {
   appsTenantsApiGetConfig,
@@ -102,6 +103,9 @@ export async function listTenants() {
 }
 export async function createTenant(name: string) {
   return (await appsTenantsApiCreateTenant({ name })).data
+}
+export async function operatorAdminInvite(id: string) {
+  return (await appsTenantsApiOperatorAdminInvite(id)).data
 }
 export async function suspendTenant(id: string) {
   return (await appsTenantsApiSuspendTenant(id)).data

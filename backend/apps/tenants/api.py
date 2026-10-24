@@ -3,6 +3,7 @@ from typing import List, Literal
 from ninja import Router, Schema
 from urllib.parse import urlencode
 from django.conf import settings
+from django.db.models import Count, Q
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from apps.tenants.auth import (
@@ -48,6 +49,8 @@ class TenantOut(Schema):
     name: str
     is_active: bool
     created_at: str
+    # 활성 Admin 수. 0이면 「주인 없음」 — 마지막 Admin이 탈퇴한 Tenant(#55). Operator가 초대로 복구한다.
+    active_admin_count: int = 0
 
 
 class TenantCreatedOut(Schema):
@@ -570,12 +573,23 @@ def create_tenant(request, body: TenantIn):
     }
 
 
+def _tenant_out(t: Tenant, active_admin_count: int) -> dict:
+    return {
+        "id": str(t.id), "name": t.name, "is_active": t.is_active,
+        "created_at": t.created_at.isoformat(), "active_admin_count": active_admin_count,
+    }
+
+
 @operator_router.get("/tenants/", response=List[TenantOut], auth=operator_auth)
 def list_tenants(request):
-    return [
-        {"id": str(t.id), "name": t.name, "is_active": t.is_active, "created_at": t.created_at.isoformat()}
-        for t in Tenant.objects.all()
-    ]
+    # 활성 Admin 수는 한 쿼리로 센다(N+1 금지).
+    tenants = Tenant.objects.annotate(
+        _admins=Count(
+            "memberships",
+            filter=Q(memberships__role=Membership.ROLE_ADMIN, memberships__is_active=True),
+        )
+    )
+    return [_tenant_out(t, t._admins) for t in tenants]  # type: ignore[attr-defined]  # annotate 필드
 
 
 @operator_router.patch("/tenants/{tenant_id}/suspend", response={200: TenantOut}, auth=operator_auth)
@@ -583,7 +597,25 @@ def suspend_tenant(request, tenant_id: str):
     tenant = get_object_or_404(Tenant, id=tenant_id)
     tenant.is_active = False
     tenant.save()
-    return {"id": str(tenant.id), "name": tenant.name, "is_active": tenant.is_active, "created_at": tenant.created_at.isoformat()}
+    admins = Membership.objects.filter(tenant=tenant, role=Membership.ROLE_ADMIN, is_active=True).count()
+    return _tenant_out(tenant, admins)
+
+
+class AdminInviteOut(Schema):
+    url: str
+    expires_at: str
+
+
+@operator_router.post(
+    "/tenants/{tenant_id}/admin-invite", response={201: AdminInviteOut, 400: dict}, auth=operator_auth
+)
+def operator_admin_invite(request, tenant_id: str):
+    """주인 없는 Tenant(또는 추가 Admin)를 위한 Admin 초대 링크(7일·1회용). 테넌트 생성 때와 같은 경로."""
+    tenant = get_object_or_404(Tenant, id=tenant_id)
+    if not tenant.is_active:
+        return 400, {"detail": "정지된 Tenant에는 초대를 만들 수 없습니다"}
+    invite, raw = create_invite(tenant, Membership.ROLE_ADMIN)
+    return 201, {"url": _invite_url(request, raw), "expires_at": invite.expires_at.isoformat()}
 
 
 @operator_router.delete("/tenants/{tenant_id}", response={204: None}, auth=operator_auth)

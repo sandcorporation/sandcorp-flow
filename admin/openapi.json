@@ -14,6 +14,24 @@
         "title": "ActionOut",
         "type": "object"
       },
+      "AdminInviteOut": {
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expires_at"
+        ],
+        "title": "AdminInviteOut",
+        "type": "object"
+      },
       "ChunkOut": {
         "properties": {
           "chunk_index": {
@@ -1421,6 +1439,11 @@
       },
       "TenantOut": {
         "properties": {
+          "active_admin_count": {
+            "default": 0,
+            "title": "Active Admin Count",
+            "type": "integer"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -2196,6 +2219,56 @@
           }
         ],
         "summary": "Delete Tenant",
+        "tags": [
+          "operator"
+        ]
+      }
+    },
+    "/api/operator/tenants/{tenant_id}/admin-invite": {
+      "post": {
+        "description": "주인 없는 Tenant(또는 추가 Admin)를 위한 Admin 초대 링크(7일·1회용). 테넌트 생성 때와 같은 경로.",
+        "operationId": "apps_tenants_api_operator_admin_invite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminInviteOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad Request"
+          }
+        },
+        "security": [
+          {
+            "OperatorAuth": []
+          }
+        ],
+        "summary": "Operator Admin Invite",
         "tags": [
           "operator"
         ]

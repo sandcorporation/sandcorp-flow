@@ -256,3 +256,56 @@ def test_empty_secret_rejects_every_request(settings) -> None:
 def test_signed_but_not_an_event_is_400() -> None:
     for body in (b"not json", b'{"type":"user.deleted"}', b"[]"):
         assert deliver(body).status_code == 400
+
+
+# ── #66 Operator 목록의 「주인 없음」 ───────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_operator_list_shows_ownerless_after_last_admin_withdraws_and_clears_on_invite_accept(operator_token) -> None:
+    from apps.tenants.members import accept_invite
+    from apps.tenants.models import User
+
+    tenant = new_tenant("Ownerless Co")
+    other = new_tenant("Owned Co")
+    make_membership(tenant, "admin", sub=SUB)
+    make_membership(tenant, "member")
+    make_membership(other, "admin")
+    auth = {"HTTP_AUTHORIZATION": f"Bearer {operator_token}"}
+
+    def counts() -> dict[str, int]:
+        rows = Client().get("/api/operator/tenants/", **auth).json()
+        return {r["name"]: r["active_admin_count"] for r in rows}
+
+    assert counts()["Ownerless Co"] == 1
+    assert deliver(event_body()).status_code == 200
+    assert counts() == {"Ownerless Co": 0, "Owned Co": 1}
+
+    r = Client().post(f"/api/operator/tenants/{tenant.id}/admin-invite", **auth)
+    assert r.status_code == 201, r.content
+    from urllib.parse import parse_qs, urlparse
+
+    raw = parse_qs(urlparse(r.json()["url"]).query)["invite"][0]
+    newcomer = User.objects.create(iss="https://auth.sandcorp.co.kr", sub="m_NEWADMIN0000000000000000", acct=User.Acct.MEMBER)
+    accept_invite(newcomer, raw)
+    assert counts()["Ownerless Co"] == 1
+
+
+@pytest.mark.django_db
+def test_operator_admin_invite_needs_operator_and_active_tenant(operator_token) -> None:
+    tenant = new_tenant("Paused Co")
+    assert Client().post(f"/api/operator/tenants/{tenant.id}/admin-invite").status_code == 401
+    tenant.is_active = False
+    tenant.save()
+    r = Client().post(
+        f"/api/operator/tenants/{tenant.id}/admin-invite", HTTP_AUTHORIZATION=f"Bearer {operator_token}"
+    )
+    assert r.status_code == 400
+
+
+@pytest.mark.django_db
+def test_operator_list_counts_with_constant_queries(operator_token, django_assert_max_num_queries) -> None:
+    for i in range(5):
+        make_membership(new_tenant(f"T{i}"), "admin")
+    with django_assert_max_num_queries(4):
+        Client().get("/api/operator/tenants/", HTTP_AUTHORIZATION=f"Bearer {operator_token}")
