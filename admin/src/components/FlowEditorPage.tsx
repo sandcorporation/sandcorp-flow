@@ -155,7 +155,7 @@ export default function FlowEditorPage() {
       {save.state === 'failed' && <p role="alert" className="text-sm text-destructive">{save.message}</p>}
 
       <div className="grid gap-3 lg:h-[calc(100dvh-9rem)] lg:min-h-[480px] lg:grid-cols-[220px_minmax(0,1fr)_300px]">
-        <aside className="space-y-4 border border-line-soft bg-surface p-3 lg:flex lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-3 lg:overflow-hidden">
+        <aside className="min-w-0 space-y-4 border border-line-soft bg-surface p-3 lg:flex lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-3 lg:overflow-hidden">
           <section aria-label="노드 목록" className="space-y-2 lg:max-h-[38%] lg:shrink-0 lg:overflow-y-auto">
           <h2 className="hmi-label">노드 목록</h2>
           {readOnly ? (

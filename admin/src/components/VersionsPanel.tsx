@@ -65,7 +65,7 @@ export default function VersionsPanel({ flowId, versions, deployedVersion, pendi
   const rbReason = !canDeploy ? '되돌리기는 관리자만 할 수 있습니다.' : rb.reason
 
   return (
-    <section aria-label="버전 이력" className="space-y-2">
+    <section aria-label="버전 이력" className="min-w-0 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <h2 className="hmi-label">버전 이력</h2>
         <span title={rbReason}>
@@ -105,8 +105,8 @@ export default function VersionsPanel({ flowId, versions, deployedVersion, pendi
                   <span className="hmi-code font-semibold text-ink">v{v.number}</span>
                   {v.number === deployedVersion && <span className="hmi-label flex items-center gap-1"><span className="lamp lamp-ok" />배포 중</span>}
                 </div>
-                {v.note && <p className="break-words text-xs text-ink">{v.note}</p>}
-                <p className="text-xs text-muted-foreground">{v.created_by_name ?? '알 수 없음'} · {fmtTime(v.created_at)}</p>
+                {v.note && <p className="break-all text-xs text-ink">{v.note}</p>}
+                <p className="break-all text-xs text-muted-foreground">{v.created_by_name ?? '알 수 없음'} · {fmtTime(v.created_at)}</p>
                 <div className="flex flex-wrap gap-1">
                   <Button type="button" size="sm" variant="outline" className="h-7 px-2" aria-label={`v${v.number} 보기`} onClick={() => onView(v.number)}>
                     <Eye className="h-3.5 w-3.5" />보기

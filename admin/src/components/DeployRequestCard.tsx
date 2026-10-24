@@ -35,11 +35,11 @@ export default function DeployRequestCard({ request, canApprove, me, onDecided, 
   }
 
   return (
-    <div className="space-y-1.5 border border-line-soft bg-raised p-2 text-sm" data-request-id={request.id}>
-      <p className="font-medium text-ink">
+    <div className="min-w-0 space-y-1.5 border border-line-soft bg-raised p-2 text-sm" data-request-id={request.id}>
+      <p className="break-all font-medium text-ink">
         {`${showFlow ? `${request.flow_name} ` : ''}v${request.version} 승인 대기`}
       </p>
-      <p className="text-xs text-muted-foreground">{request.requested_by_name ?? '알 수 없음'} 요청 · {fmtTime(request.created_at)}</p>
+      <p className="break-all text-xs text-muted-foreground">{request.requested_by_name ?? '알 수 없음'} 요청 · {fmtTime(request.created_at)}</p>
       <div className="flex flex-wrap gap-1.5">
         <span title={approve.reason}>
           <Button type="button" size="sm" disabled={busy || approve.disabled} onClick={() => decide('approve')}>승인</Button>

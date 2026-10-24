@@ -32,7 +32,7 @@ const VERSIONS = [
 const FIXTURES = [
   [/\/api\/tenant\/flows\/$/, [{ ...FLOW_OUT, has_pending_request: true }]],
   [/\/api\/tenant\/deploy-requests\/$/, [REQ_OUT]],
-  [/\/api\/tenant\/members\/me$/, { id: 'm1', tenant_id: 't1', tenant_name: LONG, role: 'admin', name: '김관리', email: 'a@example.com' }],
+  [/\/api\/tenant\/members\/me$/, { id: 'm1', tenant_id: 't1', tenant_name: '고객사', role: 'admin', name: '김관리', email: 'a@example.com' }],
   [/\/api\/tenant\/flows\/[^/]+\/$/, {
     flow: FLOW_OUT,
     draft: { graph: { nodes: FLOW_NODES, edges: [{ from: 'start', to: 'ai_1' }] }, valid: false, errors: [{ node_id: 'guard_1', code: 'unreachable_node', message: LONG }] },
