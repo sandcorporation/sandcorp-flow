@@ -115,6 +115,7 @@ def test_hitl_reason_schema_asks_for_one_korean_sentence():
 
     desc = HITLResponse.model_json_schema()["properties"]["hitl_reason"].get("description", "")
     assert "한국어" in desc and "한 문장" in desc
+    assert "완결된" in desc and "입니다" in desc and "했습니다" in desc
 
 
 @pytest.mark.django_db(transaction=True)
@@ -126,6 +127,7 @@ async def test_system_prompt_asks_for_korean_handoff_reason(tenant_with_key, fak
 
     system = str(fake_chat_llm.captured[0][1][0].content)
     assert "넘김 사유는 한국어 한 문장" in system
+    assert "완결된" in system and "했습니다" in system
 
 
 @pytest.mark.django_db(transaction=True)
