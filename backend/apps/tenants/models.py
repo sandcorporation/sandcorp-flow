@@ -268,6 +268,8 @@ class TenantConfig(models.Model):
     brand_name = models.CharField(max_length=100, blank=True, default="")
     # 식별 Visitor의 visitor_id 위조를 막는 HMAC 신원검증 요구(opt-in). 기본 꺼짐.
     require_identity_verification = models.BooleanField(default=False)
+    # 켜면 흐름 배포가 곧바로 되지 않고 배포 요청이 생긴다(다른 Admin이 승인, #28). 되돌리기는 제외.
+    deploy_requires_approval = models.BooleanField(default=False)
     # HITL(사람 상담원 전환) 사용 여부. 꺼지면 에이전트 그래프가 escalation 분기 없이 로드된다.
     hitl_enabled = models.BooleanField(default=True)
     # 상담 가능 시간(영업시간) — opt-in. 미설정(타임존·스케줄 비어 있음)이면 24/7(하위호환).

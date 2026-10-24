@@ -185,17 +185,29 @@ async def save_version(ctx: ToolContext, args: SaveVersionArgs) -> JSONObject:
     "deploy_version",
     "버전을 배포 중으로 둔다 — 이 흐름이 공개 흐름이면 새 대화부터 이 버전으로 돈다. 되돌리기는 이전 번호를 배포. "
     "실행기에 핸들러가 없는 노드가 있으면 deployed=false와 errors(code no_handler). "
+    "테넌트가 「배포에 승인 필요」를 켰으면 배포 대신 요청을 만들어 deployed=false, approval_required=true, request_id를 돌려준다. "
     "인자: flow_id, version. 실패: version_not_found.",
     DeployArgs,
     scope="flow.write",
     writes=True,
 )
 async def deploy_version(ctx: ToolContext, args: DeployArgs) -> JSONObject:
+    user_id = ctx.require_membership().user_id
     try:
-        flow = await _service(lambda: services.deploy_version(_tenant_id(ctx), args.flow_id, args.version))
+        outcome = await _service(
+            lambda: services.submit_deploy(_tenant_id(ctx), args.flow_id, args.version, requested_by_id=user_id)
+        )
     except services.FlowInvalid as exc:
         return {"deployed": False, "message": exc.message, "errors": _errors(exc.errors)}
-    return {"deployed": True, **_flow_row(flow)}
+    if outcome.request is not None:  # 이 테넌트는 배포에 승인이 필요하다 — 다른 Admin이 승인하면 배포된다
+        return {
+            "deployed": False,
+            "approval_required": True,
+            "request_id": str(outcome.request.pk),
+            "message": "이 테넌트는 배포에 승인이 필요해 배포 요청을 만들었습니다. 다른 Admin이 승인하면 배포됩니다.",
+            **_flow_row(outcome.flow),
+        }
+    return {"deployed": True, **_flow_row(outcome.flow)}
 
 
 @register(
