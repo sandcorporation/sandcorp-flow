@@ -53,8 +53,9 @@ def test_secret_and_domain_management_are_admin_only_bits():
         assert P.has_permission(admin, bit) and not P.has_permission(member, bit)
 
 
-# ── 가림(순수) ──────────────────────────────────────────────────────────────
+# ── 가림(파생값 등록) ── 저장된 비밀이 없는 테넌트라도 redact는 그 테넌트 비밀 표를 본다(#118) → django_db ──
 
+@pytest.mark.django_db
 def test_redact_masks_revealed_value_and_its_substrings():
     import uuid
 
@@ -73,6 +74,7 @@ def test_redact_masks_revealed_value_and_its_substrings():
     assert redact(tid, "평범한 문장 그대로") == "평범한 문장 그대로"
 
 
+@pytest.mark.django_db
 def test_redact_is_scoped_to_the_tenant_but_log_redaction_is_process_wide():
     import uuid
 
@@ -88,6 +90,7 @@ def test_redact_is_scoped_to_the_tenant_but_log_redaction_is_process_wide():
     assert redact_log(f"x {value[3:15]} y") == f"x {MASK} y"
 
 
+@pytest.mark.django_db
 def test_redaction_lists_are_bounded_least_recently_used_first(monkeypatch):
     import uuid
 

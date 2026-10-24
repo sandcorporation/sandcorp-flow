@@ -595,8 +595,10 @@ async def run_test_turn(
     state = await run_flow_turn_async(session, message, graph, dry_run=True)
     from apps.flows.trace import prepare
 
-    # 시험 한 턴의 trace도 저장하는 판단 기록과 같은 항목 형식(가림·자름 포함)이다.
-    trace: list[JSONObject] = [dict(e) for e in prepare(state.get("trace", []), tenant_id=tenant_id)[0]]  # type: ignore[misc]
+    # 시험 한 턴의 trace도 저장하는 판단 기록과 같은 항목 형식(가림·자름 포함)이다. 가림이 그 테넌트 비밀을 DB에서
+    # 읽을 수 있어(#118) sync로 돌린다.
+    entries = (await sync_to_async(prepare)(state.get("trace", []), tenant_id=tenant_id))[0]
+    trace: list[JSONObject] = [dict(e) for e in entries]  # type: ignore[misc]
     handoff = any(t["kind"] == NodeKind.HANDOFF.value for t in trace)
     return TestTurnResult(
         ran=True,
