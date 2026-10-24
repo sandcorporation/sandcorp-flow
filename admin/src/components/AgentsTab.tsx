@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react'
-import { listMembers, createInvite, changeMemberRole, deactivateMember, currentAgentRole } from '../api'
+import { listMembers, listInvites, createInvite, revokeInvite, changeMemberRole, deactivateMember, currentAgentRole, memberMe } from '../api'
 import { HttpError } from '../mutator'
 import type { MemberOut } from '../generated/model'
 import { Input } from '@/components/ui/input'
@@ -8,113 +8,190 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 
-const ROLE_LABEL: Record<string, string> = { admin: 'Admin', member: 'Member' }
+const ROLE_LABEL: Record<string, string> = { admin: '관리자', member: '팀원' }
 
-// 팀원(멤버십) 관리 + 초대 링크(#40). 비밀번호 계정은 없다 — 초대 링크로 sandcorp-auth 로그인하면 멤버가 된다.
-// 최소 화면이다(대기 중 초대 목록·폐기 화면은 #56).
+type Invite = { id: string; role: string; expires_at: string; created_at: string }
+type CreatedInvite = Invite & { url: string }
+
+function formatExpiry(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+// 이름 → 이메일 → sub 끝 6자리 순으로 보여 준다(이름·이메일은 sandcorp-auth에서 받은 캐시다).
+function memberLabel(m: MemberOut): string {
+  return m.name || m.email || `계정 …${m.sub_tail}`
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// 팀원(멤버십) 관리 + 초대 링크(#40, #56). 비밀번호 계정은 없다 — 초대 링크로 sandcorp 계정 로그인하면 팀원이 된다.
 export default function AgentsTab() {
   const isAdmin = currentAgentRole() === 'admin'
   const [members, setMembers] = useState<MemberOut[]>([])
+  const [invites, setInvites] = useState<Invite[]>([])
+  const [myId, setMyId] = useState<string | null>(null)
   const [newRole, setNewRole] = useState<'admin' | 'member'>('member')
-  const [invite, setInvite] = useState<{ url: string; role: string; expires_at: string } | null>(null)
+  const [created, setCreated] = useState<CreatedInvite | null>(null)
+  const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const load = async () => setMembers(await listMembers())
+  const loadMembers = async () => setMembers(await listMembers())
+  const loadInvites = async () => { if (isAdmin) setInvites((await listInvites()) as Invite[]) }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    loadMembers().catch(() => setError('팀원 목록을 불러오지 못했습니다.'))
+    loadInvites().catch(() => {})
+    memberMe().then((me) => setMyId(me.id)).catch(() => {})
+  }, [])
 
   const handleInvite = async (e: FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    setError('')
+    setCopied(false)
     try {
       const data = await createInvite(newRole)
-      setInvite({ url: data.url, role: data.role, expires_at: data.expires_at })
+      setCreated({ id: data.id, url: data.url, role: data.role, expires_at: data.expires_at, created_at: data.created_at })
+      await loadInvites()
     } catch {
       setError('초대 링크를 만들지 못했습니다.')
     }
     setLoading(false)
   }
 
+  const handleCopy = async () => {
+    if (created && (await copyText(created.url))) setCopied(true)
+  }
+
+  const handleRevoke = async (id: string) => {
+    setError('')
+    try {
+      await revokeInvite(id)
+      if (created?.id === id) setCreated(null)
+      await loadInvites()
+    } catch {
+      setError('초대 링크를 취소하지 못했습니다.')
+    }
+  }
+
   const handleRole = async (m: MemberOut, role: 'admin' | 'member') => {
     setError('')
     try {
       await changeMemberRole(m.id, role)
-      await load()
+      await loadMembers()
     } catch (e) {
-      setError(e instanceof HttpError && e.status === 409 ? '마지막 Admin은 강등할 수 없습니다.' : '역할 변경에 실패했습니다.')
+      setError(e instanceof HttpError && e.status === 409 ? '마지막 관리자는 팀원으로 바꿀 수 없습니다. 다른 관리자를 먼저 지정하세요.' : '역할을 바꾸지 못했습니다.')
     }
   }
 
-  const handleDeactivate = async (id: string) => {
-    if (!confirm('비활성화하시겠습니까?')) return
+  const handleRemove = async (m: MemberOut) => {
+    if (!confirm(`${memberLabel(m)}님을 이 조직에서 내보내시겠습니까?`)) return
     setError('')
     try {
-      await deactivateMember(id)
-      await load()
+      await deactivateMember(m.id)
+      await loadMembers()
     } catch (e) {
-      setError(e instanceof HttpError && e.status === 409 ? '마지막 Admin은 비활성화할 수 없습니다.' : '비활성화에 실패했습니다.')
+      setError(e instanceof HttpError && e.status === 409 ? '마지막 관리자는 내보낼 수 없습니다. 다른 관리자를 먼저 지정하세요.' : '내보내지 못했습니다.')
     }
   }
 
   return (
     <div className="max-w-3xl space-y-6">
-      {invite && (
-        <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
-          <CardContent className="flex items-center gap-2 pt-5 text-sm">
-            <span className="min-w-0 flex-1">
-              {ROLE_LABEL[invite.role]} 초대 링크 (7일·1회용, 이 화면에서 한 번만 표시 — 직접 전달하세요):
-              <Input readOnly aria-label="초대 링크" className="mt-1" value={invite.url} onFocus={e => e.target.select()} />
-            </span>
-            <Button size="sm" variant="ghost" onClick={() => setInvite(null)}>✕</Button>
-          </CardContent>
-        </Card>
-      )}
-
       {isAdmin && (
-        <div className="space-y-2">
+        <section className="space-y-3">
           <h2 className="text-sm font-semibold">팀원 초대</h2>
-          <form onSubmit={handleInvite} className="flex gap-2">
-            <select className="rounded-md border border-input bg-background px-2 text-sm" value={newRole}
+          <form onSubmit={handleInvite} className="flex flex-wrap items-center gap-2">
+            <select className="h-9 rounded-md border border-input bg-background px-2 text-sm" value={newRole}
               onChange={e => setNewRole(e.target.value as 'admin' | 'member')} aria-label="역할">
-              <option value="member">Member</option>
-              <option value="admin">Admin</option>
+              <option value="member">팀원</option>
+              <option value="admin">관리자</option>
             </select>
             <Button type="submit" disabled={loading}>초대 링크 만들기</Button>
+            <span className="text-xs text-muted-foreground">링크는 7일 동안, 한 사람만 쓸 수 있습니다.</span>
           </form>
-        </div>
+
+          {created && (
+            <Card className="border-amber-300 bg-amber-50 dark:border-amber-700/60 dark:bg-amber-950/30">
+              <CardContent className="space-y-2 pt-5 text-sm">
+                <p>
+                  {ROLE_LABEL[created.role] ?? created.role} 초대 링크 · {formatExpiry(created.expires_at)}까지.
+                  이 링크는 지금 한 번만 보입니다 — 직접 전달하세요.
+                </p>
+                <div className="flex gap-2">
+                  <Input readOnly aria-label="초대 링크" value={created.url} onFocus={e => e.target.select()} />
+                  <Button type="button" variant="outline" onClick={handleCopy}>{copied ? '복사됨' : '복사'}</Button>
+                  <Button type="button" variant="ghost" onClick={() => setCreated(null)} aria-label="닫기">✕</Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="space-y-1">
+            <h3 className="text-xs font-semibold text-muted-foreground">대기 중인 초대</h3>
+            {invites.length === 0 ? (
+              <p className="text-xs text-muted-foreground">대기 중인 초대가 없습니다.</p>
+            ) : (
+              <ul className="divide-y divide-border rounded-md border border-border text-sm">
+                {invites.map(i => (
+                  <li key={i.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                    <span className="min-w-0">
+                      <Badge variant={i.role === 'admin' ? 'default' : 'secondary'}>{ROLE_LABEL[i.role] ?? i.role}</Badge>
+                      <span className="ml-2 text-xs text-muted-foreground">{formatExpiry(i.expires_at)}까지</span>
+                    </span>
+                    <Button size="sm" variant="outline" onClick={() => handleRevoke(i.id)}>초대 취소</Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
       )}
 
-      <div className="space-y-2">
+      <section className="space-y-2">
         <h2 className="text-sm font-semibold">팀원 목록</h2>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        {!isAdmin && <p className="text-xs text-muted-foreground">팀원 관리는 Admin만 할 수 있습니다.</p>}
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        {!isAdmin && <p className="text-xs text-muted-foreground">팀원 관리는 관리자만 할 수 있습니다.</p>}
         <Table>
           <TableHeader>
-            <TableRow><TableHead>이름</TableHead><TableHead>역할</TableHead><TableHead>상태</TableHead>{isAdmin && <TableHead>작업</TableHead>}</TableRow>
+            <TableRow>
+              <TableHead>팀원</TableHead><TableHead>역할</TableHead><TableHead>상태</TableHead>{isAdmin && <TableHead>작업</TableHead>}
+            </TableRow>
           </TableHeader>
           <TableBody>
-            {members.map(a => (
-              <TableRow key={a.id}>
-                <TableCell>{a.name || a.email || '(이름 없음)'}</TableCell>
-                <TableCell><Badge variant={a.role === 'admin' ? 'default' : 'secondary'}>{ROLE_LABEL[a.role] || a.role}</Badge></TableCell>
-                <TableCell><Badge variant={a.is_active ? 'success' : 'secondary'}>{a.is_active ? '활성' : '비활성'}</Badge></TableCell>
+            {members.map(m => (
+              <TableRow key={m.id}>
+                <TableCell>
+                  <div className="font-medium">{memberLabel(m)}{m.id === myId && <span className="ml-1 text-xs font-normal text-muted-foreground">(나)</span>}</div>
+                  {m.name && m.email && <div className="text-xs text-muted-foreground">{m.email}</div>}
+                </TableCell>
+                <TableCell><Badge variant={m.role === 'admin' ? 'default' : 'secondary'}>{ROLE_LABEL[m.role] ?? m.role}</Badge></TableCell>
+                <TableCell><Badge variant={m.is_active ? 'success' : 'secondary'}>{m.is_active ? '활성' : '내보냄'}</Badge></TableCell>
                 {isAdmin && (
-                  <TableCell className="flex gap-2">
-                    {a.is_active && (
-                      <Button size="sm" variant="outline" onClick={() => handleRole(a, a.role === 'admin' ? 'member' : 'admin')}>
-                        {a.role === 'admin' ? 'Member로' : 'Admin으로'}
-                      </Button>
+                  <TableCell>
+                    {m.is_active && (
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleRole(m, m.role === 'admin' ? 'member' : 'admin')}>
+                          {m.role === 'admin' ? '팀원으로' : '관리자로'}
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleRemove(m)}>내보내기</Button>
+                      </div>
                     )}
-                    {a.is_active && <Button size="sm" variant="destructive" onClick={() => handleDeactivate(a.id)}>비활성화</Button>}
                   </TableCell>
                 )}
               </TableRow>
             ))}
           </TableBody>
         </Table>
-      </div>
-
+      </section>
     </div>
   )
 }
