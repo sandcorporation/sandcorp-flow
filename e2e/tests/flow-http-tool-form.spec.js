@@ -22,6 +22,11 @@ async function overflowing(page) {
     if (root.scrollWidth > root.clientWidth) bad.push(`page ${root.scrollWidth}>${root.clientWidth}`)
     for (const el of document.querySelectorAll('aside *, form *, fieldset, [class*="overflow"]')) {
       if (el.closest('.react-flow')) continue
+      // 입력란은 긴 글이 안에서 스크롤되는 게 정상 — 상자 자체가 화면 밖으로 나가는지만 본다.
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+        if (el.getBoundingClientRect().right > window.innerWidth) bad.push(`${el.tagName}#${el.id} 상자가 화면 밖`)
+        continue
+      }
       if (el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).display !== 'inline') bad.push(`${el.tagName}.${String(el.className).slice(0, 40)} ${el.scrollWidth}>${el.clientWidth}`)
     }
     return bad
