@@ -25,7 +25,7 @@ function ChatHistory({ messages }: { messages: ChatMsg[] }) {
   if (!messages.length) return <p className="py-2 text-center text-xs text-muted-foreground">대화 내역 없음</p>
 
   return (
-    <div className="flex max-h-80 flex-col gap-1.5 overflow-y-auto">
+    <div data-log-scroll className="flex max-h-80 flex-col gap-1.5 overflow-y-auto">
       {messages.map(m => (
         <div key={m.id || `${m.role}-${m.created_at}`} className={cn('flex flex-col', m.role === 'user' ? 'items-start' : 'items-end')}>
           <span className="mb-0.5 text-[10px] text-muted-foreground">{ROLE_LABEL[m.role] || m.role}</span>
@@ -88,7 +88,7 @@ function EscalationCard({ esc, onUpdate, incomingMessage }: { esc: EscalationOut
         </div>
         {esc.reason && <p className="break-words text-xs text-muted-foreground">{esc.reason}</p>}
 
-        <div className="max-h-60 overflow-y-auto rounded-md bg-muted/40 p-2.5">
+        <div data-log-scroll className="max-h-60 overflow-y-auto rounded-md bg-muted/40 p-2.5">
           <ChatHistory messages={messages} />
         </div>
 
@@ -116,7 +116,7 @@ function SessionHistoryInline({ sessionId }: { sessionId: string }) {
     getSessionMessages(sessionId).then(d => setMessages(Array.isArray(d) ? (d as ChatMsg[]) : []))
   }, [sessionId])
   return (
-    <div className="mt-2 max-h-60 overflow-y-auto rounded-md bg-muted/40 p-2.5">
+    <div data-log-scroll className="mt-2 max-h-60 overflow-y-auto rounded-md bg-muted/40 p-2.5">
       {messages === null
         ? <p className="py-2 text-center text-xs text-muted-foreground">불러오는 중...</p>
         : <ChatHistory messages={messages} />}

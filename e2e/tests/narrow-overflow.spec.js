@@ -163,3 +163,44 @@ test('HITL 진입: window.scrollY == 0', async ({ page }) => {
   expect(await page.evaluate(() => window.scrollY)).toBe(0)
   expect(await page.evaluate(() => document.querySelector('main').scrollTop)).toBe(0)
 })
+
+// 페이지(window)뿐 아니라 모든 요소의 scrollTop 을 본다(#106): #103 이 셸을 뷰포트 높이로 고정해 <main> 이 스크롤 컨테이너가 됐다.
+// 로그 컨테이너([data-log-scroll])만 아래로 가도 된다. 카드가 여럿이라 main 이 넘치는데 로그는 안 넘치는 경우(대화가 짧음)와
+// 로그가 넘치는 경우를 함께 만든다.
+const SHORT_ESCS = Array.from({ length: 6 }, (_, i) => ({ id: `e-s${i}`, session_id: `s-s${i}`, trigger_type: 'user_request', reason: `짧은 사유 ${i}`, status: 'pending', created_at: T0 }))
+async function scrolledAncestors(page) {
+  return page.evaluate(() => {
+    const out = []
+    if (window.scrollY > 0) out.push(`window ${window.scrollY}`)
+    for (const el of document.querySelectorAll('body *')) {
+      if (el.scrollTop > 0 && !el.closest('[data-log-scroll]')) out.push(`${el.tagName}.${String(el.className).slice(0, 30)} ${el.scrollTop}`)
+    }
+    return out
+  })
+}
+for (const [name, size] of [['390', { width: 390, height: 844 }], ['데스크톱', { width: 1280, height: 720 }]]) {
+  for (const short of [false, true]) {
+    test(`HITL 진입(${name}, ${short ? '짧은 대화' : '긴 대화'}): 모든 스크롤 조상 scrollTop 0`, async ({ page }) => {
+      await page.setViewportSize(size)
+      await page.addInitScript((t) => sessionStorage.setItem('agent_access', t), memberToken())
+      await mockApi(page)
+      if (short) {
+        await page.route((u) => /\/api\/tenant\/escalations\/$/.test(u.pathname), (r) => r.request().method() === 'GET' ? r.fulfill({ json: SHORT_ESCS }) : r.fallback())
+        await page.route((u) => /\/api\/tenant\/escalations\/[^/]+\/messages$/.test(u.pathname), (r) => r.fulfill({ json: [{ id: 'q1', role: 'user', content: '안녕', created_at: T0 }] }))
+      }
+      await page.goto(`${ADMIN_URL}/admin-ui/tenant/hitl`)
+      await expect(page.getByRole('heading', { name: /상담 콘솔/ })).toBeVisible()
+      await page.waitForTimeout(1500)
+      const mainOverflows = await page.evaluate(() => { const m = document.querySelector('main'); const d = document.documentElement; return m.scrollHeight > m.clientHeight || d.scrollHeight > d.clientHeight })
+      if (short) expect(mainOverflows).toBe(true) // 시험이 의미를 가지려면 main 또는 문서가 스크롤 가능해야 한다
+      if (SHOTS) {
+        fs.mkdirSync(SHOTS, { recursive: true })
+        await page.screenshot({ path: path.join(SHOTS, `${process.env.SHOT_TAG || 'after'}-hitl-${name}-${short ? 'short' : 'long'}.png`) })
+      }
+      const scrolled = await scrolledAncestors(page)
+      if (SHOTS) console.log('SCROLLED', name, short ? 'short' : 'long', JSON.stringify(scrolled))
+      expect(scrolled).toEqual([])
+      await expect(page.getByRole('heading', { name: /상담 콘솔/ })).toBeInViewport()
+    })
+  }
+}
