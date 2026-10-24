@@ -267,3 +267,17 @@ class TenantConfig(models.Model):
 
     class Meta:
         db_table = "tenant_configs"
+
+
+class AuthWebhookEvent(models.Model):
+    """처리한 sandcorp-auth 웹훅 이벤트 id(W4, #55). 재시도·중복 전송을 한 번만 처리하려고 기억한다.
+
+    auth의 재시도는 최대 약 47시간이라 문서는 「적어도 3일」을 요구한다. 7일 지난 행은 웹훅을 받을 때 지운다.
+    """
+
+    event_id = models.CharField(max_length=64, primary_key=True)  # 이벤트 ULID(= X-Sandcorp-Delivery)
+    type = models.CharField(max_length=64)
+    received_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "auth_webhook_events"
