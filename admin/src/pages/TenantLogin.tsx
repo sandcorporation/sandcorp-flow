@@ -79,7 +79,7 @@ export default function TenantLogin({ onLogin }: { onLogin: (name: string) => vo
               ))}
             </div>
           ) : onboarding ? (
-            <TenantOnboarding />
+            <TenantOnboarding onCreated={onLogin} />
           ) : (
             <>
               {!loginError && (

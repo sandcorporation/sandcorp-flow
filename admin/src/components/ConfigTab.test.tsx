@@ -289,7 +289,7 @@ describe('ConfigTab — 플랫폼 기본 Provider 게이팅', () => {
     renderConfig('ai')
     await screen.findByLabelText('LLM Provider 타입')
     expect(screen.queryByText(/플랫폼 기본\(OpenRouter\)을 씁니다/)).toBeNull()
-    expect(screen.getByText(/프로덕션에선 LLM Provider 설정이 필수/)).toBeInTheDocument()
+    expect(screen.getByText(/체험 한도\(대화 턴\) 안에서 플랫폼 키로 답합니다/)).toBeInTheDocument()
   })
 
   it('dev(platform_default_providers_enabled=true)면 OpenRouter 폴백 문구를 보인다', async () => {
@@ -462,5 +462,14 @@ describe('ConfigTab — 역할 게이팅 (issue 210)', () => {
     expect(await screen.findByText('Slug 변경은 Admin만 할 수 있습니다.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Slug 저장/ })).toBeNull()
     expect(screen.queryByText('API KEY 재발급')).toBeNull()
+  })
+
+  it('요금 탭은 「준비 중」과 이 조직의 체험 상태를 보여 주고 저장 버튼은 없다 (#41)', async () => {
+    vi.mocked(api.getTrial).mockResolvedValue({ state: 'trial', remaining: 12, limit: 200 })
+    renderConfig()
+    await userEvent.click(await screen.findByRole('tab', { name: '요금' }))
+    expect(screen.getByText('요금제는 준비 중입니다.')).toBeInTheDocument()
+    expect(await screen.findByTestId('pricing-trial-status')).toHaveTextContent('남은 대화 12/200턴')
+    expect(screen.queryByRole('button', { name: '저장' })).toBeNull()
   })
 })

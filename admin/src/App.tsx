@@ -4,6 +4,7 @@ import { FileText, Network, Users, Settings, UserCog, Headphones, Building2, Bar
 import OperatorLogin from './pages/OperatorLogin'
 import OperatorTenants from './pages/OperatorTenants'
 import TenantLogin from './pages/TenantLogin'
+import TrialBanner from './components/TrialBanner'
 import DashboardLayout, { NavItem } from './components/DashboardLayout'
 import DocumentsTab from './components/DocumentsTab'
 import KnowledgeGraphTab from './components/KnowledgeGraphTab'
@@ -111,7 +112,7 @@ export default function App() {
   const tenantEl = agentBooting
     ? <div aria-busy="true" />
     : agentAuthed
-      ? <DashboardLayout brand={tenantName ?? '내 조직'} navItems={tenantNav} user={agentUsername} accountHref={ACCOUNT_URL} onSwitch={handleTenantSwitch} onLogout={handleTenantLogout} onLogoutAll={handleTenantLogoutAll} />
+      ? <DashboardLayout brand={tenantName ?? '내 조직'} navItems={tenantNav} user={agentUsername} accountHref={ACCOUNT_URL} onSwitch={handleTenantSwitch} onLogout={handleTenantLogout} onLogoutAll={handleTenantLogoutAll} banner={<TrialBanner />} />
       : <TenantLogin onLogin={handleTenantLogin} />
 
   return (

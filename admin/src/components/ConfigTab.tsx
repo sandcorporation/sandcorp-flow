@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import PricingSection from './PricingSection'
 
 type DaySchedule = { enabled?: boolean; start?: string; end?: string }
 const WEEKDAYS: [string, string][] = [
@@ -32,6 +33,7 @@ const SECTIONS = [
   { id: 'ai', label: 'AI 모델', intro: '챗봇을 움직이는 AI 엔진을 고릅니다. 가장 기술적인 부분이라, 모르면 담당 개발자와 함께 설정하세요.' },
   { id: 'handoff', label: '상담 전환', intro: 'AI가 답하기 어려울 때 사람 상담원에게 넘기는 방식을 정합니다.' },
   { id: 'security', label: '공개 URL·보안', intro: '챗봇 공개 주소와 접근 보안을 관리합니다.' },
+  { id: 'billing', label: '요금', intro: '요금제와 이 조직의 체험 상태를 봅니다.' },
 ]
 
 const hint = 'mt-1 text-xs text-muted-foreground'
@@ -174,10 +176,10 @@ export default function ConfigTab() {
 
   return (
     <div className="max-w-3xl">
-      <div role="tablist" className="mb-1 flex gap-1 border-b border-border">
+      <div role="tablist" className="mb-1 flex gap-1 overflow-x-auto border-b border-border">
         {SECTIONS.map(s => (
           <button key={s.id} role="tab" aria-selected={section === s.id} onClick={() => setSection(s.id)}
-            className={cn('-mb-px border-b-2 px-3 py-2 text-sm transition-colors',
+            className={cn('-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors',
               section === s.id ? 'border-primary font-medium text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>
             {s.label}
           </button>
@@ -255,7 +257,7 @@ export default function ConfigTab() {
             <div className="space-y-3 rounded-lg border border-primary/40 bg-primary/5 p-4">
               <div>
                 <h3 className="text-sm font-semibold">빠른 시작 — OpenAI 키로 한 번에 설정</h3>
-                <p className="text-xs text-muted-foreground">OpenAI API 키 하나면 챗·문서검색·이미지OCR이 모두 켜집니다. {config.platform_default_providers_enabled ? '개발 환경은 키 없이 아래 고급에서 기본 제공자로도 됩니다.' : '시작하려면 키가 필요합니다.'}</p>
+                <p className="text-xs text-muted-foreground">OpenAI API 키 하나면 챗·문서검색·이미지OCR이 모두 켜집니다. {config.platform_default_providers_enabled ? '개발 환경은 키 없이 아래 고급에서 기본 제공자로도 됩니다.' : '키를 넣기 전에는 체험 한도 안에서 플랫폼 키로 답합니다.'}</p>
               </div>
               <Input type="password" aria-label="OpenAI API Key" value={oneShotKey}
                 onChange={e => setOneShotKey(e.target.value)} placeholder="sk-..." />
@@ -282,7 +284,7 @@ export default function ConfigTab() {
           <div className="space-y-4">
             <div>
               <h3 className="text-sm font-semibold">LLM Provider (비용 부담)</h3>
-              <p className="text-xs text-muted-foreground">손님과 대화하고 자료를 정리하는 핵심 AI예요. {config.platform_default_providers_enabled ? '미설정 시 플랫폼 기본(OpenRouter)을 씁니다.' : '프로덕션에선 LLM Provider 설정이 필수입니다.'}</p>
+              <p className="text-xs text-muted-foreground">손님과 대화하고 자료를 정리하는 핵심 AI예요. {config.platform_default_providers_enabled ? '미설정 시 플랫폼 기본(OpenRouter)을 씁니다.' : '넣기 전에는 체험 한도(대화 턴) 안에서 플랫폼 키로 답합니다.'}</p>
             </div>
             <div className="space-y-2">
               <Label>LLM Provider 타입</Label>
@@ -345,7 +347,7 @@ export default function ConfigTab() {
           <div className="space-y-4 border-t border-border pt-6">
             <div>
               <h3 className="text-sm font-semibold">Embedding Provider</h3>
-              <p className="text-xs text-muted-foreground">올린 문서를 AI가 검색하도록 "숫자 지문"으로 바꾸는 엔진이에요. 보통 LLM과 같은 회사 걸 쓰면 됩니다. {config.platform_default_providers_enabled ? '미설정 시 플랫폼 기본(ollama)을 씁니다.' : '프로덕션에선 Embedding Provider 설정이 필수입니다.'}</p>
+              <p className="text-xs text-muted-foreground">올린 문서를 AI가 검색하도록 "숫자 지문"으로 바꾸는 엔진이에요. 보통 LLM과 같은 회사 걸 쓰면 됩니다. {config.platform_default_providers_enabled ? '미설정 시 플랫폼 기본(ollama)을 씁니다.' : 'LLM 키 없이 체험 중일 때만 플랫폼 키로 돌고, LLM 키를 넣으면 이것도 설정해야 합니다.'}</p>
             </div>
             <div className="space-y-2">
               <Label>Embedding Provider 타입</Label>
@@ -526,6 +528,8 @@ export default function ConfigTab() {
       )}
 
       {/* ── 공개 URL·보안 ─────────────────────────────────── */}
+      {section === 'billing' && <PricingSection />}
+
       {section === 'security' && (
         <div className="space-y-6">
           <div className="space-y-2">
@@ -599,11 +603,13 @@ export default function ConfigTab() {
       )}
 
       {/* 항상 보이는 atomic 저장 (Slug 저장·키 재발급은 별도) */}
-      <div className="mt-8 space-y-2 border-t border-border pt-6">
-        {saveError && <p className={errorCls}>{saveError}</p>}
-        <Button onClick={handleSave}>{saved ? '✓ 저장됨' : '저장'}</Button>
-        <p className={hint}>모든 탭의 변경을 한 번에 저장합니다.</p>
-      </div>
+      {section !== 'billing' && (
+        <div className="mt-8 space-y-2 border-t border-border pt-6">
+          {saveError && <p className={errorCls}>{saveError}</p>}
+          <Button onClick={handleSave}>{saved ? '✓ 저장됨' : '저장'}</Button>
+          <p className={hint}>모든 탭의 변경을 한 번에 저장합니다.</p>
+        </div>
+      )}
     </div>
   )
 }
