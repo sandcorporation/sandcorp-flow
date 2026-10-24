@@ -1,0 +1,436 @@
+<title>Sandcorp Agents 편집기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 레이아웃: 제어반 한 화면 — 위 계기 막대 / 왼쪽 부품함 · 가운데 배선도 · 오른쪽 시험 기록계.
+   색 원칙(고성능 HMI): 바탕은 무채 회색, 색은 상태에만 — 진행 중 호박색, 정상 녹색, 사람 넘김 적색, 가드레일 황·흑 경고띠 */
+:root {
+  --bg: #c9ccc6;
+  --surface: #dfe1dc;
+  --sunken: #d3d6d0;
+  --raised: #eceee9;
+  --line: #9ea39b;
+  --line-soft: #b7bbb3;
+  --grid: #bec2bb;
+  --ink: #121412;
+  --text: #22251f;
+  --muted: #555b53;
+  --accent: #f0a500;
+  --accent-ink: #121412;
+  --run: #f0a500;
+  --ok: #2f7d32;
+  --alarm: #c62828;
+  --hazard: #f2c200;
+  --head: #3a3f3a;
+  --head-ink: #eceee9;
+  --font-sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-cond: "IBM Plex Sans Condensed", "IBM Plex Sans KR", "Arial Narrow", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1d1b; --surface: #242724; --sunken: #171917; --raised: #2c302c; --line: #464b45; --line-soft: #343833; --grid: #262926;
+    --ink: #e9ebe5; --text: #c9cdc4; --muted: #8f958c; --accent: #f0a500; --accent-ink: #121412; --run: #f5b82e;
+    --ok: #5cb860; --alarm: #ef5350; --hazard: #f2c200; --head: #353a35; --head-ink: #e9ebe5;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1d1b; --surface: #242724; --sunken: #171917; --raised: #2c302c; --line: #464b45; --line-soft: #343833; --grid: #262926;
+  --ink: #e9ebe5; --text: #c9cdc4; --muted: #8f958c; --accent: #f0a500; --accent-ink: #121412; --run: #f5b82e;
+  --ok: #5cb860; --alarm: #ef5350; --hazard: #f2c200; --head: #353a35; --head-ink: #e9ebe5;
+  color-scheme: dark;
+}
+
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: 13.5px; line-height: 1.45; word-break: keep-all; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.code { font-family: var(--font-mono); font-size: .7rem; letter-spacing: .02em; }
+
+.app { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+
+/* 위 계기 막대 */
+.top { display: flex; align-items: stretch; gap: 0; border-bottom: 2px solid var(--ink); background: var(--head); color: var(--head-ink);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); flex-wrap: wrap; min-height: 48px; }
+.top > * { display: flex; align-items: center; }
+.brand { gap: .55rem; font-family: var(--font-cond); font-weight: 600; letter-spacing: .02em; padding-right: 1rem; border-right: 1px solid color-mix(in srgb, var(--head-ink) 20%, transparent); }
+.mark { width: 16px; height: 16px; background: linear-gradient(180deg, #e7c46a 0 55%, #8a6214 55% 100%); }
+.crumb { gap: .5rem; padding: 0 1rem; color: color-mix(in srgb, var(--head-ink) 70%, transparent); }
+.crumb b { color: var(--head-ink); font-weight: 500; }
+.ver { font-family: var(--font-mono); font-size: .7rem; padding: .1rem .4rem; border: 1px solid var(--accent); color: var(--accent); }
+.ver.live { border-color: color-mix(in srgb, var(--head-ink) 35%, transparent); color: color-mix(in srgb, var(--head-ink) 75%, transparent); display: inline-flex; align-items: center; gap: .35rem; }
+.ver.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #4caf50; box-shadow: 0 0 0 2px rgb(76 175 80 / .25); }
+.tabs { gap: 0; margin-left: .5rem; }
+.tabs button { height: 100%; border: 0; background: none; padding: 0 .9rem; color: color-mix(in srgb, var(--head-ink) 65%, transparent); border-bottom: 3px solid transparent; }
+.tabs button[aria-selected="true"] { color: var(--head-ink); border-bottom-color: var(--accent); }
+.actions { margin-left: auto; gap: .4rem; padding-block: .45rem; }
+.btn { border: 1px solid var(--line); background: var(--raised); padding: .35rem .75rem; border-radius: 2px; color: var(--ink); font-weight: 500; display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap; }
+.top .btn { background: transparent; color: var(--head-ink); border-color: color-mix(in srgb, var(--head-ink) 35%, transparent); }
+.btn.primary, .top .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn:hover { filter: brightness(1.08); }
+
+/* 본문 3단 */
+.body { display: grid; grid-template-columns: 200px minmax(0, 1fr) 340px; min-height: 0; }
+
+.palette { border-right: 1px solid var(--line); background: var(--surface); overflow: auto; padding: .75rem; display: grid; gap: .9rem; align-content: start; }
+.search { width: 100%; padding: .4rem .55rem; border: 1px solid var(--line); border-radius: 2px; background: var(--raised); }
+.group h4, .hist h4 { margin: 0 0 .3rem; font-family: var(--font-cond); font-size: .72rem; font-weight: 600; color: var(--muted); letter-spacing: .06em; border-bottom: 1px solid var(--line-soft); padding-bottom: .2rem; }
+.pi { display: flex; align-items: center; gap: .5rem; padding: .35rem .4rem; border: 1px solid transparent; cursor: grab; }
+.pi:hover { border-color: var(--line); background: var(--raised); }
+.pi small { display: block; color: var(--muted); font-size: .7rem; }
+.sw { width: 10px; height: 10px; flex: none; border: 1px solid var(--ink); }
+.hist { padding-top: .25rem; }
+.hist li { list-style: none; display: flex; justify-content: space-between; gap: .5rem; padding: .2rem 0; font-size: .78rem; }
+.hist ul { margin: 0; padding: 0; }
+.hist .d { color: var(--muted); font-family: var(--font-mono); font-size: .7rem; }
+
+/* 배선도 캔버스: 모눈 */
+.canvas-wrap { position: relative; overflow: hidden; min-width: 0; }
+.scroller { position: absolute; inset: 0; overflow: auto; background-color: var(--bg);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px; }
+.sizer { position: relative; }
+.canvas { position: absolute; left: 0; top: 0; width: 1080px; height: 700px; transform-origin: 0 0; }
+.canvas svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.edge { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.edge.human { stroke: var(--alarm); stroke-dasharray: 7 4; }
+.edge.on { stroke: var(--run); stroke-width: 3; }
+.elabel { font-family: var(--font-mono); font-size: 10.5px; fill: var(--text); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; }
+.elabel.human { fill: var(--alarm); }
+
+.node { position: absolute; width: 180px; background: var(--raised); border: 1px solid var(--ink); border-radius: 2px; padding: 0; cursor: pointer; text-align: left; overflow: hidden; }
+.node .kind { display: flex; align-items: center; gap: .4rem; padding: .25rem .5rem; background: var(--head); color: var(--head-ink); font-size: .7rem; font-weight: 500; }
+.node .kind .id { font-family: var(--font-mono); opacity: .75; }
+.node .kind .st { margin-left: auto; font-family: var(--font-mono); font-weight: 400; }
+.node .lamp { width: 8px; height: 8px; border-radius: 50%; background: color-mix(in srgb, var(--head-ink) 25%, transparent); flex: none; }
+.node.done .lamp { background: #4caf50; }
+.node.run .lamp { background: var(--run); box-shadow: 0 0 0 3px rgb(240 165 0 / .35); }
+.node.run { outline: 3px solid var(--run); outline-offset: 0; }
+.node.sel { outline: 2px solid var(--ink); outline-offset: 2px; }
+.node h5 { margin: .4rem .55rem 0; font-size: .88rem; font-weight: 600; color: var(--ink); }
+.node p { margin: .1rem .55rem 0; font-size: .72rem; color: var(--muted); }
+.node .foot { margin: .45rem 0 0; padding: .25rem .55rem; border-top: 1px solid var(--line-soft); background: var(--sunken); font-family: var(--font-mono); font-size: .66rem; color: var(--muted); display: flex; justify-content: space-between; }
+.node.human .kind { background: var(--alarm); color: #fff; }
+.node.human { border-color: var(--alarm); border-style: dashed; }
+.node.guard .kind { background: repeating-linear-gradient(-45deg, var(--hazard) 0 8px, #121412 8px 16px); color: #121412; }
+.node.guard .kind > * { background: var(--hazard); padding: 0 .25rem; }
+.node.guard .kind .lamp { padding: 0; }
+
+.zoom { position: absolute; left: 12px; bottom: 12px; display: flex; background: var(--raised); border: 1px solid var(--line); z-index: 2; }
+.zoom button { border: 0; border-right: 1px solid var(--line-soft); background: none; padding: .2rem .55rem; color: var(--text); font-family: var(--font-mono); font-size: .75rem; }
+.zoom button:last-child { border-right: 0; }
+.legend { position: absolute; top: 12px; left: 12px; display: flex; flex-wrap: wrap; gap: .9rem; padding: .35rem .6rem; background: var(--raised); border: 1px solid var(--line); font-size: .7rem; color: var(--text); z-index: 2; }
+.legend span { display: inline-flex; align-items: center; gap: .35rem; }
+.legend i { width: 18px; border-top: 1.5px solid var(--muted); }
+.legend i.h { border-top: 1.5px dashed var(--alarm); }
+.legend i.r { border-top: 3px solid var(--run); }
+
+/* 오른쪽 시험 기록계 */
+.panel { border-left: 1px solid var(--line); background: var(--surface); display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.ptabs { display: flex; border-bottom: 1px solid var(--line); background: var(--sunken); }
+.ptabs button { flex: 1; border: 0; border-right: 1px solid var(--line-soft); background: none; padding: .55rem; color: var(--muted); font-family: var(--font-cond); font-weight: 600; letter-spacing: .04em; }
+.ptabs button[aria-selected="true"] { color: var(--ink); background: var(--surface); box-shadow: inset 0 3px 0 var(--accent); }
+.pane { overflow: auto; padding: .85rem; display: grid; gap: .85rem; align-content: start; min-height: 0; }
+
+.example { font-size: .72rem; color: var(--muted); display: flex; justify-content: space-between; align-items: center; font-family: var(--font-mono); }
+.chat { display: grid; gap: .5rem; }
+.msg { max-width: 90%; padding: .5rem .65rem; border-radius: 2px; font-size: .84rem; line-height: 1.5; }
+.msg.u { justify-self: end; background: var(--head); color: var(--head-ink); }
+.msg.a { justify-self: start; background: var(--raised); color: var(--ink); border: 1px solid var(--line-soft); border-left: 3px solid var(--ok); }
+.msg.a .via { display: block; margin-top: .3rem; font-family: var(--font-mono); font-size: .66rem; color: var(--muted); }
+
+.trace h4, .field label, .rules h4 { margin: 0 0 .3rem; font-family: var(--font-cond); font-size: .72rem; font-weight: 600; letter-spacing: .06em; color: var(--muted); display: block; }
+.trace ol { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); background: var(--sunken); font-family: var(--font-mono); }
+.trace li { display: grid; grid-template-columns: 2.8rem minmax(0, 1fr) auto; gap: .5rem; padding: .35rem .5rem; font-size: .72rem; border-top: 1px solid var(--line-soft); }
+.trace li:first-child { border-top: 0; }
+.trace .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+.trace .n { color: var(--ink); font-family: var(--font-sans); font-weight: 500; font-size: .78rem; }
+.trace .n small { display: block; color: var(--muted); font-weight: 400; font-size: .72rem; }
+.trace .m { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.trace .sum { display: flex; justify-content: space-between; margin-top: .4rem; padding: .35rem .5rem; font-size: .72rem; color: var(--ink); font-family: var(--font-mono); border: 1px solid var(--line); background: var(--raised); }
+
+.field { display: grid; gap: .25rem; }
+.field input, .field select, .field textarea { width: 100%; padding: .4rem .55rem; border: 1px solid var(--line); border-radius: 2px; background: var(--raised); }
+.field textarea { min-height: 7.5rem; resize: vertical; font-family: var(--font-mono); font-size: .76rem; line-height: 1.55; }
+.range { display: flex; align-items: center; gap: .6rem; }
+.range input { flex: 1; accent-color: var(--accent); padding: 0; background: none; border: 0; }
+.range output { font-family: var(--font-mono); color: var(--ink); padding: .1rem .4rem; border: 1px solid var(--line); background: var(--raised); }
+.outs { display: grid; gap: 0; border: 1px solid var(--line); }
+.out { display: flex; justify-content: space-between; align-items: center; padding: .35rem .55rem; font-size: .8rem; background: var(--raised); border-top: 1px solid var(--line-soft); }
+.out:first-child { border-top: 0; }
+.out span:last-child { color: var(--muted); font-size: .72rem; font-family: var(--font-mono); }
+.out.human { box-shadow: inset 3px 0 0 var(--alarm); }
+.hint { font-size: .76rem; color: var(--text); background: var(--sunken); border: 1px solid var(--line-soft); border-left: 3px solid var(--accent); padding: .5rem .65rem; }
+.ph { display: flex; align-items: center; gap: .5rem; padding-bottom: .5rem; border-bottom: 2px solid var(--ink); }
+.ph .sw { width: 12px; height: 12px; }
+.ph h3 { margin: 0; font-size: 1rem; color: var(--ink); }
+.ph .code { margin-left: auto; color: var(--muted); }
+
+@media (max-width: 1100px) {
+  .body { grid-template-columns: minmax(0, 1fr) 320px; }
+  .palette { display: none; }
+}
+@media (max-width: 760px) {
+  .app { height: auto; }
+  .body { grid-template-columns: minmax(0, 1fr); }
+  .canvas-wrap { height: 62vh; }
+  .panel { border-left: 0; border-top: 2px solid var(--ink); }
+  .pane { overflow: visible; }
+  .tabs, .crumb .ver { display: none; }
+  .brand { border-right: 0; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand"><span class="mark" aria-hidden="true"></span>Sandcorp Agents</div>
+    <div class="crumb">/ <b>프로젝트 상담</b> <span class="ver">v12 초안</span><span class="ver live">v11 운영 중</span></div>
+    <nav class="tabs" role="tablist" aria-label="보기">
+      <button role="tab" aria-selected="true">흐름 편집</button>
+      <button role="tab" aria-selected="false">대화 기록</button>
+      <button role="tab" aria-selected="false">지표</button>
+    </nav>
+    <div class="actions">
+      <button class="btn" id="runBtn" type="button">▶ 시험 실행</button>
+      <button class="btn primary" type="button" id="deployBtn">배포 요청</button>
+    </div>
+  </header>
+
+  <div class="body">
+    <aside class="palette" aria-label="노드 목록">
+      <input class="search" id="nodeSearch" placeholder="노드 찾기" aria-label="노드 찾기">
+      <div class="group"><h4>시작</h4>
+        <div class="pi"><span class="sw" style="background:var(--surface)"></span><div>웹 상담 위젯<small>사이트에 한 줄로 넣기</small></div></div>
+        <div class="pi"><span class="sw" style="background:var(--surface)"></span><div>Slack 메시지<small>채널·DM 수신</small></div></div>
+      </div>
+      <div class="group"><h4>AI 판단</h4>
+        <div class="pi"><span class="sw" style="background:var(--head)"></span><div>의도 분류<small>갈래와 확신도를 냄</small></div></div>
+        <div class="pi"><span class="sw" style="background:var(--head)"></span><div>되묻기 대화<small>빠진 정보를 채움</small></div></div>
+        <div class="pi"><span class="sw" style="background:var(--head)"></span><div>초안 작성<small>정해진 양식으로</small></div></div>
+      </div>
+      <div class="group"><h4>흐름</h4>
+        <div class="pi"><span class="sw" style="background:var(--line)"></span><div>조건<small>값·확신도로 가르기</small></div></div>
+      </div>
+      <div class="group"><h4>도구</h4>
+        <div class="pi"><span class="sw" style="background:var(--muted)"></span><div>문서 검색<small>GraphRAG · 근거 첨부</small></div></div>
+        <div class="pi"><span class="sw" style="background:var(--muted)"></span><div>API 호출<small>주문·재고·예약 조회</small></div></div>
+        <div class="pi"><span class="sw" style="background:var(--muted)"></span><div>MCP 도구<small>연결한 서버의 도구</small></div></div>
+      </div>
+      <div class="group"><h4>안전장치</h4>
+        <div class="pi"><span class="sw" style="background:var(--hazard)"></span><div>가드레일<small>금지 표현·개인정보</small></div></div>
+        <div class="pi"><span class="sw" style="background:var(--alarm)"></span><div>사람에게 넘기기<small>담당자 알림·대기</small></div></div>
+      </div>
+      <div class="hist"><h4 style="margin:0 0 .4rem;font-size:.75rem;font-weight:500;color:var(--muted)">버전</h4>
+        <ul>
+          <li><span>v12 초안 · 가드레일 추가</span><span class="d">방금</span></li>
+          <li><span>v11 운영 중</span><span class="d">10.22</span></li>
+          <li><span>v10 확신도 0.7 → 0.75</span><span class="d">10.19</span></li>
+        </ul>
+      </div>
+    </aside>
+
+    <main class="canvas-wrap" id="cw" aria-label="흐름 캔버스">
+      <div class="scroller" id="scroller"><div class="sizer" id="sizer"><div class="canvas" id="canvas"><svg id="edges" aria-hidden="true"></svg></div></div></div>
+      <div class="legend" aria-hidden="true"><span><i></i>자동 진행</span><span><i class="h"></i>사람에게 넘김</span><span><i class="r"></i>이번 실행 경로</span></div>
+      <div class="zoom"><button type="button" id="zOut" aria-label="축소">−</button><button type="button" id="zFit">맞춤</button><button type="button" id="zIn" aria-label="확대">+</button></div>
+    </main>
+
+    <aside class="panel">
+      <div class="ptabs" role="tablist">
+        <button role="tab" id="tabSim" aria-selected="true" type="button">시험</button>
+        <button role="tab" id="tabCfg" aria-selected="false" type="button">노드 설정</button>
+      </div>
+      <section class="pane" id="paneSim">
+        <div class="example"><span>예시 대화 · v12 초안으로 실행</span><button class="btn" id="rerun" type="button">다시 실행</button></div>
+        <div class="chat" id="chat"></div>
+        <div class="trace"><h4>판단 기록</h4><ol id="trace"></ol><div class="sum" id="sum"></div></div>
+      </section>
+      <section class="pane" id="paneCfg" hidden></section>
+    </aside>
+  </div>
+</div>
+
+<script>
+(() => {
+  const K = { trigger: ["시작", "--surface"], ai: ["AI 판단", "--head"], cond: ["조건", "--line"], tool: ["도구", "--muted"], guard: ["가드레일", "--hazard"], human: ["사람", "--alarm"] };
+  const N = [
+    { id: "n1", k: "trigger", x: 20, y: 260, t: "홈 상담 위젯", s: "sandcorp.co.kr 오른쪽 아래", f: ["7일 212회", ""] },
+    { id: "n2", k: "ai", x: 230, y: 260, t: "의도 분류", s: "Claude Haiku · 갈래 3개", f: ["평균 0.6초", "₩2"] },
+    { id: "n3", k: "cond", x: 440, y: 150, t: "확신도 0.75 이상?", s: "분류 결과의 확신도", f: ["통과 81%", ""] },
+    { id: "n11", k: "ai", x: 440, y: 420, t: "자주 묻는 질문 답변", s: "FAQ 문서에서만 답함", f: ["평균 1.1초", "₩3"] },
+    { id: "n4", k: "ai", x: 650, y: 60, t: "요구사항 되묻기", s: "최대 4문항 · 규모·일정·현재 방식", f: ["평균 2.3턴", "₩9"] },
+    { id: "n5", k: "tool", x: 870, y: 60, t: "비슷한 사례 찾기", s: "포트폴리오 GraphRAG", f: ["평균 0.4초", ""] },
+    { id: "n6", k: "ai", x: 870, y: 230, t: "범위·기간 초안", s: "Claude Sonnet · 금액 없이", f: ["평균 3.8초", "₩21"] },
+    { id: "n7", k: "guard", x: 870, y: 400, t: "가드레일 검사", s: "금액·확약·개인정보 요청", f: ["막힘 4%", ""] },
+    { id: "n8", k: "tool", x: 870, y: 570, t: "문의 접수", s: "대표 확인 후 제안서 발송", f: ["7일 38건", ""] },
+    { id: "n10", k: "human", x: 650, y: 500, t: "대표에게 넘기기", s: "Slack #상담 · 30분 안 응답", f: ["7일 21건", ""] },
+  ];
+  const E = [
+    ["n1", "r", "n2", "l", ""],
+    ["n2", "r", "n3", "l", "프로젝트 문의"],
+    ["n2", "r", "n11", "l", "그 외 질문"],
+    ["n3", "r", "n4", "l", "예"],
+    ["n3", "b", "n10", "l", "아니오", "human"],
+    ["n4", "r", "n5", "l", ""],
+    ["n5", "b", "n6", "t", ""],
+    ["n6", "b", "n7", "t", ""],
+    ["n7", "b", "n8", "t", "통과"],
+    ["n7", "l", "n10", "r", "막힘", "human"],
+    ["n11", "r", "n10", "l", "답 없음", "human"],
+  ];
+  const W = 180, H = 104;
+  const canvas = document.getElementById("canvas"), svg = document.getElementById("edges");
+  const byId = Object.fromEntries(N.map(n => [n.id, n]));
+  const el = {};
+
+  N.forEach(n => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "node " + n.k; const code = "N-" + n.id.slice(1).padStart(2, "0"); b.dataset.id = n.id;
+    b.style.left = n.x + "px"; b.style.top = n.y + "px"; b.style.setProperty("--k", `var(${K[n.k][1]})`);
+    b.innerHTML = `<div class="kind"><span class="lamp"></span><span class="id">${code}</span><span>${K[n.k][0]}</span><span class="st"></span></div><h5>${n.t}</h5><p>${n.s}</p><div class="foot"><span>${n.f[0]}</span><span>${n.f[1]}</span></div>`;
+    b.addEventListener("click", () => select(n.id));
+    canvas.appendChild(b); el[n.id] = b;
+  });
+
+  const pt = (n, side) => {
+    const h = el[n.id].offsetHeight || H;
+    return { r: [n.x + W, n.y + h / 2, 1, 0], l: [n.x, n.y + h / 2, -1, 0], b: [n.x + W / 2, n.y + h, 0, 1], t: [n.x + W / 2, n.y, 0, -1] }[side];
+  };
+  const edgeEls = []; const active = new Set();
+  function drawEdges() {
+    svg.innerHTML = ""; edgeEls.length = 0;
+    const ns = "http://www.w3.org/2000/svg";
+    E.forEach(([a, as, b, bs, label, cls]) => {
+      const [x1, y1, dx1, dy1] = pt(byId[a], as), [x2, y2, dx2, dy2] = pt(byId[b], bs);
+      const c = Math.max(50, Math.hypot(x2 - x1, y2 - y1) * 0.4);
+      const d = `M${x1},${y1} C${x1 + dx1 * c},${y1 + dy1 * c} ${x2 + dx2 * c},${y2 + dy2 * c} ${x2},${y2}`;
+      const p = document.createElementNS(ns, "path");
+      p.setAttribute("d", d); p.setAttribute("class", "edge" + (cls ? " " + cls : "")); svg.appendChild(p);
+      edgeEls.push({ a, b, p }); if (active.has(a + ">" + b)) p.classList.add("on");
+      if (label) {
+        const L = p.getTotalLength(), m = p.getPointAtLength(L * 0.5);
+        const t = document.createElementNS(ns, "text");
+        t.setAttribute("x", m.x); t.setAttribute("y", m.y - 6); t.setAttribute("text-anchor", "middle");
+        t.setAttribute("class", "elabel" + (cls ? " " + cls : "")); t.textContent = label; svg.appendChild(t);
+      }
+      [[x1, y1], [x2, y2]].forEach(([x, y]) => {
+        const c2 = document.createElementNS(ns, "circle");
+        c2.setAttribute("cx", x); c2.setAttribute("cy", y); c2.setAttribute("r", 4);
+        c2.setAttribute("style", "fill:var(--surface);stroke:var(--muted);stroke-width:1.5"); svg.appendChild(c2);
+      });
+    });
+  }
+
+  /* 노드 설정 */
+  const CFG = {
+    n2: `<div class="field"><label for="f-model">모델</label><select id="f-model"><option>Claude Haiku 5.5 · 빠름</option><option>Claude Sonnet 5.5</option></select></div>
+      <div class="field"><label for="f-prompt">판단 지침</label><textarea id="f-prompt">방문자 메시지를 읽고 셋 중 하나로 나눈다.
+- 프로젝트 문의: 새로 만들거나 고치고 싶은 것이 있다
+- 그 외 질문: 회사·가격 정책·연락처 등
+판단 이유를 한 줄로 남긴다.</textarea></div>
+      <div class="field"><label>갈래</label><div class="outs"><div class="out"><span>프로젝트 문의</span><span>→ 확신도 확인</span></div><div class="out"><span>그 외 질문</span><span>→ FAQ 답변</span></div></div></div>
+      <div class="hint">지난 7일 212회 실행 · 사람이 고친 분류 6건. 고친 대화는 시험 묶음에 자동으로 들어갑니다.</div>`,
+    n3: `<div class="field"><label for="f-th">넘기는 기준</label><div class="range"><input id="f-th" type="range" min="0.5" max="0.95" step="0.05" value="0.75"><output id="f-thv">0.75</output></div></div>
+      <div class="field"><label>갈래</label><div class="outs"><div class="out"><span>예</span><span>→ 요구사항 되묻기</span></div><div class="out human"><span>아니오</span><span>→ 대표에게 넘기기</span></div></div></div>
+      <div class="hint">기준을 0.80으로 올리면 지난 7일 기준 넘김이 21건에서 34건으로 늘어납니다.</div>`,
+    n7: `<div class="rules"><h4>막는 규칙</h4><div class="outs">
+        <div class="out"><span>금액·할인 약속</span><span>「만원」「무료로」</span></div>
+        <div class="out"><span>일정 확약</span><span>「반드시」「보장」</span></div>
+        <div class="out"><span>개인정보 요청</span><span>주민번호·계좌</span></div></div></div>
+      <div class="field"><label>막히면</label><div class="outs"><div class="out human"><span>대표에게 넘기기</span><span>초안을 함께 보냄</span></div></div></div>`,
+    n10: `<div class="field"><label for="f-ch">알릴 곳</label><select id="f-ch"><option>Slack #상담</option><option>이메일</option></select></div>
+      <div class="field"><label for="f-wait">방문자에게 보일 말</label><input id="f-wait" value="담당자에게 전달했어요. 30분 안에 이어서 답할게요."></div>
+      <div class="hint">넘긴 대화는 대표가 답한 뒤 「이렇게 판단했어야 함」을 표시하면 다음 버전 시험 묶음이 됩니다.</div>`,
+  };
+  function select(id) {
+    Object.values(el).forEach(b => b.classList.toggle("sel", b.dataset.id === id));
+    const n = byId[id];
+    const body = CFG[id] || `<div class="hint">${n.s}. 이 노드의 설정 화면은 시안에 넣지 않았습니다.</div>`;
+    document.getElementById("paneCfg").innerHTML = `<div class="ph"><span class="sw" style="background:var(${K[n.k][1]})"></span><h3>${n.t}</h3><span class="code">N-${id.slice(1).padStart(2, "0")}</span></div>${body}<button class="btn" type="button">이 노드만 시험</button>`;
+    const r = document.getElementById("f-th"); if (r) r.addEventListener("input", () => document.getElementById("f-thv").textContent = (+r.value).toFixed(2));
+    tab("cfg");
+  }
+  function tab(which) {
+    document.getElementById("tabSim").setAttribute("aria-selected", which === "sim");
+    document.getElementById("tabCfg").setAttribute("aria-selected", which === "cfg");
+    document.getElementById("paneSim").hidden = which !== "sim";
+    document.getElementById("paneCfg").hidden = which !== "cfg";
+  }
+  document.getElementById("tabSim").onclick = () => tab("sim");
+  document.getElementById("tabCfg").onclick = () => select(document.querySelector(".node.sel")?.dataset.id || "n2");
+
+  /* 시험 실행 */
+  const RUN = [
+    { u: "학원 수강생 출결을 슬랙으로 관리하는 봇을 만들고 싶어요." },
+    { n: "n1", t: "0.0s", d: "메시지 받음", m: "" },
+    { n: "n2", t: "0.6s", d: "프로젝트 문의 · 확신도 0.93", m: "412 tok" },
+    { n: "n3", t: "0.6s", d: "0.93 ≥ 0.75 → 예", m: "" },
+    { n: "n4", t: "2.1s", d: "빠진 정보: 규모, 현재 방식", m: "655 tok" },
+    { a: "수강생은 몇 명쯤이고, 지금은 출결을 어떻게 기록하고 계세요?", via: "요구사항 되묻기" },
+    { u: "200명 정도고, 구글 시트에 매니저가 손으로 적어요." },
+    { n: "n4", t: "4.9s", d: "필요한 정보 다 모임", m: "530 tok" },
+    { n: "n5", t: "5.3s", d: "부트캠프 출결 Slack 봇 · 유사도 0.88", m: "" },
+    { n: "n6", t: "9.0s", d: "범위 3항목 · 기간 4~6주", m: "1,820 tok" },
+    { n: "n7", t: "9.1s", d: "금액·확약 표현 없음 → 통과", m: "" },
+    { n: "n8", t: "9.3s", d: "문의 #142 만듦", m: "" },
+    { a: "비슷한 출결 봇을 지금도 운영하고 있어요. 슬랙 요청 분류·기록, 매니저용 대시보드, 기존 시트 이전까지 4~6주로 보입니다. 대표가 확인하고 영업일 하루 안에 제안서를 보내 드릴게요.", via: "범위·기간 초안 · 근거: 부트캠프 출결 Slack 봇" },
+  ];
+  const chat = document.getElementById("chat"), trace = document.getElementById("trace"), sum = document.getElementById("sum");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let timers = [];
+  function reset() {
+    timers.forEach(clearTimeout); timers = [];
+    chat.innerHTML = ""; trace.innerHTML = ""; sum.textContent = "";
+    Object.values(el).forEach(b => { b.classList.remove("run", "done"); b.querySelector(".st").textContent = ""; });
+    edgeEls.forEach(e => e.p.classList.remove("on")); active.clear();
+  }
+  let prev = null;
+  function step(s) {
+    if (s.u || s.a) {
+      const m = document.createElement("div"); m.className = "msg " + (s.u ? "u" : "a");
+      m.textContent = s.u || s.a;
+      if (s.via) { const v = document.createElement("span"); v.className = "via"; v.textContent = "↳ " + s.via; m.appendChild(v); }
+      chat.appendChild(m);
+      return;
+    }
+    Object.values(el).forEach(b => b.classList.remove("run"));
+    const b = el[s.n]; b.classList.add("run", "done"); b.querySelector(".st").textContent = s.t;
+    if (prev) { active.add(prev + ">" + s.n); edgeEls.forEach(e => { if (e.a === prev && e.b === s.n) e.p.classList.add("on"); }); }
+    prev = s.n;
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="t">${s.t}</span><span class="n">${byId[s.n].t}<small>${s.d}</small></span><span class="m">${s.m}</span>`;
+    trace.appendChild(li);
+  }
+  function run(animate) {
+    reset(); prev = null; tab("sim");
+    if (!animate) { RUN.forEach(step); Object.values(el).forEach(b => b.classList.remove("run")); finish(); return; }
+    RUN.forEach((s, i) => timers.push(setTimeout(() => step(s), 500 + i * 650)));
+    timers.push(setTimeout(() => { Object.values(el).forEach(b => b.classList.remove("run")); finish(); }, 500 + RUN.length * 650));
+  }
+  function finish() { sum.innerHTML = "<span>9.3초 · 노드 8개 통과</span><span>3,417 tok · 약 ₩35</span>"; }
+
+  document.getElementById("runBtn").onclick = () => run(!reduce);
+  document.getElementById("rerun").onclick = () => run(!reduce);
+  document.getElementById("deployBtn").onclick = e => { e.currentTarget.textContent = "승인 요청 보냄"; };
+  document.getElementById("nodeSearch").addEventListener("input", e => {
+    const q = e.target.value.trim();
+    document.querySelectorAll(".pi").forEach(p => p.hidden = q && !p.textContent.includes(q));
+  });
+
+  const scroller = document.getElementById("scroller"), sizer = document.getElementById("sizer");
+  let zoom = 1;
+  function setZoom(z) { zoom = Math.min(1.2, Math.max(0.5, z)); canvas.style.transform = `scale(${zoom})`; sizer.style.width = 1080 * zoom + "px"; sizer.style.height = 700 * zoom + "px"; document.getElementById("zFit").textContent = Math.round(zoom * 100) + "%"; }
+  const fit = () => setZoom(Math.min(1, (scroller.clientWidth - 16) / 1080, (scroller.clientHeight - 16) / 700));
+  document.getElementById("zIn").onclick = () => setZoom(zoom + 0.1);
+  document.getElementById("zOut").onclick = () => setZoom(zoom - 0.1);
+  document.getElementById("zFit").onclick = fit;
+  window.addEventListener("resize", fit);
+  requestAnimationFrame(() => { fit(); drawEdges(); run(false); });
+  window.addEventListener("load", drawEdges);
+  document.fonts?.ready.then(drawEdges);
+})();
+</script>

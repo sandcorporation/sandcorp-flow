@@ -1,19 +1,18 @@
-# Issue tracker: Local Markdown
+# Issue tracker: GitHub Issues
 
-Issues and PRDs for this repo live as markdown files in `.scratch/`.
+이슈와 스펙(PRD)은 GitHub `sandcorporation/sandcorp-flow` 이슈로 관리한다(2026-10-24 결정). 예전 `.scratch/` 로컬 마크다운은 Embed Chat 시절 기록으로만 남는다.
 
 ## Conventions
 
-- One feature per directory: `.scratch/<feature-slug>/`
-- The PRD is `.scratch/<feature-slug>/PRD.md`
-- Implementation issues are `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`
-- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
-- Comments and conversation history append to the bottom of the file under a `## Comments` heading
+- 스펙(PRD)은 마일스톤마다 이슈 하나(제목 `[스펙] …`), 구현 티켓은 그 아래 하위 이슈(sub-issue)로 단다.
+- 막힘 관계는 본문 첫머리의 `막힘: #N` 줄과 GitHub의 blocked-by 관계로 함께 적는다.
+- 분류 상태는 라벨로 적는다(`triage-labels.md`). 맡길 수 있는 티켓만 `ready-for-agent`.
+- 대화·결정·넘김은 이슈 댓글로 남긴다. 이슈·PR·댓글은 한국어로 쓴다.
 
 ## When a skill says "publish to the issue tracker"
 
-Create a new file under `.scratch/<feature-slug>/` (creating the directory if needed).
+`gh issue create`로 이슈를 만든다(필요한 라벨을 붙이고, 스펙 아래면 하위 이슈로 연결).
 
 ## When a skill says "fetch the relevant ticket"
 
-Read the file at the referenced path. The user will normally pass the path or the issue number directly.
+`gh issue view <번호> --comments`로 본문과 댓글을 읽는다.
