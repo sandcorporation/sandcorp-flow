@@ -101,6 +101,8 @@ services:
     command: >
       sh -c "python manage.py migrate --noinput &&
              python manage.py seed_e2e_operator --token-file /e2e-shared/operator_token &&
+             python manage.py seed_e2e_member --token-file /e2e-shared/member_token &&
+             (python manage.py seed_e2e_member --sub m_E2EINVITEE0000000000000001 --name 'E2E 초대받은 사람' --email e2e-invitee@example.com --accept-invite-from /e2e-shared/invite_token --token-file /e2e-shared/invitee_token &) &&
              uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 2"
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
@@ -116,7 +118,7 @@ services:
       OLLAMA_BASE_URL: http://ollama-test:11434
     volumes:
       - media-e2e:/app/media
-      - e2e-shared:/e2e-shared  # seed_e2e_operator가 Operator 세션 토큰을 쓴다(#21)
+      - e2e-shared:/e2e-shared  # seed_e2e_operator·seed_e2e_member가 세션 토큰을 쓴다(#21·#56)
     depends_on:
       db-test:
         condition: service_healthy
@@ -265,8 +267,9 @@ services:
       WIDGET_URL: http://widget-e2e:5173
       API_URL: http://api-e2e:8000
       E2E_OPERATOR_TOKEN_FILE: /e2e-shared/operator_token
+      E2E_SHARED_DIR: /e2e-shared
     volumes:
-      - e2e-shared:/e2e-shared:ro
+      - e2e-shared:/e2e-shared  # 초대 원문(invite_token)을 써서 수락 대역에 넘긴다(#56)
     depends_on:
       api-e2e:
         condition: service_healthy

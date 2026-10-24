@@ -13,5 +13,6 @@ export interface MemberOut {
   is_active: boolean;
   name: MemberOutName;
   role: string;
+  sub_tail: string;
   user_id: string;
 }

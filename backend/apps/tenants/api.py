@@ -141,6 +141,7 @@ class MemberOut(Schema):
     user_id: str
     name: str | None
     email: str | None
+    sub_tail: str  # 이름·이메일 캐시가 없을 때 목록에서 구별하는 sub 끝 6자리
     is_active: bool
     role: str
 
@@ -178,7 +179,7 @@ class InviteCreatedOut(InviteOut):
 def _member_out(m: Membership) -> dict:
     return {
         "id": str(m.id), "user_id": str(m.user_id), "name": m.user.name, "email": m.user.email,
-        "is_active": m.is_active, "role": m.role,
+        "sub_tail": m.user.sub[-6:], "is_active": m.is_active, "role": m.role,
     }
 
 
