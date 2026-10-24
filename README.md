@@ -185,7 +185,7 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 | `AUTH_CLIENT_ID` / `AUTH_CLIENT_SECRET` | 관리 화면 로그인용 sandcorp-auth 기밀 클라이언트(#21). 비우면 로그인 버튼이 「설정되지 않음」 거절 화면 | (sandcorp-auth에서 발급) |
 | `AUTH_REDIRECT_URI` | 로그인 콜백 주소. sandcorp-auth 등록값과 문자 하나까지 일치 | `https://flow.sandcorp.co.kr/api/auth/callback`(기본) |
 | `AUTH_AUTHORIZE_URL` / `AUTH_TOKEN_URL` | sandcorp-auth 인가·토큰 엔드포인트 | `<AUTH_ISSUER>/authorize`·`<AUTH_ISSUER>/token`(기본) |
-| `AUTH_WEBHOOK_SECRET` | 탈퇴 웹훅(`/api/auth/webhook`) 서명 비밀. 수신부는 별도 티켓 — 지금은 이름만 | (sandcorp-auth `clients webhook`으로 발급) |
+| `AUTH_WEBHOOK_SECRET` | 탈퇴 웹훅(`/api/auth/webhook`) 서명 비밀. 비면 웹훅을 모두 503으로 거부 | (sandcorp-auth `clients webhook`으로 발급) |
 | `AUTH_LOGIN_REDIRECT` | 콜백 뒤 돌아갈 관리 화면(거절이면 `?login_error=<사유>`) | `/admin-ui/operator`(기본) |
 
 ---
@@ -267,6 +267,7 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 |------------|------|------|
 | `GET /api/auth/authorize` · `GET /api/auth/authorize/member[?invite=]` · `GET /api/auth/callback` | 없음(브라우저 이동) | 관리 화면 로그인(sandcorp-auth) — Operator 진입 / 고객 진입, 콜백 공통 |
 | `GET /api/auth/member/tenants` · `POST /api/auth/member/select` | `member_ticket` 쿠키 | 콜백 뒤 조직 목록·선택(테넌트 세션 열기) |
+| `POST /api/auth/webhook` | HMAC 서명(`X-Sandcorp-Signature`) | sandcorp-auth 탈퇴 웹훅 `user.deleted` — 사용자·멤버십·세션 삭제(ADR-0028 「탈퇴」) |
 | `POST /api/operator/auth/refresh` · `logout` · `logout-all` | Refresh 쿠키 / Operator | Flow 세션 회전·폐기 |
 | `POST /api/operator/tenants/` | Operator | Tenant 생성(+ 첫 Admin 초대 링크) |
 | `GET /.well-known/oauth-protected-resource` | 없음 | 보호 리소스 메타데이터(RFC 9728) |

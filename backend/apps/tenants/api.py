@@ -16,6 +16,7 @@ from apps.tenants.members import (
     InviteRejected, accept_invite, active_memberships, create_invite, issue_member_ticket,
     pending_invites, read_member_ticket,
 )
+from apps.tenants import withdrawal
 from apps.tenants.permissions import AGENTS_MANAGE, require_permission
 from apps.tenants.refresh_tokens import (
     issue_session, rotate, revoke_all, revoke_session, RefreshRejected,
@@ -427,6 +428,16 @@ def login_callback(request):
     # Refresh 쿠키 경로는 /api/operator/auth(refresh·logout만 받는다). 콜백 응답에서 심어도 된다.
     set_refresh_cookie(response, outcome, issue_session(outcome))
     return response
+
+
+@auth_router.post("/webhook", auth=None, include_in_schema=False)
+def auth_webhook(request):
+    """sandcorp-auth 탈퇴 웹훅(#55). 인증은 서명(HMAC)뿐이다 — 본문을 Ninja가 파싱하지 않게 인자를 두지 않는다."""
+    try:
+        withdrawal.receive(request.body, request.headers.get("X-Sandcorp-Signature"))
+    except withdrawal.WebhookRejected as exc:
+        return HttpResponse(str(exc), status=exc.status, content_type="text/plain")
+    return HttpResponse(status=200)
 
 
 class MemberTenantOut(Schema):

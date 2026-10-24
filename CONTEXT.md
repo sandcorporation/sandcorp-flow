@@ -169,7 +169,7 @@ Flow 사용자의 신원. sandcorp-auth가 발급한 액세스 토큰의 `(iss, 
 _Avoid_: username·tenant_name을 신원으로 쓰기, 「계정」(Flow에는 자체 계정이 없다)
 
 **Membership**
-External Identity(사용자)와 Tenant의 연결과 그 역할(Tenant Admin / Tenant Member)·활성 여부. 옛 TenantAgent(조직마다 따로 둔 username/password 계정)를 대신한다. 테넌트 역할은 sandcorp-auth 스코프가 아니라 Flow 안의 이 행으로 관리하며, 권한 비트 가드와 「마지막 Admin 보호」를 그대로 따른다. HITL `EscalationClaim.claimed_by`도 Membership을 가리킨다(멤버십이 지워지면 비운다). 로그인 콜백은 멤버십이 하나면 그 조직 세션을, 여럿이면 조직 선택을, 없으면 「온보딩 필요」를 돌려준다. 사용자가 sandcorp-auth에서 탈퇴하면 `forget_user(iss, sub)`가 사용자·멤버십·세션을 지운다.
+External Identity(사용자)와 Tenant의 연결과 그 역할(Tenant Admin / Tenant Member)·활성 여부. 옛 TenantAgent(조직마다 따로 둔 username/password 계정)를 대신한다. 테넌트 역할은 sandcorp-auth 스코프가 아니라 Flow 안의 이 행으로 관리하며, 권한 비트 가드와 「마지막 Admin 보호」를 그대로 따른다. HITL `EscalationClaim.claimed_by`도 Membership을 가리킨다(멤버십이 지워지면 비운다). 로그인 콜백은 멤버십이 하나면 그 조직 세션을, 여럿이면 조직 선택을, 없으면 「온보딩 필요」를 돌려준다. 사용자가 sandcorp-auth에서 탈퇴하면 탈퇴 웹훅(`user.deleted`, `/api/auth/webhook`)을 받아 `forget_user(iss, sub)`가 사용자·멤버십·세션을 지운다. 마지막 Admin이 탈퇴해도 Tenant는 그대로 두고, TENANT_KEY로 Admin 초대를 다시 내어 복구한다.
 _Avoid_: 스코프로 역할 표현
 
 **Resource Token**
