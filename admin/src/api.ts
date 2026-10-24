@@ -31,6 +31,16 @@ import {
   appsTenantsApiMemberMe,
 } from './generated/endpoints/tenant-members/tenant-members'
 import {
+  appsTenantsSecretsApiListSecrets,
+  appsTenantsSecretsApiPutSecret,
+  appsTenantsSecretsApiDeleteSecret,
+} from './generated/endpoints/tenant-secrets/tenant-secrets'
+import {
+  appsTenantsSecretsApiListDomains,
+  appsTenantsSecretsApiAddDomain,
+  appsTenantsSecretsApiDeleteDomain,
+} from './generated/endpoints/tenant-allowed-domains/tenant-allowed-domains'
+import {
   appsTenantsApiListInvites,
   appsTenantsApiCreateTenantInvite,
   appsTenantsApiRevokeTenantInvite,
@@ -393,4 +403,42 @@ export async function tenantUsage(days = 30): Promise<TenantUsageOut> {
 }
 export async function operatorUsage(days = 30): Promise<OperatorUsageOut> {
   return (await appsUsageApiOperatorUsage({ days })).data as OperatorUsageOut
+}
+
+// --- Tenant Secret·허용 도메인 (#113) ---------------------------------------
+// 실패는 사용자에게 보일 문구의 Error 로 바꿔 던진다(403 은 고정 문구, 422/409 는 서버 detail 그대로).
+function secretsError(e: unknown, fallback: string): Error {
+  if (e instanceof HttpError) {
+    if (e.status === 403) return new Error('권한이 없습니다.')
+    const detail = (e.body as { detail?: unknown } | undefined)?.detail
+    if (typeof detail === 'string' && detail) return new Error(detail)
+  }
+  return new Error(fallback)
+}
+
+export interface SecretItem { name: string; created_at: string; updated_at: string }
+export interface AllowedDomainItem { id: string; pattern: string; created_at: string }
+
+export async function listSecrets(): Promise<SecretItem[]> {
+  return (await appsTenantsSecretsApiListSecrets()).data as SecretItem[]
+}
+/** 만들기·교체 같은 호출. 응답엔 값이 없고, 여기서도 값을 보관하지 않는다. */
+export async function putSecret(name: string, value: string): Promise<void> {
+  try { await appsTenantsSecretsApiPutSecret(name, { value }) }
+  catch (e) { throw secretsError(e, '비밀을 저장하지 못했습니다.') }
+}
+export async function deleteSecret(name: string): Promise<void> {
+  try { await appsTenantsSecretsApiDeleteSecret(name) }
+  catch (e) { throw secretsError(e, '비밀을 지우지 못했습니다.') }
+}
+export async function listAllowedDomains(): Promise<AllowedDomainItem[]> {
+  return (await appsTenantsSecretsApiListDomains()).data as AllowedDomainItem[]
+}
+export async function addAllowedDomain(pattern: string): Promise<AllowedDomainItem> {
+  try { return (await appsTenantsSecretsApiAddDomain({ pattern })).data as AllowedDomainItem }
+  catch (e) { throw secretsError(e, '도메인을 추가하지 못했습니다.') }
+}
+export async function deleteAllowedDomain(id: string): Promise<void> {
+  try { await appsTenantsSecretsApiDeleteDomain(id) }
+  catch (e) { throw secretsError(e, '도메인을 지우지 못했습니다.') }
 }
