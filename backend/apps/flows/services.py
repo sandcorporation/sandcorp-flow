@@ -450,9 +450,10 @@ async def run_test_turn(
         return TestTurnResult(ran=False, session_id=session.id, note=TRIAL_EXHAUSTED_NOTE)
 
     state = await run_flow_turn_async(session, message, graph, dry_run=True)
-    trace: list[JSONObject] = [
-        {"node_id": t["node_id"], "kind": t["kind"], "handle": t["handle"]} for t in state.get("trace", [])
-    ]
+    from apps.flows.trace import prepare
+
+    # 시험 한 턴의 trace도 저장하는 판단 기록과 같은 항목 형식(가림·자름 포함)이다.
+    trace: list[JSONObject] = [dict(e) for e in prepare(state.get("trace", []))[0]]  # type: ignore[misc]
     handoff = any(t["kind"] == NodeKind.HANDOFF.value for t in trace)
     return TestTurnResult(
         ran=True,

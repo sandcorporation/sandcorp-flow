@@ -32,7 +32,12 @@ async def start(state: FlowState, ctx: NodeContext) -> NodeOutcome:
 async def knowledge_search(state: FlowState, ctx: NodeContext) -> NodeOutcome:
     config = cast(KnowledgeSearchConfig, ctx.node.config)
     update = await local_search_node({**state, "search_top_k": config.top_k})
-    return NodeOutcome(update={**update, "rag_searched": True})
+    chunks = update.get("rag_chunks") or []
+    return NodeOutcome(
+        update={**update, "rag_searched": True},
+        record={"input": state.get("user_message", ""), "output": {"chunks": len(chunks)}, "top_k": config.top_k,
+                "reason": f"지식 {len(chunks)}건을 찾음" if chunks else "찾은 지식이 없음"},
+    )
 
 
 @register(NodeKind.AI_ANSWER)
@@ -43,28 +48,38 @@ async def ai_answer(state: FlowState, ctx: NodeContext) -> NodeOutcome:
 
     working: dict[str, object] = dict(state)
     update: dict[str, object] = await call(working)
+    source_fallback = False
     if state.get("rag_searched") and not update.get("context_sufficient", True) and not state.get("source_text_tried"):
+        source_fallback = True
         working.update(update)
         added = await source_search_node(working)
         working.update(added)
         update = {**added, **await call(working)}
 
+    record: dict[str, object] = {
+        "input": state.get("user_message", ""), "output": update.get("assistant_response", ""),
+        "source_fallback": source_fallback,
+    }
     if can_hand_off and update.get("needs_hitl"):
-        return NodeOutcome(update=update, handle=HANDOFF_HANDLE)
-    return NodeOutcome(update=update, handle=DEFAULT_HANDLE, wait_for_reply=config.await_reply)
+        record["reason"] = f"사람 넘김이 필요하다고 판단: {update.get('hitl_reason') or '이유 없음'}"
+        return NodeOutcome(update=update, handle=HANDOFF_HANDLE, record=record)
+    record["reason"] = "답변 완료" + (" (원문을 보태 다시 물음)" if source_fallback else "")
+    return NodeOutcome(update=update, handle=DEFAULT_HANDLE, wait_for_reply=config.await_reply, record=record)
 
 
 @register(NodeKind.HANDOFF)
 async def handoff(state: FlowState, ctx: NodeContext) -> NodeOutcome:
     if not state.get("hitl_enabled", False):
-        return NodeOutcome(update={}, handle=None)
+        return NodeOutcome(update={}, handle=None, record={"reason": "사람 넘김이 꺼져 있어 넘기지 않음"})
     config = cast(HandoffConfig, ctx.node.config)
     working = dict(state)
     if not working.get("hitl_reason") and config.reason:
         working["hitl_reason"] = config.reason
     if state.get("dry_run", False):  # 시험 한 턴(#76): 넘겼다고만 적고 Escalation·알림은 만들지 않는다
         return NodeOutcome(update={"needs_hitl": True, "hitl_reason": working.get("hitl_reason", "")},
-                           handle=None, record={"dry_run": True})
+                           handle=None,
+                           record={"dry_run": True, "reason": f"넘김(시험): {working.get('hitl_reason') or config.reason or '이유 없음'}"})
     update = await create_escalation_node(working)
     return NodeOutcome(update={**update, "needs_hitl": True, "hitl_reason": working.get("hitl_reason", "")},
-                       handle=None, saved=True)
+                       handle=None, saved=True,
+                       record={"reason": f"넘김: {working.get('hitl_reason') or '이유 없음'}"})

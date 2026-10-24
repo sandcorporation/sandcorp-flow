@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+import time
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from langgraph.graph import END, START, StateGraph
@@ -28,6 +30,8 @@ from apps.flows.contract import (
     NodeOutcome,
     TraceEntry,
 )
+from apps.usage.context import collect_calls
+from apps.usage.pricing import cost_usd
 from apps.flows.schema import JSON, MAX_STEPS_PER_TURN, FlowGraph, Node, NodeKind, flow_hash, parse_flow
 
 if TYPE_CHECKING:
@@ -62,6 +66,14 @@ class UnsupportedNodeKind(ValueError):
     """핸들러가 아직 없는 노드 종류가 흐름에 있다."""
 
 
+def _dec_str(value: Decimal) -> str:
+    return format(value.normalize(), "f")
+
+
+def _str_or_none(value: Decimal | None) -> str | None:
+    return None if value is None else _dec_str(value)
+
+
 def _make_step(node: Node, handler: NodeHandler, outgoing: dict[str, str]):
     ctx = NodeContext(node=node, outgoing=outgoing)
 
@@ -70,14 +82,29 @@ def _make_step(node: Node, handler: NodeHandler, outgoing: dict[str, str]):
         if steps >= MAX_STEPS_PER_TURN:
             return {"route": FINISH_NODE, "resume_node": "", "step_limit_exceeded": True}
 
-        outcome: NodeOutcome = await handler(state, ctx)
+        started = time.monotonic()
+        with collect_calls() as llm_calls:
+            outcome: NodeOutcome = await handler(state, ctx)
+        duration_ms = int((time.monotonic() - started) * 1000)
         target = outgoing.get(outcome.handle) if outcome.handle else None
         resume = ""
         if outcome.wait_for_reply:
             resume, target = target or "", None
         route = target or (END if outcome.saved else FINISH_NODE)
+        calls = [
+            {"model": c.model, "input_tokens": c.input_tokens, "output_tokens": c.output_tokens,
+             "cost_usd": _str_or_none(cost_usd(c.model, c.input_tokens, c.output_tokens))}
+            for c in llm_calls
+        ]
+        known = [Decimal(str(c["cost_usd"])) for c in calls if c["cost_usd"] is not None]
         entry: TraceEntry = {
             "node_id": node.id, "kind": node.kind.value, "handle": outcome.handle, "record": outcome.record,
+            "duration_ms": duration_ms,
+            "input_tokens": sum(c.input_tokens for c in llm_calls),
+            "output_tokens": sum(c.output_tokens for c in llm_calls),
+            # 호출이 없으면 비용 0, 모르는 모델이 한 번이라도 있으면 모름(None)
+            "cost_usd": None if len(known) < len(calls) else _dec_str(sum(known, Decimal(0))),
+            "calls": calls,
         }
         return {
             **outcome.update,
@@ -177,6 +204,7 @@ async def run_flow_turn_async(
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
     from apps.agent.graph import _build_conninfo, _load_chat_inputs
+    from apps.flows.trace import save_decision_trace
     from apps.agent.providers import set_chat_provider
     from apps.usage.context import set_usage_context
 
@@ -184,6 +212,7 @@ async def run_flow_turn_async(
     set_chat_provider(provider)
     set_usage_context(session.tenant_id, "chat", session_id=session.id)
 
+    started = time.monotonic()
     async with AsyncPostgresSaver.from_conn_string(_build_conninfo()) as saver:
         await saver.setup()
         graph = compile_flow(graph_json, checkpointer=saver)
@@ -191,4 +220,6 @@ async def run_flow_turn_async(
             turn_input(dict(initial_state), effective_hitl, dry_run=dry_run),
             config={"configurable": {"thread_id": str(session.id)}, "recursion_limit": RECURSION_LIMIT},
         )
+    # 판단 기록: 운영 턴·시험 턴이 같은 자리에서 한 번의 insert로 남긴다(저장 실패는 턴을 깨지 않는다)
+    await sync_to_async(save_decision_trace)(session, result.get("trace", []), int((time.monotonic() - started) * 1000))
     return result

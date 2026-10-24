@@ -296,6 +296,28 @@ def test_get_session_reports_the_pinned_flow_version(signer: Signer) -> None:
 
 
 @pytest.mark.django_db
+def test_get_session_carries_recent_decision_trace_totals_without_node_bodies(signer: Signer) -> None:
+    from decimal import Decimal
+
+    from apps.flows.models import DecisionTrace
+
+    tenant = member()
+    s = session(tenant)
+    for i in range(25):
+        DecisionTrace.objects.create(
+            tenant_id=tenant.id, session=s, entries=[{"node_id": "start", "record": {"input": "비밀 본문"}}],
+            input_tokens=100 + i, output_tokens=10, cost_usd=Decimal("0.000021"), duration_ms=5,
+        )
+
+    result = ok(call(readonly_token(signer), "get_session", {"session_id": str(s.id)}))
+
+    traces = result["decision_traces"]
+    assert len(traces) == 20 and traces[0]["turn"] == 6 and traces[-1]["turn"] == 25  # 최근 20턴
+    assert traces[-1]["input_tokens"] == 124 and traces[-1]["cost_usd"] == "0.000021"
+    assert "entries" not in traces[-1]
+
+
+@pytest.mark.django_db
 def test_get_session_truncates_long_conversations_with_cursor(signer: Signer) -> None:
     tenant = member()
     s = session(tenant)

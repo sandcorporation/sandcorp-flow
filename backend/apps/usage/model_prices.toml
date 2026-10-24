@@ -1,0 +1,28 @@
+# 모델 단가 표 — 토큰 100만 개당 USD. 비용 계산의 유일한 근거(판단 기록·TokenUsage 일 롤업·체험 한도).
+# 출처: 각 공급자 공식 가격 페이지(https://openai.com/api/pricing). 기준일: 2026-10-24.
+# 단가가 바뀌면 이 파일만 고치고 기준일을 갱신한다. 표에 없는 모델은 비용 null(0으로 치지 않는다).
+# 날짜가 붙은 이름(gpt-4o-mini-2024-07-18)은 가장 긴 앞부분 이름으로 찾는다.
+
+[[model]]
+provider = "openai"
+model = "gpt-4o-mini"         # 플랫폼 키 기본 LLM(PLATFORM_LLM_MODEL, ADR-0026)
+input_per_mtok = "0.15"
+output_per_mtok = "0.60"
+
+[[model]]
+provider = "openai"
+model = "gpt-4o"
+input_per_mtok = "2.50"
+output_per_mtok = "10.00"
+
+[[model]]
+provider = "openai"
+model = "text-embedding-3-small"   # 플랫폼 키 기본 임베딩
+input_per_mtok = "0.02"
+output_per_mtok = "0"
+
+[[model]]
+provider = "openai"
+model = "text-embedding-3-large"
+input_per_mtok = "0.13"
+output_per_mtok = "0"

@@ -68,6 +68,91 @@
         "title": "DailyPoint",
         "type": "object"
       },
+      "DecisionTracesOut": {
+        "properties": {
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionTurnOut"
+            },
+            "title": "Turns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "turns"
+        ],
+        "title": "DecisionTracesOut",
+        "type": "object"
+      },
+      "DecisionTurnOut": {
+        "properties": {
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "entries": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "flow_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow Version"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "is_test": {
+            "title": "Is Test",
+            "type": "boolean"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "turn": {
+            "title": "Turn",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "turn",
+          "created_at",
+          "is_test",
+          "input_tokens",
+          "output_tokens",
+          "duration_ms",
+          "entries"
+        ],
+        "title": "DecisionTurnOut",
+        "type": "object"
+      },
       "DetailOut": {
         "properties": {
           "detail": {
@@ -3747,6 +3832,54 @@
           }
         ],
         "summary": "Get Session Checkpoint",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/tenant/sessions/{session_id}/decision-traces": {
+      "get": {
+        "description": "세션의 턴별 판단 기록(Decision Trace, 오래된 턴부터). 테넌트 범위 — 남의 세션은 404. 읽기는 모든 멤버. 시험 세션도 읽는다.",
+        "operationId": "apps_memory_api_get_session_decision_traces",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionTracesOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetailOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "MemberAuth": []
+          }
+        ],
+        "summary": "Get Session Decision Traces",
         "tags": [
           "sessions"
         ]

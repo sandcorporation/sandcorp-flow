@@ -143,14 +143,29 @@ class _FakeChatLLM:
             yield {**ctrl, "response": resp}
         yield d                                                       # 최종(모든 필드)
 
+    # Provider 응답의 usage — (모델, 입력 토큰, 출력 토큰). None이면 보고하지 않는다(#24). async 경로만 보고한다.
+    usage: tuple[str, int, int] | None = ("gpt-4o-mini", 120, 30)
+
+    async def _report_usage(self) -> None:
+        if self.usage is None:
+            return
+        from asgiref.sync import sync_to_async
+
+        from apps.usage.instrument import report_llm_usage
+
+        await sync_to_async(report_llm_usage)(*self.usage)
+
     async def acomplete_structured(self, provider, messages, schema):
         """complete_structured의 async 대응(issue 191) — 같은 결정적 판정."""
-        return self.complete_structured(provider, messages, schema)
+        result = self.complete_structured(provider, messages, schema)
+        await self._report_usage()
+        return result
 
     async def astream_structured(self, provider, messages, schema):
         """stream_structured의 async 대응 — 같은 청크를 async로 yield."""
         for chunk in self.stream_structured(provider, messages, schema):
             yield chunk
+        await self._report_usage()
 
 
 @pytest.fixture(autouse=True)

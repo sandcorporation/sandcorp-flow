@@ -16,12 +16,22 @@ from apps.flows.schema import DEFAULT_HANDLE, Node, NodeKind
 
 
 class TraceEntry(TypedDict):
-    """한 턴에 지난 노드 하나. ``record``는 판단 기록 자리다(#24가 채운다)."""
+    """한 턴에 지난 노드 하나 — 판단 기록(Decision Trace)의 항목(#24).
+
+    ``record``는 핸들러가 채우는 노드별 입력·출력·분기 이유(``NodeOutcome.record``). 시간·토큰·비용은 실행기가 잰다.
+    ``cost_usd``는 USD 소수 문자열이고, 단가 표에 없는 모델의 호출이 있으면 None.
+    """
 
     node_id: str
     kind: str
     handle: str | None
     record: dict[str, object]
+    duration_ms: int
+    input_tokens: int
+    output_tokens: int
+    cost_usd: str | None
+    calls: list[dict[str, object]]
+    """노드 안에서 일어난 LLM 호출 ``{model, input_tokens, output_tokens, cost_usd}``."""
 
 
 class FlowState(ChatState):
