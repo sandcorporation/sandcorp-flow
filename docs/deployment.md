@@ -1,4 +1,4 @@
-# 배포 (oracle A1 무중단 롤링)
+# 배포 (oracle A1 무중단 롤링) — flow.sandcorp.co.kr
 
 실서버 **oracle**(Ampere A1, arm64, GPU 없음)에 무중단으로 배포하는 런북. 빌드는 **sub**(x86)에서
 GitHub Actions가, 배포는 **A1의 Jenkins**가 수행한다. 설계 근거는 [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md).
@@ -10,7 +10,7 @@ git push main
    │
    ▼  GitHub Actions (.github/workflows/build-images.yml)
 [build]  sub 러너(arm64-builder)에서 QEMU buildx로 linux/arm64 빌드
-         → GHCR: ghcr.io/sandcorporation/Sandcorp Flow-{api,admin,widget}:<sha> (+ latest)
+         → GHCR: ghcr.io/sandcorporation/sandcorp-flow-{api,admin,widget}:<sha> (+ latest)
    │
    ▼  [release]  release 브랜치를 <sha>로 force-update (내장 GITHUB_TOKEN)
    │
@@ -112,19 +112,44 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
 - 배포용 시크릿 **불필요** — release 갱신은 내장 `GITHUB_TOKEN`(contents:write).
 - A1 pull용 **classic PAT**(`read:packages`)만 A1의 `docker login`에 사용(org면 SSO authorize).
 
+## 메모리 상한 (`docker-compose.prod.oracle.yml`)
+
+운영 박스는 이미 컨테이너 55개가 도는 A1(4코어, 여유 메모리 약 8.7G)이라 이 스택은 **합계 약 3.2G 이하**로 묶는다.
+유휴 실측은 x86 로컬 빌드로 한 `docker stats`(전 서비스 기동·health 40회 호출 뒤): 합계 약 0.8G.
+
+| 서비스 | 상한 | 유휴 실측 | 근거 |
+|---|---|---|---|
+| db (pgvector) | 512M | 21M | shared_buffers 128MB + `max_connections=60`(앱 프로세스 합 ~15). 베타 규모 |
+| redis | 256M | 4M | `maxmemory 192mb` + `noeviction` — 브로커·스트림이라 evict 금지, 차면 쓰기 오류로 드러남 |
+| api | 512M | 161M | uvicorn 2 프로세스(async라 프로세스당 동시 SSE 다수). 1로 줄이면 롤아웃·이벤트루프 막힘 시 단일 장애점이라 2 유지 |
+| worker (Celery 배치) | 768M | 143M | `--concurrency=2`로 고정(기본은 코어 수=4 자식 상주). 인입은 문서 몇 건씩이라 2로 충분, 피크는 PDF·그래프 빌드 |
+| worker-chat (taskiq) | 512M | 151M | 프로세스 2 × 동시 25 유지 — LLM 대기 I/O 위주라 메모리가 아니라 동시성 한도 |
+| relay | 128M | 67M | outbox → Streams 중계, 1프로세스 |
+| worker-webhook · visitor-bridge · console-bridge · presence-bridge | 각 128M (512M) | 각 67M | `consume_events`가 프로세스당 그룹 1개만 받아 합칠 수 없다(코드 변경 필요, 이 티켓 범위 밖). 유휴가 작아 상한만 낮춤 |
+| nginx | 64M | 3M | 정적 서빙 + 프록시 |
+| **합계** | **3,264M** | ~0.8G | 목표 4G 이하 |
+
+워커 수 판단: 줄인 것은 Celery 자식(4 → 2)뿐이다. 챗 taskiq·api는 동시성이 곧 서비스 품질이고 유휴 메모리가 작아 그대로 둔다.
+bridge·relay 5개는 합치면 메모리를 ~250M 더 아끼지만 이벤트 소비 구조(ADR) 변경이라 후속 후보로만 남긴다.
+`deploy.resources.limits`는 compose v2가 컨테이너 cgroup 한도로 적용한다(swarm 아님).
+
 ## 환경변수 (`/opt/sandcorp-flow/.env`)
 
 | 키 | 필수 | 비고 |
 |---|---|---|
 | `DJANGO_SETTINGS_MODULE` | ✅ | **`config.settings.prod`** (없으면 dev 설정으로 뜸) |
 | `SECRET_KEY` | ✅ | Django 시크릿 **이자** 테넌트 provider 키 암호화 Fernet 키의 파생원([crypto.py](../backend/apps/tenants/crypto.py)). ⚠️ **절대 로테이트 금지** — 바꾸면 저장된 모든 테넌트 API 키가 복호화 불가. |
-| `ALLOWED_HOSTS` | ✅ | 쉼표구분 도메인(NPM 도메인) **+ `127.0.0.1,localhost`**(컨테이너 healthcheck·배포 스모크가 127.0.0.1로 친다 — 빠지면 400). |
+| `ALLOWED_HOSTS` | ✅ | `flow.sandcorp.co.kr`(쉼표구분) **+ `127.0.0.1,localhost`**(컨테이너 healthcheck·배포 스모크가 127.0.0.1로 친다 — 빠지면 400). |
 | `DB_HOST`·`DB_NAME`·`DB_USER`·`DB_PASSWORD`·`DB_PORT` | ✅ | `DB_HOST=db`, `DB_PORT=5432`. |
 | `REDIS_URL` | ✅ | `redis://redis:6379/0`. |
 | `EVENTS_TOPIC` | ✅ | EventBus(Streams) 토픽. |
-| `CSRF_TRUSTED_ORIGINS` | ○ | `https://도메인`(JWT API라 비필수). |
+| `CSRF_TRUSTED_ORIGINS` | ○ | `https://flow.sandcorp.co.kr`(JWT API라 비필수). |
+| `NGINX_PORT` | ○ | 호스트에 여는 nginx 포트(기본 8080). **이 박스는 컨테이너가 많으니 비어 있는 포트를 고르고** NPM Forward에 같은 값을 쓴다. |
 | `CHAT_STREAMING_ENABLED` | ○ | 기본 on. 토큰 스트리밍 킬스위치. |
 | `CHAT_RATE_LIMIT_PER_TENANT`·`_PER_VISITOR` | ○ | 레이트리밋. |
+
+> 쿠키·HTTPS·CORS는 env가 아니라 코드(`config/settings/prod.py`·`base.py`)에 고정돼 있다: `SESSION_COOKIE_SECURE`·`CSRF_COOKIE_SECURE`·`SECURE_SSL_REDIRECT` 켜짐(NPM의 `X-Forwarded-Proto` 신뢰), CORS는 위젯이 고객 사이트에 임베드되므로 모든 출처 허용(Bearer JWT, 쿠키 인증 아님). `/api/health`만 SSL 리다이렉트에서 제외.
+> `AUTH_*`(#20·#21, sandcorp-auth)·`PLATFORM_*`(#39, 플랫폼 OpenAI 키)는 해당 티켓이 이름을 정해 `.env.prod.example`에 더한다. 그 전까지 운영 `.env`에 넣지 않는다.
 
 > prod는 `PLATFORM_DEFAULT_PROVIDERS_ENABLED=False`라 `OPEN_ROUTER_*`·`OLLAMA_*`는
 > 불필요 — 테넌트가 자기 LLM·Embedding·OCR Provider를 설정한다(ADR-0012). 미설정 테넌트는 인입·검색이
@@ -159,6 +184,24 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
 ```
 - env 미설정이면 앱은 **완전 no-op**(코드는 가드형). `LANGFUSE_CAPTURE_CONTENT=false`로 본문 마스킹.
 - 전용 데이터스토어(postgres·redis·clickhouse·minio)라 운영 pg/redis와 분리. Clickhouse가 메모리를 쓰므로 A1 여유 확인.
+
+## 서버 쪽 할 일 (대장 체크리스트)
+
+저장소 밖에서 사람이 하는 일. 값은 쓰지 않고 이름만 적는다.
+
+1. **DNS**: `flow.sandcorp.co.kr` A 레코드 → NPM이 있는 A1 공인 IP(다른 sandcorp.co.kr 서브도메인과 같은 방식).
+2. **A1 호스트 준비(1회)**
+   - [ ] `git clone git@github.com:sandcorporation/sandcorp-flow.git /opt/sandcorp-flow` (이미 있으면 생략)
+   - [ ] `cp .env.prod.example .env` 후 아래 필수 키를 채운다. 파일 권한 600.
+   - [ ] `docker login ghcr.io`(Jenkins 실행 유저, `read:packages` PAT) 확인. 이미지 이름은 `sandcorp-flow-{api,admin,widget}`.
+   - [ ] `docker rollout` 플러그인이 Jenkins 컨테이너에 있는지 확인(이미 다른 잡이 쓰면 생략).
+3. **운영 `.env` 필수 키**(이름만): `DJANGO_SETTINGS_MODULE=config.settings.prod`, `SECRET_KEY`(생성 후 **영구 고정**), `ALLOWED_HOSTS`(`flow.sandcorp.co.kr,127.0.0.1,localhost`), `CSRF_TRUSTED_ORIGINS`(`https://flow.sandcorp.co.kr`), `DB_HOST`·`DB_PORT`·`DB_NAME=sandcorp_flow`·`DB_USER`·`DB_PASSWORD`, `REDIS_URL`, `EVENTS_TOPIC`, `NGINX_PORT`. 이후 티켓이 더할 이름: `AUTH_*`(#20·#21), `PLATFORM_*`(#39).
+4. **NGINX_PORT 정하기**: 박스에서 비어 있는 호스트 포트(`ss -ltn`)를 골라 `.env`에 쓴다. Oracle 보안목록에는 열지 않는다.
+5. **NPM**: Proxy Host `flow.sandcorp.co.kr` → Forward `<A1 호스트>:<NGINX_PORT>`(http), Websockets 켬, SSL Let's Encrypt + Force SSL, Advanced 칸에 `proxy_buffering off; proxy_request_buffering off; proxy_read_timeout 3600s;`(SSE).
+6. **Jenkins 잡**: 위 「Jenkins」 절의 freestyle 잡을 이 저장소용으로 새로 만든다(SCM `git@github.com:sandcorporation/sandcorp-flow.git`, 브랜치 `*/release`, Clean before checkout 끔, GitHub hook trigger, Execute shell은 위 스크립트에서 `DEPLOY_DIR=/opt/sandcorp-flow`). 저장소 쪽 GitHub 웹훅(Settings → Webhooks)에 Jenkins `/github-webhook/` 주소, 이벤트는 push.
+7. **sandcorp-auth 등록**(#20·#21에서 확정, 미리 알아 둘 것): 이 서비스의 공개 주소 `https://flow.sandcorp.co.kr`를 허용 출처/리디렉션 대상으로 등록하고, 발급받은 값은 `AUTH_*` env 이름(그 티켓이 정함)으로만 운영 `.env`에 넣는다.
+8. **첫 배포 확인**: `main` push → Actions 3개 이미지 빌드 → `release` 갱신 → Jenkins 실행. 끝나면 `curl -sI https://flow.sandcorp.co.kr/api/health`가 200, `https://flow.sandcorp.co.kr/admin-ui/`가 열리는지, `docker compose -f docker-compose.prod.oracle.yml ps`에서 전부 Up/healthy인지, `docker stats --no-stream`이 위 상한 안인지 본다.
+9. **Operator 계정**: 첫 배포 뒤 `docker compose -f docker-compose.prod.oracle.yml exec api python manage.py createsuperuser`(README 6절과 같은 방식). 인증이 sandcorp-auth로 넘어가면(#20) 그 티켓 문서를 따른다.
 
 ## 관련 문서
 - [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md) — 무중단 롤링 설계·기각안

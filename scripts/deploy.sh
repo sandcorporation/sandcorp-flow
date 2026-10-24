@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# oracle(Ampere A1) 무중단 배포 — GitHub Actions deploy job이 SSH로 호출한다(ADR-0015).
+# oracle(Ampere A1) 무중단 배포 — A1의 Jenkins가 release 브랜치 웹훅을 받아 Execute shell에서 호출한다(ADR-0015).
 #
 # 사용법(원격 A1에서): IMAGE_TAG=<git-sha> bash scripts/deploy.sh <git-sha>
 #
 # 전제(A1 호스트에 1회 준비):
 #   - docker + compose v2 + `docker rollout` 플러그인(https://github.com/wowu/docker-rollout)
 #   - `docker login ghcr.io`(read:packages PAT) — pull 인증, ~/.docker/config.json에 영속
-#   - 이 repo가 $DEPLOY_PATH에 clone돼 있고 워크플로우가 배포 SHA로 checkout함
-#   - .env(SECRET_KEY·DB_PASSWORD·Fernet 키·ALLOWED_HOSTS 등) 호스트에 상주(이미지·git 제외)
+#   - 이 repo가 /opt/sandcorp-flow에 clone돼 있고 Jenkins가 release 브랜치의 SHA로 reset --hard 한 뒤 부른다
+#   - .env(SECRET_KEY·DB_PASSWORD·ALLOWED_HOSTS 등, 이름은 .env.prod.example) 호스트에 상주(이미지·git 제외)
 #   - docker-compose.prod.oracle.yml(이미지 GHCR 참조 + ${IMAGE_TAG} 핀)
 #
 # 무중단 원리: stateless 앱(api·worker·worker-chat)만 `docker rollout`으로 start-first 교체.
@@ -16,6 +16,11 @@
 set -euo pipefail
 
 GIT_SHA="${1:?usage: deploy.sh <git-sha>}"
+
+if [ ! -f .env ]; then
+  echo ".env가 없다. .env.prod.example을 복사해 채워 두어야 한다(docs/deployment.md)." >&2
+  exit 1
+fi
 export IMAGE_TAG="$GIT_SHA"
 
 COMPOSE_FILE="docker-compose.prod.oracle.yml"

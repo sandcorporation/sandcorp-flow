@@ -29,6 +29,8 @@ services:
       POSTGRES_DB: ${DB_NAME:-sandcorp_flow}
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    # 메모리 상한 안에서 도는 값 — shared_buffers 128MB(기본), 연결은 앱 프로세스 합(~15)에 여유를 둔 60.
+    command: postgres -c shared_buffers=128MB -c max_connections=60 -c work_mem=4MB
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -37,9 +39,15 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   redis:
     image: redis:7-alpine
+    # 브로커·스트림·레이트리밋 저장소라 evict하면 작업이 사라진다 → noeviction(가득 차면 쓰기 오류로 드러낸다).
+    command: redis-server --maxmemory 192mb --maxmemory-policy noeviction
     volumes:
       - redis_data:/data
     healthcheck:
@@ -51,7 +59,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 256M
 
   api:
     <<: *backend
@@ -69,11 +77,12 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 512M
 
   worker:
     <<: *backend
-    command: celery -A config.celery worker --loglevel=info
+    # 기본 concurrency=호스트 코어 수(A1 4)라 자식 4개가 상주한다 → 2로 고정(배치는 인입 몇 건뿐인 베타).
+    command: celery -A config.celery worker --loglevel=info --concurrency=2
     volumes:
       - media:/app/media
     # 배치 드레인 — grace를 넘겨 SIGKILL돼도 재배달로 유실 0이 되려면 backend가 acks_late=True여야
@@ -82,7 +91,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 768M
 
   worker-chat:
     <<: *backend
@@ -96,7 +105,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 512M
 
   relay:
     <<: *backend
@@ -105,7 +114,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 128M
 
   worker-webhook:
     <<: *backend
@@ -113,7 +122,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 128M
 
   worker-visitor-bridge:
     <<: *backend
@@ -121,7 +130,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 128M
 
   worker-console-bridge:
     <<: *backend
@@ -129,7 +138,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 128M
 
   worker-presence-bridge:
     <<: *backend
@@ -137,7 +146,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 128M
 
   # 정적 SPA 빌드 산출물을 볼륨에 복사하고 종료(one-shot). nginx가 그 볼륨을 서빙.
   widget-init:
@@ -173,7 +182,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: 64M
 
 volumes:
   postgres_data:
