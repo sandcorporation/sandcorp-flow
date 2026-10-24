@@ -50,6 +50,37 @@
         "title": "ChunkOut",
         "type": "object"
       },
+      "Connect": {
+        "additionalProperties": false,
+        "description": "선 하나. 같은 (from, handle)에 선이 있으면 그 선의 to를 바꾼다(한 갈래에 선 하나).",
+        "properties": {
+          "from": {
+            "title": "From",
+            "type": "string"
+          },
+          "handle": {
+            "default": "next",
+            "title": "Handle",
+            "type": "string"
+          },
+          "op": {
+            "const": "connect",
+            "title": "Op",
+            "type": "string"
+          },
+          "to": {
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "from",
+          "to"
+        ],
+        "title": "Connect",
+        "type": "object"
+      },
       "DailyPoint": {
         "properties": {
           "date": {
@@ -66,6 +97,23 @@
           "total_tokens"
         ],
         "title": "DailyPoint",
+        "type": "object"
+      },
+      "DecisionIn": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "DecisionIn",
         "type": "object"
       },
       "DecisionTracesOut": {
@@ -153,6 +201,152 @@
         "title": "DecisionTurnOut",
         "type": "object"
       },
+      "DeleteNode": {
+        "additionalProperties": false,
+        "description": "노드와 그 노드에 닿은 선을 모두 지운다.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "op": {
+            "const": "delete_node",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "id"
+        ],
+        "title": "DeleteNode",
+        "type": "object"
+      },
+      "DeployIn": {
+        "properties": {
+          "version": {
+            "minimum": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "DeployIn",
+        "type": "object"
+      },
+      "DeployOut": {
+        "properties": {
+          "deployed": {
+            "title": "Deployed",
+            "type": "boolean"
+          },
+          "flow": {
+            "$ref": "#/components/schemas/FlowOut"
+          },
+          "request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeployRequestOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "deployed",
+          "flow"
+        ],
+        "title": "DeployOut",
+        "type": "object"
+      },
+      "DeployRequestOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By Name"
+          },
+          "decision_note": {
+            "title": "Decision Note",
+            "type": "string"
+          },
+          "flow_id": {
+            "title": "Flow Id",
+            "type": "string"
+          },
+          "flow_name": {
+            "title": "Flow Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "requested_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By Name"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "superseded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "flow_id",
+          "flow_name",
+          "version",
+          "status",
+          "decision_note",
+          "created_at"
+        ],
+        "title": "DeployRequestOut",
+        "type": "object"
+      },
       "DetailOut": {
         "properties": {
           "detail": {
@@ -164,6 +358,32 @@
           "detail"
         ],
         "title": "DetailOut",
+        "type": "object"
+      },
+      "Disconnect": {
+        "additionalProperties": false,
+        "description": "(from, handle)에서 나가는 선을 지운다.",
+        "properties": {
+          "from": {
+            "title": "From",
+            "type": "string"
+          },
+          "handle": {
+            "default": "next",
+            "title": "Handle",
+            "type": "string"
+          },
+          "op": {
+            "const": "disconnect",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "from"
+        ],
+        "title": "Disconnect",
         "type": "object"
       },
       "DocumentOut": {
@@ -205,6 +425,64 @@
           "name"
         ],
         "title": "DocumentPatchIn",
+        "type": "object"
+      },
+      "DraftOut": {
+        "properties": {
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/FlowErrorOut"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "graph": {
+            "additionalProperties": true,
+            "title": "Graph",
+            "type": "object"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "graph",
+          "errors",
+          "valid"
+        ],
+        "title": "DraftOut",
+        "type": "object"
+      },
+      "DraftPatchIn": {
+        "properties": {
+          "ops": {
+            "items": {
+              "$ref": "#/components/schemas/PatchOp"
+            },
+            "minItems": 1,
+            "title": "Ops",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ops"
+        ],
+        "title": "DraftPatchIn",
+        "type": "object"
+      },
+      "DraftPutIn": {
+        "properties": {
+          "graph": {
+            "additionalProperties": true,
+            "title": "Graph",
+            "type": "object"
+          }
+        },
+        "required": [
+          "graph"
+        ],
+        "title": "DraftPutIn",
         "type": "object"
       },
       "EscalationMessageOut": {
@@ -271,6 +549,155 @@
           "created_at"
         ],
         "title": "EscalationOut",
+        "type": "object"
+      },
+      "FlowCreateIn": {
+        "properties": {
+          "graph": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graph"
+          },
+          "name": {
+            "maxLength": 255,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "FlowCreateIn",
+        "type": "object"
+      },
+      "FlowDetailOut": {
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/DraftOut"
+          },
+          "flow": {
+            "$ref": "#/components/schemas/FlowOut"
+          },
+          "pending_request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeployRequestOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/VersionOut"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "flow",
+          "draft",
+          "versions"
+        ],
+        "title": "FlowDetailOut",
+        "type": "object"
+      },
+      "FlowErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Id"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "FlowErrorOut",
+        "type": "object"
+      },
+      "FlowOut": {
+        "properties": {
+          "deployed_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deployed Version"
+          },
+          "has_pending_request": {
+            "default": false,
+            "title": "Has Pending Request",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_public": {
+            "title": "Is Public",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "is_public",
+          "deployed_version",
+          "updated_at"
+        ],
+        "title": "FlowOut",
+        "type": "object"
+      },
+      "FlowRenameIn": {
+        "properties": {
+          "name": {
+            "maxLength": 255,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "FlowRenameIn",
         "type": "object"
       },
       "GraphEdge": {
@@ -474,6 +901,37 @@
         ],
         "title": "InviteOut",
         "type": "object"
+      },
+      "JSON": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JSON"
+            },
+            "type": "object"
+          },
+          {
+            "items": {
+              "$ref": "#/components/schemas/JSON"
+            },
+            "type": "array"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
       },
       "LoginOut": {
         "properties": {
@@ -797,6 +1255,31 @@
         "title": "OperatorUsageOut",
         "type": "object"
       },
+      "PatchOp": {
+        "discriminator": {
+          "mapping": {
+            "connect": "#/components/schemas/Connect",
+            "delete_node": "#/components/schemas/DeleteNode",
+            "disconnect": "#/components/schemas/Disconnect",
+            "upsert_node": "#/components/schemas/UpsertNode"
+          },
+          "propertyName": "op"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/UpsertNode"
+          },
+          {
+            "$ref": "#/components/schemas/DeleteNode"
+          },
+          {
+            "$ref": "#/components/schemas/Connect"
+          },
+          {
+            "$ref": "#/components/schemas/Disconnect"
+          }
+        ]
+      },
       "ProviderModelsIn": {
         "properties": {
           "api_key": {
@@ -883,6 +1366,40 @@
           "new_tenant_key"
         ],
         "title": "ResetKeyOut",
+        "type": "object"
+      },
+      "SaveVersionIn": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "SaveVersionIn",
+        "type": "object"
+      },
+      "SaveVersionOut": {
+        "properties": {
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "version": {
+            "$ref": "#/components/schemas/VersionOut"
+          }
+        },
+        "required": [
+          "version",
+          "created"
+        ],
+        "title": "SaveVersionOut",
         "type": "object"
       },
       "SelectTenantIn": {
@@ -1018,6 +1535,17 @@
               }
             ],
             "title": "Brand Name"
+          },
+          "deploy_requires_approval": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deploy Requires Approval"
           },
           "embed_api_key": {
             "anyOf": [
@@ -1321,6 +1849,11 @@
             "title": "Brand Name",
             "type": "string"
           },
+          "deploy_requires_approval": {
+            "default": false,
+            "title": "Deploy Requires Approval",
+            "type": "boolean"
+          },
           "embed_api_key": {
             "title": "Embed Api Key",
             "type": "string"
@@ -1612,6 +2145,32 @@
         "title": "TenantUsageOut",
         "type": "object"
       },
+      "TestTurnIn": {
+        "properties": {
+          "message": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "TestTurnIn",
+        "type": "object"
+      },
       "TrialOut": {
         "properties": {
           "limit": {
@@ -1640,6 +2199,95 @@
           "limit"
         ],
         "title": "TrialOut",
+        "type": "object"
+      },
+      "UpsertNode": {
+        "additionalProperties": false,
+        "description": "노드를 더하거나(새 id) 고친다(있는 id — 준 필드만 바꾸고 config는 통째로 바꾼다).",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "N-01 꼴 코드(새 노드면 필수)",
+            "title": "Code"
+          },
+          "config": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JSON"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "노드 config 전체(부분 병합 아님)",
+            "title": "Config"
+          },
+          "id": {
+            "description": "노드 id",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "노드 종류(새 노드면 필수)",
+            "title": "Kind"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "op": {
+            "const": "upsert_node",
+            "title": "Op",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "{x, y}",
+            "title": "Position"
+          }
+        },
+        "required": [
+          "op",
+          "id"
+        ],
+        "title": "UpsertNode",
         "type": "object"
       },
       "UrlsIn": {
@@ -1689,6 +2337,102 @@
           "request_count"
         ],
         "title": "UsageBucket",
+        "type": "object"
+      },
+      "VersionDetailOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          },
+          "deployed": {
+            "title": "Deployed",
+            "type": "boolean"
+          },
+          "graph": {
+            "additionalProperties": true,
+            "title": "Graph",
+            "type": "object"
+          },
+          "hash": {
+            "title": "Hash",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "number",
+          "note",
+          "hash",
+          "created_at",
+          "deployed",
+          "graph"
+        ],
+        "title": "VersionDetailOut",
+        "type": "object"
+      },
+      "VersionOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          },
+          "deployed": {
+            "title": "Deployed",
+            "type": "boolean"
+          },
+          "hash": {
+            "title": "Hash",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "number",
+          "note",
+          "hash",
+          "created_at",
+          "deployed"
+        ],
+        "title": "VersionOut",
         "type": "object"
       },
       "VisitorOut": {
@@ -2509,6 +3253,155 @@
         ]
       }
     },
+    "/api/tenant/deploy-requests/": {
+      "get": {
+        "operationId": "apps_flows_api_deploy_requests_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "approved",
+                    "rejected",
+                    "superseded"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeployRequestOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Deploy Requests List",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/api/tenant/deploy-requests/{request_id}/approve/": {
+      "post": {
+        "description": "승인하면 그 버전이 배포된다. 요청자 본인은 403(다른 Admin 또는 TENANT_KEY).",
+        "operationId": "apps_flows_api_deploy_requests_approve",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeployRequestOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Deploy Requests Approve",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/api/tenant/deploy-requests/{request_id}/reject/": {
+      "post": {
+        "operationId": "apps_flows_api_deploy_requests_reject",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeployRequestOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Deploy Requests Reject",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
     "/api/tenant/documents/": {
       "get": {
         "operationId": "apps_rag_api_list_documents",
@@ -3232,6 +4125,523 @@
         "summary": "Send Typing Indicator",
         "tags": [
           "escalations"
+        ]
+      }
+    },
+    "/api/tenant/flows/": {
+      "get": {
+        "operationId": "apps_flows_api_flows_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FlowOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows List",
+        "tags": [
+          "flows"
+        ]
+      },
+      "post": {
+        "operationId": "apps_flows_api_flows_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Create",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/api/tenant/flows/{flow_id}/": {
+      "get": {
+        "operationId": "apps_flows_api_flows_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Get",
+        "tags": [
+          "flows"
+        ]
+      },
+      "patch": {
+        "operationId": "apps_flows_api_flows_rename",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowRenameIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Rename",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/api/tenant/flows/{flow_id}/deploy/": {
+      "post": {
+        "description": "배포. 테넌트가 승인을 요구하면 배포하지 않고 배포 요청을 만들어 202로 돌려준다.",
+        "operationId": "apps_flows_api_flows_deploy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeployIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeployOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeployOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Deploy",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/api/tenant/flows/{flow_id}/draft/": {
+      "patch": {
+        "description": "노드/선 패치(MCP update_flow와 같은 연산 목록). 하나라도 적용 못 하면 422, 아무것도 저장되지 않는다.",
+        "operationId": "apps_flows_api_flows_patch_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Patch Draft",
+        "tags": [
+          "flows"
+        ]
+      },
+      "put": {
+        "description": "편집기 통째 저장. 틀려도 저장하고 검증 결과를 돌려준다.",
+        "operationId": "apps_flows_api_flows_put_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftPutIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Put Draft",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/api/tenant/flows/{flow_id}/rollback/": {
+      "post": {
+        "description": "배포 중 버전의 바로 앞 버전을 다시 배포한다(긴급 복구라 승인 규칙 제외).",
+        "operationId": "apps_flows_api_flows_rollback",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Rollback",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/api/tenant/flows/{flow_id}/test/": {
+      "post": {
+        "description": "초안으로 시험 한 턴을 돌려 SSE로 흘려보낸다. 실제 사람 넘김·알림은 없고 세션은 ``is_test``다.\n\n이벤트: ``start``{flow_id} → ``trace``{노드 항목}×N → ``reply``{text} → ``done``{ran, handoff, note, errors, session_id}.\n초안이 무효이면 ``trace``·``reply`` 없이 ``done``(ran=false, errors)만 온다. 판단 기록 전체는 ``session_id``로\n``GET /api/tenant/sessions/{id}/decision-traces``에서 다시 읽는다. 체험 턴을 1 쓴다(ADR-0026).",
+        "operationId": "apps_flows_api_flows_test_conversation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestTurnIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Flows Test Conversation",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/api/tenant/flows/{flow_id}/versions/": {
+      "get": {
+        "operationId": "apps_flows_api_flows_list_versions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VersionOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows List Versions",
+        "tags": [
+          "flows"
+        ]
+      },
+      "post": {
+        "description": "초안을 새 버전으로 굳힌다(note는 만들 때만). 마지막 버전과 같으면 200 created=false.",
+        "operationId": "apps_flows_api_flows_save_version",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveVersionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveVersionOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveVersionOut"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Save Version",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/api/tenant/flows/{flow_id}/versions/{number}/": {
+      "get": {
+        "operationId": "apps_flows_api_flows_get_version",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Get Version",
+        "tags": [
+          "flows"
         ]
       }
     },

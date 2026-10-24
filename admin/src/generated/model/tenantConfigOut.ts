@@ -9,6 +9,7 @@ import type { TenantConfigOutHitlSchedule } from './tenantConfigOutHitlSchedule'
 export interface TenantConfigOut {
   agent_display_name: string;
   brand_name: string;
+  deploy_requires_approval?: boolean;
   embed_api_key: string;
   embed_base_url: string;
   embed_dim: number;

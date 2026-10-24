@@ -254,7 +254,7 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 - **Operator 프로비저닝**: Operator로 로그인 → **Tenant 추가** → `TENANT_KEY`와 **첫 Admin 초대 링크**가 **1회** 표시. 링크를 고객에게 직접 전달하면, 고객이 그 링크로 로그인해 Admin이 됩니다. `TENANT_KEY`는 해시만 저장(분실 시 재발급), HMAC 신원검증 API·break-glass에만 사용(브라우저 비노출). 마지막 Admin이 탈퇴한 Tenant는 목록에 **「주인 없음」** 배지(활성 Admin 0)가 붙고, 「주인 없음만 보기」 필터와 행의 **Admin 초대 링크 만들기**(7일·1회용)로 복구합니다.
 
 ### 권한 (Tenant Admin / Tenant Member)
-- 멤버(Membership)는 **Admin / Member** 역할을 가집니다(권한 비트 기반, ADR-0025). **Admin은 전 권한**, **Member는 팀원 관리·`TENANT_KEY` 회전·Slug 변경만 제외한 전부**(문서·HITL·프롬프트/HITL 설정·Provider 키·조회 등 일상 운영은 다 가능).
+- 멤버(Membership)는 **Admin / Member** 역할을 가집니다(권한 비트 기반, ADR-0025). **Admin은 전 권한**, **Member는 팀원 관리·`TENANT_KEY` 회전·Slug 변경·흐름 편집/배포/승인(`flow.edit`·`flow.deploy`·`flow.approve`)만 제외한 전부**(문서·HITL·프롬프트/HITL 설정·Provider 키·조회, 흐름 읽기 등 일상 운영은 다 가능).
 - **팀원 탭**: Admin이 **초대 링크**(역할 지정·7일·1회용, 이메일 발송 없음)를 만들고(만료 시각 표시·복사) 직접 전달합니다. 아직 쓰이지 않은 초대는 **대기 중인 초대**에서 취소하고, 팀원은 이름 → 이메일 → sub 끝 6자리로 보이며 승격/강등·**내보내기**(비활성화)를 합니다. **마지막 활성 Admin은 비활성화·강등 불가**(lockout 방지). Admin 전체가 사라지는 사고는 `TENANT_KEY`로 `POST /api/tenant/invites/ {"role":"admin"}` — Admin 초대 링크를 발급해 복구(break-glass). Member에겐 팀원 관리·키 재발급·Slug 변경 컨트롤이 숨겨집니다.
 
 ### Tenant 운영 (멤버)
@@ -265,7 +265,7 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 
 ### MCP — claude.ai에서 흐름 다루기 (#74)
 - **연결**: claude.ai → 설정 → 커넥터 → 사용자 지정 커넥터 추가 → URL `https://flow.sandcorp.co.kr/mcp`. 커넥터가 `/.well-known/oauth-protected-resource/mcp`를 읽고 sandcorp-auth로 로그인시킨다(일반 사용자 member 토큰, `aud`=`AUTH_MCP_RESOURCE`, 스코프 `flow.read`·`flow.write`). auth 쪽 등록은 [docs/deployment.md](./docs/deployment.md) 「서버 쪽 할 일」 11번.
-- **권한**: 스코프는 상한이고 실제 판정은 멤버십 역할 — 테넌트 **Admin만 편집·배포**, Member는 읽기. 대표 계정도 멤버십이 있는 테넌트만 보인다(Operator 기능 없음).
+- **권한**: 스코프는 상한이고 실제 판정은 멤버십 역할 — 테넌트 **Admin만 편집·배포**, Member는 읽기(판정은 권한 비트 `flow.edit`, HTTP 흐름 API와 같은 규칙). 테넌트가 「배포에 승인 필요」를 켰으면 `deploy_version`은 배포 대신 요청을 만들고 `approval_required=true`·`request_id`를 돌려준다(다른 Admin이 승인). 대표 계정도 멤버십이 있는 테넌트만 보인다(Operator 기능 없음).
 - **테넌트 고르기**: 테넌트 도구는 `tenant`(slug) 인자를 받고, 멤버십이 하나면 생략한다. `list_tenants`가 내 테넌트·역할을 보여 준다.
 - **도구**(지금): `list_tenants`, `get_flow_schema`(흐름 JSON 규칙 — 흐름을 고치기 전에 한 번 읽는다), 흐름 도구(#76) `list_flows`·`get_flow`(초안·검증 결과·버전 목록, `version`으로 버전 JSON) — 여기까지 읽기, `create_flow`·`update_flow`·`save_version`·`deploy_version`·`test_turn` — 쓰기(Admin). 문서·지식그래프·상담 읽기 도구는 #77.
 - **읽기 도구**(#77, 모두 `flow.read`·모든 멤버): `list_documents`(문서 이름·상태·오류·갱신 시각 + 지식그래프 신선도, 커서 쪽), `search_knowledge`(질의 → 엔티티·1홉 관계, 챗봇 Local Search와 같은 `apps/rag/services.py`; `top_k` ≤ 20, 엔티티당 관계 20개까지), `list_sessions`(기간 `since`/`until`·`status` all|escalated|active, 커서 쪽), `get_session`(메시지·사람 넘김 이력·고정된 흐름 버전; 메시지 `limit` ≤ 200 + 커서, 메시지당 2000자까지). 시험 한 턴 세션(`is_test`)은 목록·읽기 모두에서 빠진다. 세션 콘솔과 같은 쿼리를 `apps/memory/services.py`에서 공유한다.
@@ -301,8 +301,14 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 | `POST /api/chat/identity` | TENANT_KEY | visitor_id 신원검증 HMAC 해시 발급 |
 | `GET /api/chat/stream?slug=&visitor_id=&hash=` | 없음(slug 공개) | 방문자 SSE 연결(ChatSession) |
 | `POST /api/chat/message` | 세션 | 방문자 메시지(레이트리밋, SSE로 응답) |
+| `GET·POST /api/tenant/flows/` · `GET·PATCH …/{id}/` | 멤버(쓰기는 Admin) / TENANT_KEY | 흐름 목록·생성·상세(초안+검증 결과+버전 목록+대기 중 배포 요청)·이름 변경 (#28, `apps/flows/api.py` — 공용 서비스 층을 감쌀 뿐) |
+| `PUT·PATCH /api/tenant/flows/{id}/draft/` | Admin / TENANT_KEY | 초안 통째 저장(틀려도 저장, 검증 결과 반환) · 노드/선 패치(MCP `update_flow`와 같은 연산 목록, 하나라도 안 되면 422·무변경) |
+| `GET·POST /api/tenant/flows/{id}/versions/` · `GET …/versions/{n}/` | 멤버 / 저장은 Admin | 버전 목록·조회(`note` 포함)·저장(`{note?}`, 검증 실패 422 `errors`, 같은 해시면 200 `created=false`) |
+| `POST /api/tenant/flows/{id}/deploy/` · `…/rollback/` | Admin / TENANT_KEY | 배포 `{version}` — 승인 필요 테넌트면 배포 대신 배포 요청을 만들어 **202**. 되돌리기는 승인 제외 |
+| `GET /api/tenant/deploy-requests/?status=` · `POST …/{id}/approve\|reject/` | 멤버(목록) / Admin 승인·거절 | 배포 요청 목록·승인(그 버전 배포)·거절. 요청자 본인 승인은 403 `self_approval`, 이미 처리됐으면 409 |
+| `POST /api/tenant/flows/{id}/test/` | Admin / TENANT_KEY | **시험 대화(SSE, POST)** — 초안으로 한 턴. 이벤트 `start`→`trace`×N→`reply`→`done`{ran·handoff·note·errors·session_id}. 사람 넘김 알림 없음(`is_test` 세션), 체험 턴 1 사용. 판단 기록은 `session_id`로 `GET …/sessions/{id}/decision-traces` |
 | `PATCH /api/tenant/slug/` | 멤버 세션 | Tenant Slug 설정 |
-| `PATCH /api/tenant/config/` | 멤버 세션 | 설정(Provider·HITL·brand·신원검증 등). 임베딩 Provider 변경 시 재임베딩 트리거 |
+| `PATCH /api/tenant/config/` | 멤버 세션 | 설정(Provider·HITL·brand·신원검증·**`deploy_requires_approval`(Admin만, #28)** 등). 임베딩 Provider 변경 시 재임베딩 트리거 |
 | `POST /api/tenant/documents/` | 멤버 세션 | 파일 업로드(PDF·TXT·이미지·Excel) |
 | `POST /api/tenant/documents/url` | 멤버 세션 | 웹 URL(들) 인제스션 |
 | `POST /api/tenant/documents/{id}/refetch` | 멤버 세션 | 웹 Document 재-fetch |
