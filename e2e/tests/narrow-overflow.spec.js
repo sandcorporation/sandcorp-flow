@@ -193,7 +193,13 @@ for (const [name, size] of [['390', { width: 390, height: 844 }], ['데스크톱
       await page.waitForTimeout(1500)
       const mainOverflows = await page.evaluate(() => { const m = document.querySelector('main'); const d = document.documentElement; return m.scrollHeight > m.clientHeight || d.scrollHeight > d.clientHeight })
       if (short) expect(mainOverflows).toBe(true) // 시험이 의미를 가지려면 main 또는 문서가 스크롤 가능해야 한다
-      expect(await scrolledAncestors(page)).toEqual([])
+      if (SHOTS) {
+        fs.mkdirSync(SHOTS, { recursive: true })
+        await page.screenshot({ path: path.join(SHOTS, `${process.env.SHOT_TAG || 'after'}-hitl-${name}-${short ? 'short' : 'long'}.png`) })
+      }
+      const scrolled = await scrolledAncestors(page)
+      if (SHOTS) console.log('SCROLLED', name, short ? 'short' : 'long', JSON.stringify(scrolled))
+      expect(scrolled).toEqual([])
       await expect(page.getByRole('heading', { name: /상담 콘솔/ })).toBeInViewport()
     })
   }
