@@ -12,10 +12,24 @@ const SHOTS = process.env.SHOTS_DIR // 있으면 화면마다 스크린샷을 �
 // 표 래퍼(overflow-auto) 안쪽에서 가로 스크롤이 생기면 페이지는 0이어도 내용이 잘리기 때문이다.
 // 표마다 긴 이름·작업 버튼이 많은 행을 일부러 넣어 빈 표로 통과하지 못하게 한다.
 const LONG = '아주긴고객사이름주식회사샌드코퍼레이션글로벌솔루션즈-2026-서울지점-LongNameWithoutSpaces'
-const PARAMS = { ':visitorId': 'v-long-0001', ':sessionId': 's-long-0001', ':escalationId': 'e-long-0001' }
+const PARAMS = { ':visitorId': 'v-long-0001', ':sessionId': 's-long-0001', ':escalationId': 'e-long-0001', ':id': 'f-long-0001' }
 const T0 = '2026-10-01T09:00:00Z'
 
+const FLOW_NODES = [
+  { id: 'start', kind: 'start', code: 'N-01', name: '시작', position: { x: 0, y: 0 }, config: {} },
+  { id: 'ai_1', kind: 'ai_answer', code: 'N-02', name: LONG, position: { x: 240, y: 0 }, config: { instructions: LONG } },
+  { id: 'guard_1', kind: 'guardrail', code: 'N-03', name: '검사', position: { x: 480, y: 0 }, config: { rules: ['pii'], action: 'block', target: 'output' } },
+  { id: 'human_1', kind: 'handoff', code: 'N-04', name: '상담원', position: { x: 720, y: 0 }, config: { reason: '' } },
+]
+const FLOW_OUT = { id: 'f-long-0001', name: LONG, is_public: false, deployed_version: 2, updated_at: T0, has_pending_request: false }
+
 const FIXTURES = [
+  [/\/api\/tenant\/flows\/$/, [FLOW_OUT]],
+  [/\/api\/tenant\/flows\/[^/]+\/$/, {
+    flow: FLOW_OUT,
+    draft: { graph: { nodes: FLOW_NODES, edges: [{ from: 'start', to: 'ai_1' }] }, valid: false, errors: [{ node_id: 'guard_1', code: 'unreachable_node', message: LONG }] },
+    versions: [], pending_request: null,
+  }],
   [/\/api\/operator\/tenants\/$/, [
     { id: 't1', name: LONG, is_active: true, created_at: T0, active_admin_count: 0 },
     { id: 't2', name: '정지된 고객사', is_active: false, created_at: T0, active_admin_count: 1 },
@@ -74,6 +88,7 @@ async function overflowing(page) {
     if (de.scrollWidth > de.clientWidth) out.push(`html ${de.scrollWidth}>${de.clientWidth}`)
     for (const el of document.body.querySelectorAll('*')) {
       if (el.closest('svg')) continue // 차트 글자는 svg 안에서 따로 그려진다
+      if (el.closest('.react-flow')) continue // 편집기 캔버스 안은 이동·확대되는 좌표계 — 자르는 컨테이너(overflow-hidden)가 폭을 막고, 그 바깥은 문서 검사가 본다(#29)
       if (el.scrollWidth > el.clientWidth && el.clientWidth > 0 && getComputedStyle(el).display !== 'inline') {
         const r = el.getBoundingClientRect()
         if (r.width === 0 || getComputedStyle(el).visibility === 'hidden') continue
