@@ -218,3 +218,18 @@ def test_example_flow_built_by_patches_then_trimmed_to_handlers_deploys_and_runs
     }))
     assert handoff["handoff"] is True and handoff["session_id"] == turn["session_id"]
     assert [t["node_id"] for t in handoff["trace"]] == ["start", "cases", "general", "handoff"]
+
+
+@pytest.mark.django_db
+def test_save_version_note_shows_in_version_list_and_is_capped(signer: Signer) -> None:
+    admin()
+    token = mcp_token(signer)
+    flow_id = new_flow(token, ops=SIMPLE_OPS)
+
+    ok(call(token, "save_version", {"flow_id": flow_id, "note": "첫 배포용"}))
+    detail = ok(call(token, "get_flow", {"flow_id": flow_id}))
+    assert detail["versions"][0]["note"] == "첫 배포용"
+
+    ok(call(token, "update_flow", {"flow_id": flow_id, "ops": [{"op": "upsert_node", "id": "answer", "name": "바뀜"}]}))
+    assert "note_too_long" in err(call(token, "save_version", {"flow_id": flow_id, "note": "가" * 201}))
+    assert len(ok(call(token, "get_flow", {"flow_id": flow_id}))["versions"]) == 1

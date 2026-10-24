@@ -95,6 +95,8 @@ class FlowVersion(models.Model):
     number = models.PositiveIntegerField()
     graph = models.JSONField()
     hash = models.CharField(max_length=64, db_index=True)
+    # 버전 메모 — 만들 때만 적는다(저장 뒤엔 다른 필드처럼 못 바꾼다). 기존 행은 빈 문자열.
+    note = models.CharField(max_length=200, blank=True, default="")
     # AUTH_USER_MODEL(운영자)이 아니라 sandcorp-auth 사용자(tenants.User)가 만든다(ADR-0028).
     created_by = models.ForeignKey(
         "tenants.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"

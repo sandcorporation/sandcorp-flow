@@ -315,9 +315,25 @@ def unsupported_node_errors(graph: JSON) -> list[FlowError]:
     return errors
 
 
-def save_version(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, *, created_by_id: uuid.UUID | None = None) -> SaveVersionResult:
-    """초안을 새 Flow Version으로 굳힌다. 검증 실패면 ``FlowInvalid``. 마지막 버전과 같으면 그 버전을 돌려준다."""
+VERSION_NOTE_MAX = 200  # 한 줄 변경 설명 — 편집기 버전 이력에 그대로 보이는 길이
+
+
+def save_version(
+    tenant_id: uuid.UUID,
+    flow_id: uuid.UUID | str,
+    *,
+    created_by_id: uuid.UUID | None = None,
+    note: str | None = None,
+) -> SaveVersionResult:
+    """초안을 새 Flow Version으로 굳힌다. 검증 실패면 ``FlowInvalid``. 마지막 버전과 같으면 그 버전을 돌려준다(메모는 무시).
+
+    ``note``는 새 버전을 만들 때만 붙는다(불변). ``VERSION_NOTE_MAX``자를 넘으면 ``note_too_long``.
+    """
     from apps.flows.schema import flow_hash
+
+    note = (note or "").strip()
+    if len(note) > VERSION_NOTE_MAX:
+        raise FlowServiceError(f"버전 메모는 {VERSION_NOTE_MAX}자 이내여야 합니다(지금 {len(note)}자).", code="note_too_long")
 
     flow = get_flow(tenant_id, flow_id)
     with transaction.atomic():
@@ -329,7 +345,7 @@ def save_version(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, *, created_by_i
         last = FlowVersion.objects.filter(flow=flow).order_by("-number").first()
         if last is not None and last.hash == flow_hash(graph):
             return SaveVersionResult(last, created=False)
-        version = FlowVersion.objects.create(flow=flow, graph=graph, created_by_id=created_by_id)
+        version = FlowVersion.objects.create(flow=flow, graph=graph, note=note, created_by_id=created_by_id)
     return SaveVersionResult(version, created=True)
 
 
