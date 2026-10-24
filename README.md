@@ -153,7 +153,7 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 | 관계형 DB | PostgreSQL 16 (Django 모델 + LangGraph 체크포인트) |
 | 메시징 | Redis 7 (SSE pub/sub + Celery 브로커 + 레이트리밋·세션 락) |
 | 프론트 | React 18 + Vite. 그래프 시각화: `react-force-graph-2d` |
-| 인증 | JWT(python-jose). Visitor는 공개 slug URL + opt-in HMAC 신원검증. TENANT_KEY는 HMAC API·팀원 생성용 |
+| 인증 | Operator: sandcorp-auth Resource Token(EdDSA, PyJWT — ADR-0028) + 옛 Operator JWT(python-jose, #21에서 걷어냄). TenantAgent: JWT(python-jose). Visitor는 공개 slug URL + opt-in HMAC 신원검증. TENANT_KEY는 HMAC API·팀원 생성용 |
 
 > **GPU**: 필수 아님. GPU 호스트에선 Ollama(bge-m3)가 GPU를 씁니다(시험 인프라는 GPU 없이도 돈다 — 9장). Docker Desktop에서는 `runtime: nvidia` + `NVIDIA_VISIBLE_DEVICES=all`로 패스스루합니다. bge-m3가 GPU flash-attention에서 NaN 임베딩을 내는 이슈가 있어 `OLLAMA_FLASH_ATTENTION=0`을 설정합니다.
 
@@ -178,6 +178,10 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 | `CHAT_RATE_LIMIT_PER_VISITOR` / `CHAT_RATE_LIMIT_PER_TENANT` | 공개 URL 레이트리밋(분당) | `20` / `300` |
 | `OCR_MAX_PAGES` | 스캔 PDF의 vision OCR 페이지 상한(비용 통제) | `30` |
 | `DEBUG` | 디버그 모드 | `False`(운영) |
+| `AUTH_ISSUER` | sandcorp-auth 발급자(`iss` 정확히 일치) | `https://auth.sandcorp.co.kr`(기본) |
+| `AUTH_JWKS_URL` | 공개 키 JWKS(600초 캐시) | `https://auth.sandcorp.co.kr/.well-known/jwks.json`(기본) |
+| `AUTH_RESOURCE` | 이 서비스의 리소스(`aud` 정확히 일치). 원점이 401 `resource_metadata` 주소가 된다 | `https://flow.sandcorp.co.kr/api`(기본) |
+| `AUTH_OWNER_SUB` | 대표 계정 username(A1). **비우면 대표 토큰이 모두 거부**된다 | `farrar142` |
 
 ---
 
@@ -247,10 +251,13 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 
 ## 8. API 개요 (`GET /api/docs`에 전체)
 
+**Operator 인증**(`/api/operator/*`): `Authorization: Bearer <토큰>`으로 두 가지를 받는다. ① sandcorp-auth 액세스 토큰(Resource Token, `aud`=`AUTH_RESOURCE`) — 규칙은 sandcorp-auth `docs/resource-server-token-validation.md` 3~6·10절(T1~T10 → A1~A3 → S1, `apps/tenants/resource_token.py`). **대표 토큰(`acct` 없음, `sub`=`AUTH_OWNER_SUB`) + `admin` 스코프**일 때만 열린다. 일반 사용자 토큰(`acct=member`)은 검증을 통과해도 403. 실패는 401(토큰 없음/`invalid_token`)·403(`insufficient_scope`)에 `WWW-Authenticate` 헤더. ② 옛 Operator JWT(비밀번호 로그인) — #21에서 걷어낸다.
+
 | 엔드포인트 | 인증 | 용도 |
 |------------|------|------|
-| `POST /api/operator/auth/login` | 없음 | Operator JWT |
-| `POST /api/operator/tenants/` | Operator JWT | Tenant 생성 |
+| `POST /api/operator/auth/login` | 없음 | Operator JWT(옛 경로, #21에서 걷어냄) |
+| `POST /api/operator/tenants/` | Operator | Tenant 생성 |
+| `GET /.well-known/oauth-protected-resource` | 없음 | 보호 리소스 메타데이터(RFC 9728) |
 | `POST /api/tenant/agents/auth/login` | 없음 | TenantAgent JWT |
 | `POST /api/chat/identity` | TENANT_KEY | visitor_id 신원검증 HMAC 해시 발급 |
 | `GET /api/chat/stream?slug=&visitor_id=&hash=` | 없음(slug 공개) | 방문자 SSE 연결(ChatSession) |
