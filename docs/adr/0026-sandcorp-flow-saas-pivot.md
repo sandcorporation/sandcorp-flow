@@ -17,6 +17,7 @@ Embed Chat(GraphRAG 멀티테넌트 챗봇, LangGraph·HITL·위젯·Admin UI)�
   **체험 한도**(예: 대화 200턴)를 준다. 한도를 넘으면 테넌트가 자기 키를 넣어야 흐름이 돈다.
 - **플랫폼 키는 OpenAI 하나**(2026-10-24 사용자 결정): 체험 한도·`/try`·「Sandcorp」 테넌트가 대표의 OpenAI 키 하나를 함께 쓴다(LLM·임베딩·OCR). 모델은 설정값(`PLATFORM_LLM_MODEL`, 기본 gpt-4o-mini급)이고, Anthropic 키는 두지 않는다. 키 값은 운영 env에만 있다(이름은 `docs/deployment.md`). 테넌트 BYOK Provider 종류(ADR-0012: OpenAI·Claude·Custom)는 바꾸지 않는다(2026-10-24 사용자 확인).
 - **체험 한도의 범위**(#41): 1턴 = 방문자 메시지 하나(답 생성 전 조건부 UPDATE로 1 차감, 음수 없음). 자기 LLM Provider가 **없을 때만** 플랫폼 키로 돌고, 넣으면 한도와 무관한 BYOK다. **문서 인제스션도 체험에 포함**한다 — 임베딩(`PLATFORM_EMBED_MODEL`, OpenAI `dimensions`로 테넌트 `embed_dim` 기본 1024에 맞춰 인덱스·재구축 규칙 그대로)과 자료 정리(추출 LLM)는 남은 턴이 있을 때만 플랫폼 키를 쓰고 턴은 세지 않는다. 스캔·이미지 OCR(Vision)은 체험에 넣지 않는다(비용을 가늠할 수 없어 테넌트 OCR Provider 필요, 지금과 같음). dev(`PLATFORM_DEFAULT_PROVIDERS_ENABLED=True`, ADR-0012)는 기존 fake-llm/ollama 폴백을 그대로 쓰고 턴을 세지 않는다.
+- **편집 중 시험 한 턴도 체험 턴을 쓴다**(#76): 편집기·MCP `test_turn`도 방문자 턴과 같은 Provider 선택·`admit_turn` 차감을 탄다. 시험을 빼 주면 체험 한도를 우회하는 무료 LLM 창구가 되기 때문이다. 남은 턴이 없으면 LLM 없이 멈추고 사유를 돌려준다.
 - **운영 박스**: 기존 Oracle A1(4코어, 남은 메모리 약 8.7G, 이미 컨테이너 55개). 운영 compose에는 Ollama·PaddleOCR을
   넣지 않는다(운영은 테넌트 Provider). Jenkins로 배포하며, 실제 배포·서버 설정은 저장소 밖에서 한다.
 - **인증은 sandcorp-auth로 통합**한다(ADR-0028). 고객 가입·테넌트 생성·체험 한도는 sandcorp-auth 다중 사용자화에 막혀 있다.
