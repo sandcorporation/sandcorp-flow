@@ -41,6 +41,10 @@ _IN_SCOPE_DESC = (
 )
 
 
+# 넘김 사유는 상담원 콘솔 카드에 그대로 보인다 — 테넌트 언어 설정이 없으므로 한국어로 고정(#92).
+_HITL_REASON_DESC = "사람에게 넘기는 이유를 한국어 한 문장으로. 영어로 쓰지 말 것. 넘기지 않으면 빈 문자열."
+_HITL_REASON_KO = "\n- 사람에게 넘기는 경우 넘김 사유는 한국어 한 문장으로 쓰세요(영어 금지)."
+
 # 필드 순서: 제어필드(context_sufficient·in_scope)를 response보다 **먼저** 둔다 — 스트리밍 시 라우팅·
 # 스코프 신호가 응답 앞에 도착해, 노드가 흘리기 전에 종단/거절을 판정할 수 있다(PRD-chat-token-streaming).
 class HITLResponse(BaseModel):
@@ -48,7 +52,7 @@ class HITLResponse(BaseModel):
     in_scope: bool = Field(default=True, description=_IN_SCOPE_DESC)
     # 넘김 판단은 response보다 먼저 — 넘기기로 했는데 모델 답이 먼저 방문자에게 흐르는 모순을 막는다(#25)
     needs_hitl: bool
-    hitl_reason: str = ""
+    hitl_reason: str = Field(default="", description=_HITL_REASON_DESC)
     response: str
 
 
@@ -163,6 +167,7 @@ def _assemble_lc_messages(state: dict) -> list:
         state["system_prompt"]
         + scope_instruction(state.get("topic_scope_enabled", False), state.get("scope_description", ""))
         + _ANTI_DISCLOSURE
+        + _HITL_REASON_KO
         + _node_instructions_block(state)
     )
 
