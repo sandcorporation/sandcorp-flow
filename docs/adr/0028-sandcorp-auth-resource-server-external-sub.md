@@ -52,5 +52,8 @@ Embed Chat은 자체 계정을 가진다: Django `Operator`, `TenantAgent`(tenan
 - **스코프**: 일반 사용자는 `login`(리소스 스코프)과 `openid`·`profile`·`email`만 받는다. `admin`·`editor`는 받을 수 없다(auth가 `invalid_scope`). Flow 관리 화면 로그인 콜백은 `login`을 요구하고, Operator 기능은 A1 통과 + `admin`일 때만 연다.
 - **신원 정보**: Flow 클라이언트는 기밀 클라이언트로 `openid profile email`을 요청한다. ID 토큰·userinfo의 일반 사용자 필드는 `sub`, `acct`, `name`(있을 때), `email`·`email_verified`(이메일이 있을 때만 — Kakao는 없을 수 있다). `preferred_username`은 없다. 이메일·이름은 표시용 캐시이며, 이메일이 필요하면 Flow가 사용자에게 입력받는다.
 - **클라이언트 등록**: Flow 기밀 클라이언트는 auth 쪽 「일반 사용자 허용」(`allows_members=True`)이 켜져 있어야 한다. 꺼져 있으면 일반 사용자는 `access_denied`로 돌아온다. 등록은 서버 쪽 일이다(`docs/deployment.md` 「서버 쪽 할 일」).
-- **탈퇴**: sandcorp-auth의 `user.deleted` 서명 웹훅(#39)을 받아 해당 External Identity의 멤버십을 정리한다. 웹훅 형식이 정해지면 이 절에 더한다.
+- **탈퇴**: sandcorp-auth의 `user.deleted` 서명 웹훅(#39)을 받아 해당 External Identity의 멤버십을 정리한다. 정리 함수는 `members.forget_user(iss, sub)`(#40, 대표는 지우지 않는다). 웹훅 받기는 #55.
+- **고객 로그인(#40)**: 같은 콜백(`/api/auth/callback`)이 A1~A3을 통과한 member를 받아 `User(iss, sub, acct="member")`를 갱신(이름·이메일 캐시)한 뒤 **Membership**으로 테넌트 세션(ADR-0013, 주체 = Membership)을 연다 — 하나면 바로, 여럿이면 조직 선택(`?select_tenant=1` + 10분 서명 표 `member_ticket` → `/api/auth/member/select`), 없으면 「온보딩 필요」(`?onboarding=1`, 테넌트 만들기는 #41). TenantAgent의 username/password·테넌트 비밀번호 로그인·공개 셀프 가입은 없앴다.
+- **팀원 초대**: Flow는 비밀번호를 만들어 주지 않으므로 Admin이 초대 링크(256비트 토큰·해시 저장·7일·1회용·역할 지정, 이메일 발송 없음)를 만든다. 링크는 `/api/auth/authorize?invite=…`이고, 초대 토큰은 로그인 시도 쿠키에 실려 콜백에서 멤버십이 된다.
+- **break-glass(ADR-0025 D 보충)**: TENANT_KEY는 Admin 등가로 `/api/tenant/invites/`에 **Admin 초대 링크**를 발급할 수 있다(옛 「TenantAgent 생성」 자리). 마지막 Admin이 떠난 조직은 이것으로 복구한다.
 

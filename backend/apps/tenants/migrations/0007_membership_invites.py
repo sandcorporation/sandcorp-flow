@@ -14,6 +14,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # TenantAgent 세션(Refresh Family)은 이을 주체가 없다 — 칼럼을 지우기 전에 비운다(운영엔 없음).
+        migrations.RunSQL(
+            "DELETE FROM refresh_tokens WHERE tenant_agent_id IS NOT NULL", migrations.RunSQL.noop
+        ),
         migrations.CreateModel(
             name='Membership',
             fields=[
