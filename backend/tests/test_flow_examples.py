@@ -303,15 +303,17 @@ def test_seed_sandcorp_takes_the_inquiry_url_and_key_from_settings(settings):
 
 
 @pytest.mark.django_db
-def test_seed_sandcorp_redeploys_when_the_setting_changes(settings):
+def test_seed_sandcorp_update_flow_redeploys_when_the_setting_changes(settings):
     from apps.flows.models import FlowVersion
 
     settings.SANDCORP_INQUIRY_API_KEY = ""
     settings.SANDCORP_INQUIRY_URL = "https://demo-api.flow.sandcorp.co.kr/inquiries"
     call_command("seed_sandcorp")
     settings.SANDCORP_INQUIRY_URL = "https://api.example.com/inquiries"
-    call_command("seed_sandcorp")
-    call_command("seed_sandcorp")
+    call_command("seed_sandcorp")  # 기본은 있는 흐름을 건드리지 않는다
+    assert FlowVersion.objects.filter(flow=_sandcorp_flow()[1]).count() == 1
+    call_command("seed_sandcorp", "--update-flow")
+    call_command("seed_sandcorp", "--update-flow")
 
     tenant, flow = _sandcorp_flow()
     assert FlowVersion.objects.filter(flow=flow).count() == 2

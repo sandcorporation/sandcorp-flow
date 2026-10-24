@@ -196,7 +196,7 @@ def test_example_flow_built_by_patches_deploys_then_trimmed_runs(signer: Signer,
 
     # ② 모든 노드 종류에 핸들러가 있다(HTTP 도구 #34까지) → 그린 그대로 배포된다.
     assert ok(call(token, "deploy_version", {"flow_id": flow_id, "version": 1}))["deployed_version"] == 1
-    no_llm_branch = {"submit"}  # 아래 시험 대화는 LLM 분기 없이 짧게 돌린다
+    no_llm_branch = {"submit", "submitted", "submit_failed"}  # 아래 시험 대화는 LLM 분기 없이 짧게 돌린다
 
     # ③ 짧은 갈래만 남겨 다시 잇는다: 시작 → 사례 검색 → 일반 답변 →(넘김) 사람 넘김.
     trim = [{"op": "delete_node", "id": nid} for nid in sorted(no_llm_branch | {"guard", "ask", "draft", "classify", "route", "enough"})]
