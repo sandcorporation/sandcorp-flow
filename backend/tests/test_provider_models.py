@@ -5,6 +5,8 @@ provider HTTP는 외부 경계이므로 결정적 Fake로 교체한다(CLAUDE.md
 """
 import pytest
 
+from tests.provider_http_fake import patch_provider_http
+
 
 class _FakeResp:
     def __init__(self, status, payload):
@@ -30,7 +32,7 @@ def test_list_openai_compatible_models(monkeypatch):
         assert headers["Authorization"] == "Bearer sk-x"
         return _FakeResp(200, {"data": [{"id": "gpt-4o"}, {"id": "gpt-4o-mini"}]})
 
-    monkeypatch.setattr(provider_models.httpx, "get", fake_get)
+    patch_provider_http(monkeypatch, get=fake_get)
 
     models = provider_models.list_provider_models("llm", "openai", "https://api.openai.com/v1", "sk-x")
     assert models == ["gpt-4o", "gpt-4o-mini"]
@@ -46,7 +48,7 @@ def test_openai_empty_base_url_defaults_to_canonical(monkeypatch):
         seen["url"] = url
         return _FakeResp(200, {"data": [{"id": "gpt-4o"}]})
 
-    monkeypatch.setattr(provider_models.httpx, "get", fake_get)
+    patch_provider_http(monkeypatch, get=fake_get)
     provider_models.list_provider_models("llm", "openai", "", "sk-x")
     assert seen["url"] == "https://api.openai.com/v1/models"
 
@@ -61,7 +63,7 @@ def test_validate_embed_openai_empty_base_defaults(monkeypatch):
         seen["url"] = url
         return _FakeResp(200, {"data": [{"embedding": [0.1]}]})
 
-    monkeypatch.setattr(provider_models.httpx, "post", fake_post)
+    patch_provider_http(monkeypatch, post=fake_post)
     provider_models.validate_provider("embed", "openai", "", "sk", "text-embedding-3-small")
     assert seen["url"] == "https://api.openai.com/v1/embeddings"
 
@@ -75,7 +77,7 @@ def test_list_anthropic_models(monkeypatch):
         assert headers["anthropic-version"]
         return _FakeResp(200, {"data": [{"id": "claude-opus-4"}, {"id": "claude-haiku"}]})
 
-    monkeypatch.setattr(provider_models.httpx, "get", fake_get)
+    patch_provider_http(monkeypatch, get=fake_get)
     models = provider_models.list_provider_models("llm", "anthropic", "", "sk-ant")
     assert models == ["claude-opus-4", "claude-haiku"]
 
@@ -87,7 +89,7 @@ def test_list_ollama_tags_for_platform_embed(monkeypatch):
         assert url.endswith("/api/tags")  # /v1 떼고 /api/tags
         return _FakeResp(200, {"models": [{"name": "bge-m3"}, {"name": "nomic-embed"}]})
 
-    monkeypatch.setattr(provider_models.httpx, "get", fake_get)
+    patch_provider_http(monkeypatch, get=fake_get)
     models = provider_models.list_provider_models("embed", "", "http://ollama:11434/v1", "ollama")
     assert models == ["bge-m3", "nomic-embed"]
 
@@ -98,7 +100,7 @@ def test_list_models_raises_provider_error_on_failure(monkeypatch):
     def fake_get(url, headers=None, timeout=None):
         return _FakeResp(401, {})  # 키 오류
 
-    monkeypatch.setattr(provider_models.httpx, "get", fake_get)
+    patch_provider_http(monkeypatch, get=fake_get)
     with pytest.raises(provider_models.ProviderError):
         provider_models.list_provider_models("llm", "openai", "https://api.openai.com/v1", "bad")
 
@@ -112,14 +114,14 @@ def test_validate_llm_uses_model_list(monkeypatch):
         calls["get"] += 1
         return _FakeResp(200, {"data": [{"id": "m"}]})
 
-    monkeypatch.setattr(provider_models.httpx, "get", fake_get)
+    patch_provider_http(monkeypatch, get=fake_get)
     provider_models.validate_provider("llm", "openai", "https://x/v1", "sk", "m")  # 통과
     assert calls["get"] == 1
 
     def fail_get(url, headers=None, timeout=None):
         return _FakeResp(403, {})
 
-    monkeypatch.setattr(provider_models.httpx, "get", fail_get)
+    patch_provider_http(monkeypatch, get=fail_get)
     with pytest.raises(provider_models.ProviderError):
         provider_models.validate_provider("llm", "openai", "https://x/v1", "bad", "m")
 
@@ -132,13 +134,13 @@ def test_validate_embed_uses_real_embedding_call(monkeypatch):
         assert json["input"] == ["ok"]
         return _FakeResp(200, {"data": [{"embedding": [0.1]}]})
 
-    monkeypatch.setattr(provider_models.httpx, "post", fake_post)
+    patch_provider_http(monkeypatch, post=fake_post)
     provider_models.validate_provider("embed", "openai", "https://x/v1", "sk", "text-embedding-3-small")
 
     def fail_post(url, json=None, headers=None, timeout=None):
         return _FakeResp(401, {})
 
-    monkeypatch.setattr(provider_models.httpx, "post", fail_post)
+    patch_provider_http(monkeypatch, post=fail_post)
     with pytest.raises(provider_models.ProviderError):
         provider_models.validate_provider("embed", "openai", "https://x/v1", "bad", "m")
 
@@ -153,7 +155,7 @@ def _patch_get(monkeypatch, payload, status=200, capture=None):
             capture["headers"] = headers or {}
         return _FakeResp(status, payload)
 
-    monkeypatch.setattr(provider_models.httpx, "get", fake_get)
+    patch_provider_http(monkeypatch, get=fake_get)
 
 
 @pytest.mark.django_db
@@ -232,8 +234,8 @@ def _patch_validate(monkeypatch, get_status=200, get_payload=None, counter=None)
             counter["n"] += 1
         return _FakeResp(get_status, {"data": [{"embedding": [0.1]}]})
 
-    monkeypatch.setattr(provider_models.httpx, "get", fake_get)
-    monkeypatch.setattr(provider_models.httpx, "post", fake_post)
+    patch_provider_http(monkeypatch, get=fake_get)
+    patch_provider_http(monkeypatch, post=fake_post)
 
 
 def _patch_config(client, token, body):
@@ -387,7 +389,7 @@ def test_quick_setup_validates_key_once(client, tenant_admin_token, monkeypatch)
     def fake_get(url, headers=None, timeout=None):
         cap["n"] += 1
         return _FakeResp(200, {"data": [{"id": "gpt-4o-mini"}]})
-    monkeypatch.setattr(provider_models.httpx, "get", fake_get)
+    patch_provider_http(monkeypatch, get=fake_get)
     _quick_setup(client, tenant_admin_token, "sk-x")
     assert cap["n"] == 1
 

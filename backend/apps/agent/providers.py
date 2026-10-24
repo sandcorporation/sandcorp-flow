@@ -49,6 +49,14 @@ def build_llm_client(provider: LLMProvider):
         kwargs["api_key"] = provider.api_key
     if provider.base_url:
         kwargs["base_url"] = provider.base_url
+    from apps.core.safe_http import guarded_async_http_client, guarded_http_client, private_allowed
+
+    if provider.type and not private_allowed():
+        # 운영: 테넌트가 고른 Provider(custom·openai, 체험 플랫폼 키의 api.openai.com 포함)로 가는 연결마다
+        # 해석·IP 검사(#108). type=""(dev 플랫폼 기본 OpenRouter·fake-llm)는 플랫폼 고정 주소라 그대로 둔다.
+        # 저장 뒤 DNS가 사설로 바뀌어도(리바인딩) 연결하지 않는다. 시간 상한은 SDK가 요청마다 건다.
+        kwargs["http_client"] = guarded_http_client(None)
+        kwargs["http_async_client"] = guarded_async_http_client(None)
     # 플랫폼 기본(OpenRouter)은 구조화 출력 시 provider가 파라미터를 강제 준수하게 한다.
     if provider.type == "":
         kwargs["extra_body"] = {"provider": {"require_parameters": True}}

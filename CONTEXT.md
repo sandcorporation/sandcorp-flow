@@ -134,14 +134,14 @@ Tenant별 설정 집합. 어드민에서 Tenant가 직접 관리. 포함 항목:
 - `brand_name`: 위젯 헤더 상단에 표시되는 Tenant 브랜드 텍스트(이미지 로고 아님). 비면 AI/사람 상태 텍스트만 표시. AI/사람 상태는 보조 텍스트+점으로 강등. SSE `connected` payload로 전달됨
 - `agent_display_name`: HITL 모드에서 Visitor 위젯에 표시되는 상담원 발신자 이름. 예: "ABC쇼핑 고객센터"
 - `hitl_enabled`: 이 Tenant가 HITL(사람 상담원 전환)을 쓸지 여부(기본 켜짐). 꺼지면 에이전트 그래프가 escalation 분기 없는 토폴로지로 로드되어 AI가 절대 사람에게 넘기지 않는다
-- `webhook_url`: HITL 발생 시 알림을 보낼 웹훅 URL
+- `webhook_url`: HITL 발생 시 알림을 보낼 웹훅 URL. https·공용 주소만(내부망·사설 주소는 보내지 않음, #108)
 - `webhook_type`: 웹훅 플랫폼 종류. `slack` / `discord` / `generic` 중 하나. 플랫폼별로 페이로드 포맷이 다르게 전송됨
 
 **WebhookConfig**
 TenantConfig 내 웹훅 설정 집합. HITL 발생 시 Slack·Discord·Generic 엔드포인트로 알림을 발송하기 위한 정보. 알림 페이로드에는 HITL 트리거 유형, 마지막 N개 대화, 어드민 UI 딥링크가 포함됨.
 
 **LLM Provider**
-Tenant가 자기 키로 비용을 부담하는 챗·추출 LLM 제공자 설정. 타입은 **OpenAI · Claude · Custom**. OpenAI/Custom은 OpenAI-호환 클라이언트, Claude는 Anthropic 네이티브 클라이언트로 분기. Custom은 `base_url`+크레덴셜로 임의 OpenAI-호환 엔드포인트(OpenRouter·Deepinfra·로컬 등) 지정. `chat_model`·`extraction_model`을 가짐. LLM Provider 변경은 재구축을 유발하지 않는다(임베딩 공간 불변).
+Tenant가 자기 키로 비용을 부담하는 챗·추출 LLM 제공자 설정. 타입은 **OpenAI · Claude · Custom**. OpenAI/Custom은 OpenAI-호환 클라이언트, Claude는 Anthropic 네이티브 클라이언트로 분기. Custom은 `base_url`+크레덴셜로 임의 OpenAI-호환 엔드포인트(OpenRouter·Deepinfra·자체 호스팅 등) 지정 — 운영은 https·공용 주소만(저장 때와 부를 때 모두 해석한 IP를 검사, 내부망·사설 주소는 dev만 — #108). `chat_model`·`extraction_model`을 가짐. LLM Provider 변경은 재구축을 유발하지 않는다(임베딩 공간 불변).
 _Avoid_: model_id(이제 LLM Provider의 chat_model로 흡수); OpenRouter 전용(provider는 다중)
 
 **Embedding Provider**

@@ -297,7 +297,7 @@ def test_embedding_call_inside_a_node_is_reported_to_the_node_and_rollup_once(op
     from apps.usage.pricing import cost_usd
 
     tenant_id = uuid.uuid4()
-    provider = SimpleNamespace(base_url=openai_stub, model="text-embedding-3-small", api_key="k",
+    provider = SimpleNamespace(type="openai", base_url=openai_stub, model="text-embedding-3-small", api_key="k",
                                send_dimensions=False, dim=1024)
     set_usage_context(tenant_id, "chat")
     with collect_calls() as calls:

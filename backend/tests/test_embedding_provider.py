@@ -1,5 +1,7 @@
 import pytest
 
+from tests.provider_http_fake import patch_provider_http
+
 
 # ── Issue 93: get_embeddings를 OpenAI-호환 /v1/embeddings로 ───────────────────
 
@@ -42,7 +44,7 @@ def test_embedding_provider_independent_config_key_encrypted(client, tenant_admi
         status_code = 200
         def json(self): return {"data": [{"embedding": [0.1]}]}
         def raise_for_status(self): pass
-    monkeypatch.setattr(provider_models.httpx, "post", lambda *a, **k: _Resp())
+    patch_provider_http(monkeypatch, post=lambda *a, **k: _Resp())
 
     tenant, _ = tenant_with_key
     r = client.patch(

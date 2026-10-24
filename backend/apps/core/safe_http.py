@@ -1,17 +1,28 @@
 """HTTP 도구 노드용 안전한 HTTP 클라이언트(ADR-0029).
 
 밖으로 나가는 요청은 이 계층만 연다. 한 홉마다
-「URL 검사(https·IP 리터럴·userinfo·포트·허용 목록) → 해석 → 해석한 **모든** IP 검사 → 검사한 IP로 TCP 연결」
+「URL 검사(스킴·IP 리터럴·userinfo·포트·호스트 정책) → 해석 → 해석한 **모든** IP 검사 → 검사한 IP로 TCP 연결」
 을 하고, TLS의 SNI·인증서 검증과 Host 헤더는 원래 호스트로 둔다. 해석은 홉마다 한 번뿐이라
 해석과 연결 사이에 DNS 답이 바뀌어도(리바인딩) 사설 주소에 닿지 않는다.
 
 - 표준 라이브러리 `http.client`로 연결한다 — 프록시 환경변수(`HTTPS_PROXY` 등)를 읽지 않는다.
 - 실패는 모두 `SafeHttpError(code)`다. 노드는 `code`로 실패 갈래·판단 기록을 남긴다(#34).
   오류 문구에는 호스트·IP까지만 담고 경로·쿼리(비밀이 섞일 수 있다)는 담지 않는다.
+  사용자에게 보이는 문구는 `user_message`로 만든다 — 해석한 IP를 담지 않는다(로그에만).
+
+호스트 정책은 둘이다(ADR-0029 보충, #108).
+- `AllowList`: 테넌트가 등록한 HTTPS 호스트만(HTTP 도구 노드).
+- `PublicHosts`: 허용 목록 없이 「공용 주소로 해석되는 호스트면」 — 웹 문서 가져오기(http·https)·웹훅(https).
+  IP 차단·검사한 IP로 연결·리다이렉트 재검사·시간·크기 규칙은 똑같다.
+custom Provider(LLM SDK·임베딩·모델 목록)는 httpx를 쓰므로 `guarded_http_client`가 연결 순간마다
+해석·IP 검사를 하는 httpcore 백엔드를 단다.
+dev·test는 내부 호스트(fake-llm·ollama·로컬 시험 서버)를 써야 하므로 `OUTBOUND_PRIVATE_ALLOWED=True`일 때만
+사설 주소·http·임의 포트를 허용한다. 운영(prod.py)은 False로 고정이다.
 """
 from __future__ import annotations
 
 import http.client
+import logging
 import ipaddress
 import socket
 import ssl
@@ -21,7 +32,12 @@ import zlib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Protocol
 from urllib.parse import urljoin, urlsplit
+
+import httpcore
+import httpx
+from httpcore._backends.anyio import AnyIOBackend  # httpcore는 anyio가 없을 때의 자리표시와 합친 이름만 내보낸다
 
 Resolver = Callable[[str], Sequence[str]]
 """호스트 이름 → IP 문자열들. 시험은 결정적 대역을 넣는다."""
@@ -30,6 +46,7 @@ Dialer = Callable[[str, int, float], socket.socket]
 """(검사한 IP, 포트, 시간 상한) → 연결된 TCP 소켓. 시험은 로컬 서버로 잇는 대역을 넣는다."""
 
 HTTPS_PORT = 443
+_DEFAULT_PORTS = {"http": 80, "https": HTTPS_PORT}
 
 
 class SafeHttpErrorCode(StrEnum):
@@ -110,6 +127,9 @@ class AllowList:
       `*.com`처럼 등록 가능 도메인 전체를 여는 규칙은 거부한다(점 둘 이상의 기준 이름 필요).
     """
 
+    schemes: frozenset[str] = frozenset({"https"})
+    permit_private = False
+
     def __init__(self, patterns: Iterable[str]) -> None:
         exact: set[str] = set()
         wildcard: set[str] = set()
@@ -130,6 +150,32 @@ class AllowList:
             return True
         label, _, rest = host.partition(".")
         return bool(label) and rest in self._wildcard
+
+
+class HostPolicy(Protocol):
+    """URL 검사가 묻는 것: 어느 스킴을, 어느 호스트를, 사설 주소를 허용하는가."""
+
+    @property
+    def schemes(self) -> frozenset[str]: ...
+
+    @property
+    def permit_private(self) -> bool: ...
+
+    def allows(self, host: str) -> bool: ...
+
+
+@dataclass(frozen=True)
+class PublicHosts:
+    """허용 목록 없음 — 공용 주소로 해석되는 DNS 이름이면 누구든(#108).
+
+    `permit_private=True`는 dev·test 전용(`private_allowed()`): IP 리터럴·사설 주소·임의 포트·한 단어 호스트 허용.
+    """
+
+    schemes: frozenset[str] = frozenset({"https"})
+    permit_private: bool = False
+
+    def allows(self, host: str) -> bool:
+        return True
 
 
 # ── 해석한 IP 검사 ───────────────────────────────────────────────────────────
@@ -164,6 +210,26 @@ def _default_dial(address: str, port: int, timeout: float) -> socket.socket:
     return socket.create_connection((address, port), timeout)
 
 
+Router = Callable[[str, int], tuple[str, int]]
+"""(검사한 IP, 포트) → 실제로 TCP를 열 (주소, 포트). 운영은 그대로 돌려준다. 시험은 로컬 서버로 옮긴다."""
+
+
+def _same_address(address: str, port: int) -> tuple[str, int]:
+    return address, port
+
+
+@dataclass(frozen=True)
+class Network:
+    """테넌트 URL을 부르는 계층들이 함께 쓰는 해석·연결·TLS 자리(#108). 시험은 이 값을 결정적 대역으로 바꾼다."""
+
+    resolver: Resolver = system_resolver
+    route: Router = _same_address
+    tls: ssl.SSLContext | None = None  # None이면 시스템 CA
+
+
+NETWORK = Network()
+
+
 # ── 응답 ─────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -183,14 +249,22 @@ class _Target:
     url: str
     host: str
     path: str  # 경로 + 쿼리(프래그먼트 제외)
+    scheme: str = "https"
+    port: int = HTTPS_PORT
+
+    @property
+    def host_header(self) -> str:
+        name = f"[{self.host}]" if ":" in self.host else self.host
+        return name if self.port == _DEFAULT_PORTS[self.scheme] else f"{name}:{self.port}"
 
 
-def check_url(url: str, allow: AllowList) -> _Target:
+def check_url(url: str, allow: HostPolicy) -> _Target:
     """URL 단계 검사. 해석·연결 전에 끝난다."""
     if any(c in url for c in "\\\r\n\t ") or any(ord(c) < 0x20 for c in url):
         raise SafeHttpError(SafeHttpErrorCode.INVALID_URL, "forbidden character")
     parts = urlsplit(url)
-    if parts.scheme.lower() != "https":
+    scheme = parts.scheme.lower()
+    if scheme not in allow.schemes or scheme not in _DEFAULT_PORTS:
         raise SafeHttpError(SafeHttpErrorCode.NOT_HTTPS, parts.scheme or "no scheme")
     if "@" in parts.netloc:
         raise SafeHttpError(SafeHttpErrorCode.USERINFO)
@@ -201,35 +275,71 @@ def check_url(url: str, allow: AllowList) -> _Target:
     raw_host = parts.hostname
     if not raw_host:
         raise SafeHttpError(SafeHttpErrorCode.INVALID_URL, "no host")
-    if parts.netloc.startswith("[") or _is_ip_literal(raw_host.rstrip(".")):
+    is_literal = parts.netloc.startswith("[") or _is_ip_literal(raw_host.rstrip("."))
+    if is_literal and not allow.permit_private:
         raise SafeHttpError(SafeHttpErrorCode.IP_LITERAL, raw_host)
-    if port is not None and port != HTTPS_PORT:
+    default_port = _DEFAULT_PORTS[scheme]
+    if port is not None and port != default_port and not allow.permit_private:
         raise SafeHttpError(SafeHttpErrorCode.NON_DEFAULT_PORT, str(port))
-    try:
-        host = _normalize_host(raw_host)
-    except ValueError as exc:
-        raise SafeHttpError(SafeHttpErrorCode.INVALID_URL, "bad host") from exc
-    if not _valid_dns_name(host) or not allow.allows(host):
-        raise SafeHttpError(SafeHttpErrorCode.HOST_NOT_ALLOWED, host)
+    if is_literal:
+        host = raw_host
+    else:
+        try:
+            host = _normalize_host(raw_host)
+        except ValueError as exc:
+            raise SafeHttpError(SafeHttpErrorCode.INVALID_URL, "bad host") from exc
+        if not (allow.permit_private or _valid_dns_name(host)) or not allow.allows(host):
+            raise SafeHttpError(SafeHttpErrorCode.HOST_NOT_ALLOWED, host)
     path = parts.path or "/"
     if parts.query:
         path += "?" + parts.query
-    return _Target(url=url, host=host, path=path)
+    return _Target(url=url, host=host, path=path, scheme=scheme, port=port or default_port)
 
 
 # ── 검사한 IP로 연결 ─────────────────────────────────────────────────────────
 
-class _PinnedHTTPSConnection(http.client.HTTPSConnection):
-    """이름을 다시 풀지 않고 검사한 IP로 TCP를 열고, SNI·인증서 검증은 원래 호스트로 한다."""
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    """이름을 다시 풀지 않고 검사한 IP로 TCP를 연다(http — 웹 문서 가져오기, #108)."""
 
-    def __init__(self, host: str, *, address: str, dial: Dialer, tls: ssl.SSLContext, timeout: float) -> None:
-        super().__init__(host, HTTPS_PORT, timeout=timeout, context=tls)
+    def __init__(self, host: str, port: int, *, address: str, dial: Dialer, timeout: float) -> None:
+        super().__init__(host, port, timeout=timeout)
         self._address = address
         self._dial = dial
-        self._tls = tls
         self._raw: socket.socket | None = None
         self._lock = threading.Lock()
         self._aborted = False
+
+    def connect(self) -> None:
+        raw = self._dial(self._address, self.port, self.timeout)  # type: ignore[arg-type]  # timeout은 늘 float로 넣는다
+        with self._lock:
+            self._raw = raw
+            self.sock = raw
+            if self._aborted:
+                raw.close()
+                raise TimeoutError("deadline")
+
+    def abort(self) -> None:
+        """시간 상한 감시자가 부른다 — 막혀 있는 recv/handshake를 깨운다."""
+        with self._lock:
+            self._aborted = True
+            # wrap_socket이 raw의 fd를 넘겨받으므로(raw.detach) TLS 뒤엔 self.sock을 끊는다.
+            target = self.sock if self.sock is not None else self._raw
+        if target is not None:
+            try:
+                # SSLSocket.shutdown은 _sslobj를 비워 읽던 스레드를 엉뚱하게 깨운다 — fd만 끊는다.
+                socket.socket.shutdown(target, socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+
+class _PinnedHTTPSConnection(_PinnedHTTPConnection):
+    """검사한 IP로 TCP를 열고, SNI·인증서 검증은 원래 호스트로 한다."""
+
+    def __init__(
+        self, host: str, port: int, *, address: str, dial: Dialer, tls: ssl.SSLContext, timeout: float
+    ) -> None:
+        super().__init__(host, port, address=address, dial=dial, timeout=timeout)
+        self._tls = tls
 
     def connect(self) -> None:
         raw = self._dial(self._address, self.port, self.timeout)  # type: ignore[arg-type]  # timeout은 늘 float로 넣는다
@@ -246,19 +356,6 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
                 raise TimeoutError("deadline")
         tls_sock.do_handshake()
 
-    def abort(self) -> None:
-        """시간 상한 감시자가 부른다 — 막혀 있는 recv/handshake를 깨운다."""
-        with self._lock:
-            self._aborted = True
-            # wrap_socket이 raw의 fd를 넘겨받으므로(raw.detach) TLS 뒤엔 self.sock을 끊는다.
-            target = self.sock if self.sock is not None else self._raw
-        if target is not None:
-            try:
-                # SSLSocket.shutdown은 _sslobj를 비워 읽던 스레드를 엉뚱하게 깨운다 — fd만 끊는다.
-                socket.socket.shutdown(target, socket.SHUT_RDWR)
-            except OSError:
-                pass
-
 
 def _default_tls() -> ssl.SSLContext:
     ctx = ssl.create_default_context()  # check_hostname=True, CERT_REQUIRED
@@ -269,7 +366,7 @@ def _default_tls() -> ssl.SSLContext:
 class SafeHttpClient:
     def __init__(
         self,
-        allow: AllowList,
+        allow: HostPolicy,
         *,
         resolver: Resolver = system_resolver,
         dial: Dialer = _default_dial,
@@ -322,6 +419,10 @@ class SafeHttpClient:
     # ── 한 홉 ────────────────────────────────────────────────────────────────
 
     def _resolve_checked(self, host: str, deadline: float) -> str:
+        if self._allow.permit_private:
+            literal = _literal_ip(host)
+            if literal is not None:
+                return str(literal)
         """해석은 별도 스레드에서 — getaddrinfo는 끊을 수 없어 남은 시간만 기다리고 버린다."""
         box: list[Sequence[str]] = []
         err: list[BaseException] = []
@@ -345,7 +446,7 @@ class SafeHttpClient:
                 ip = ipaddress.ip_address(answer)
             except ValueError as exc:
                 raise SafeHttpError(SafeHttpErrorCode.BLOCKED_ADDRESS, f"{host} -> unparsable") from exc
-            if is_blocked_address(ip):
+            if is_blocked_address(ip) and not self._allow.permit_private:
                 raise SafeHttpError(SafeHttpErrorCode.BLOCKED_ADDRESS, f"{host} -> {ip}")
             checked.append(str(ip))
         return checked[0]
@@ -354,9 +455,16 @@ class SafeHttpClient:
         self, target: _Target, method: str, headers: dict[str, str], body: bytes | None, deadline: float
     ) -> SafeResponse:
         address = self._resolve_checked(target.host, deadline)
-        conn = _PinnedHTTPSConnection(
-            target.host, address=address, dial=self._dial, tls=self._tls, timeout=_remaining(deadline)
-        )
+        conn: _PinnedHTTPConnection
+        if target.scheme == "https":
+            conn = _PinnedHTTPSConnection(
+                target.host, target.port, address=address, dial=self._dial, tls=self._tls,
+                timeout=_remaining(deadline),
+            )
+        else:
+            conn = _PinnedHTTPConnection(
+                target.host, target.port, address=address, dial=self._dial, timeout=_remaining(deadline)
+            )
         # 바이트를 한 방울씩 흘리는 서버(slowloris)는 recv마다의 시간 상한을 피해 간다.
         # 마감 시각에 소켓을 끊는 감시자가 전체 시간을 지킨다.
         watchdog = threading.Timer(_remaining(deadline), conn.abort)
@@ -384,7 +492,7 @@ class SafeHttpClient:
 
     def _talk(
         self,
-        conn: _PinnedHTTPSConnection,
+        conn: _PinnedHTTPConnection,
         target: _Target,
         address: str,
         method: str,
@@ -394,7 +502,7 @@ class SafeHttpClient:
     ) -> SafeResponse:
         conn.connect()
         conn.putrequest(method, target.path, skip_host=True, skip_accept_encoding=True)
-        conn.putheader("Host", target.host)
+        conn.putheader("Host", target.host_header)
         conn.putheader("Accept-Encoding", "gzip, deflate")
         for name, value in headers.items():
             if name.lower() not in _MANAGED_HEADERS:
@@ -410,7 +518,7 @@ class SafeHttpClient:
         return SafeResponse(resp.status, tuple(resp.getheaders()), data, target.url)
 
     def _read_body(
-        self, conn: _PinnedHTTPSConnection, resp: http.client.HTTPResponse, deadline: float
+        self, conn: _PinnedHTTPConnection, resp: http.client.HTTPResponse, deadline: float
     ) -> bytes:
         limit = self._limits.max_body_bytes
         declared = resp.getheader("content-length")
@@ -468,7 +576,231 @@ def _remaining(deadline: float) -> float:
     return left
 
 
-def _set_timeout(conn: _PinnedHTTPSConnection, deadline: float) -> None:
+def _set_timeout(conn: _PinnedHTTPConnection, deadline: float) -> None:
     left = _remaining(deadline)
     if conn.sock is not None:
         conn.sock.settimeout(left)
+
+
+# ── 테넌트가 넣은 URL(#108) ──────────────────────────────────────────────────
+
+logger = logging.getLogger(__name__)
+
+HttpClientError = httpx.HTTPError
+"""`guarded_http_client`가 올리는 실패의 뿌리. 부르는 쪽이 httpx를 직접 import하지 않게 다시 내보낸다."""
+
+IpAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
+
+
+def private_allowed() -> bool:
+    """dev·test만 True(내부 호스트 fake-llm·ollama). 운영은 prod.py에서 False로 고정."""
+    from django.conf import settings
+
+    return bool(getattr(settings, "OUTBOUND_PRIVATE_ALLOWED", False))
+
+
+def _literal_ip(host: str) -> IpAddress | None:
+    """IP 리터럴이면 그 주소(`127.1`·`2130706433` 같은 옛 표기 포함), 아니면 None."""
+    host = host.strip("[]").rstrip(".")
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    try:
+        return ipaddress.ip_address(socket.inet_ntoa(socket.inet_aton(host)))
+    except OSError:
+        return None
+
+
+def tenant_policy(schemes: Iterable[str]) -> PublicHosts:
+    """테넌트 URL 정책. dev·test 설정이면 사설·http도 허용한다(내부 시험 서버)."""
+    allowed = frozenset(schemes)
+    if private_allowed():
+        return PublicHosts(allowed | {"http"}, permit_private=True)
+    return PublicHosts(allowed)
+
+
+def tenant_url_client(schemes: Iterable[str], limits: Limits) -> SafeHttpClient:
+    """웹 문서·웹훅처럼 테넌트가 넣은 URL을 부르는 클라이언트(허용 목록 없음, 공용 주소만)."""
+    net = NETWORK
+
+    def dial(address: str, port: int, timeout: float) -> socket.socket:
+        return socket.create_connection(net.route(address, port), timeout)
+
+    return SafeHttpClient(
+        tenant_policy(schemes), resolver=net.resolver, dial=dial, ssl_context=net.tls, limits=limits
+    )
+
+
+def check_tenant_url(url: str, schemes: Iterable[str]) -> None:
+    """저장 때 URL 형식만 본다(해석 없음 — 해석은 부를 때 홉마다 한다)."""
+    check_url(url, tenant_policy(schemes))
+
+
+def _checked_ip(host: str, resolver: Resolver) -> IpAddress:
+    """호스트를 풀어 **모든** 답이 공용이면 첫 주소를 돌려준다. 막으면 SafeHttpError."""
+    literal = _literal_ip(host)
+    if literal is not None:
+        answers: Sequence[str] = [str(literal)]
+    else:
+        try:
+            answers = resolver(host)
+        except OSError as exc:
+            raise SafeHttpError(SafeHttpErrorCode.DNS_FAILED, host) from exc
+        if not answers:
+            raise SafeHttpError(SafeHttpErrorCode.DNS_FAILED, host)
+    checked: list[IpAddress] = []
+    for answer in answers:
+        try:
+            ip = ipaddress.ip_address(answer)
+        except ValueError as exc:
+            raise SafeHttpError(SafeHttpErrorCode.BLOCKED_ADDRESS, f"{host} -> unparsable") from exc
+        if is_blocked_address(ip):
+            raise SafeHttpError(SafeHttpErrorCode.BLOCKED_ADDRESS, f"{host} -> {ip}")
+        checked.append(ip)
+    return checked[0]
+
+
+def check_provider_url(url: str) -> None:
+    """custom Provider base_url 저장 검사: https, userinfo 없음, 해석한 IP 모두 공용(포트는 자유).
+
+    부를 때도 `guarded_http_client`가 다시 검사한다(저장 뒤 DNS가 바뀌는 리바인딩 대비).
+    """
+    parts = urlsplit(url.strip())
+    scheme = parts.scheme.lower()
+    if private_allowed():
+        if scheme not in _DEFAULT_PORTS or not parts.hostname:
+            raise SafeHttpError(SafeHttpErrorCode.INVALID_URL, scheme or "no scheme")
+        return
+    if scheme != "https":
+        raise SafeHttpError(SafeHttpErrorCode.NOT_HTTPS, scheme or "no scheme")
+    if "@" in parts.netloc:
+        raise SafeHttpError(SafeHttpErrorCode.USERINFO)
+    try:
+        parts.port
+    except ValueError as exc:
+        raise SafeHttpError(SafeHttpErrorCode.INVALID_URL, "bad port") from exc
+    if not parts.hostname:
+        raise SafeHttpError(SafeHttpErrorCode.INVALID_URL, "no host")
+    _checked_ip(parts.hostname, NETWORK.resolver)
+
+
+_USER_MESSAGES = {
+    SafeHttpErrorCode.BLOCKED_ADDRESS: "내부망·사설 주소입니다",
+    SafeHttpErrorCode.IP_LITERAL: "IP 주소로 된 주소는 쓸 수 없습니다(도메인 이름을 쓰세요)",
+    SafeHttpErrorCode.USERINFO: "주소에 아이디·비밀번호를 넣을 수 없습니다",
+    SafeHttpErrorCode.NON_DEFAULT_PORT: "기본 포트(http 80·https 443)가 아닌 주소는 쓸 수 없습니다",
+    SafeHttpErrorCode.INVALID_URL: "주소 형식이 올바르지 않습니다",
+    SafeHttpErrorCode.HOST_NOT_ALLOWED: "허용되지 않은 도메인입니다",
+    SafeHttpErrorCode.DNS_FAILED: "도메인을 찾을 수 없습니다",
+    SafeHttpErrorCode.CONNECT_FAILED: "서버에 연결하지 못했습니다",
+    SafeHttpErrorCode.TLS_FAILED: "서버 인증서를 확인하지 못했습니다",
+    SafeHttpErrorCode.TIMEOUT: "서버 응답이 너무 늦습니다(시간 초과)",
+    SafeHttpErrorCode.TOO_LARGE: "응답이 너무 큽니다",
+    SafeHttpErrorCode.TOO_MANY_REDIRECTS: "리다이렉트가 너무 많습니다",
+    SafeHttpErrorCode.BAD_REDIRECT: "서버 응답을 해석하지 못했습니다",
+    SafeHttpErrorCode.BAD_RESPONSE: "서버 응답을 해석하지 못했습니다",
+    SafeHttpErrorCode.INVALID_REQUEST: "요청을 만들 수 없습니다",
+}
+
+
+def user_message(err: SafeHttpError, schemes: Iterable[str] = ("https",)) -> str:
+    """사용자에게 보일 사유. 해석한 IP·경로는 담지 않는다(그건 로그에 `err.detail`로)."""
+    if err.code == SafeHttpErrorCode.NOT_HTTPS:
+        order = [s for s in ("http", "https") if s in set(schemes)]
+        return f"{'·'.join(order)} 주소만 쓸 수 있습니다"
+    if err.code == SafeHttpErrorCode.IP_LITERAL:
+        literal = _literal_ip(err.detail)
+        if literal is not None and is_blocked_address(literal):
+            return _USER_MESSAGES[SafeHttpErrorCode.BLOCKED_ADDRESS]
+    return _USER_MESSAGES.get(err.code, "주소를 쓸 수 없습니다")
+
+
+# ── httpx(LLM SDK·임베딩·모델 목록)용: 연결 순간마다 해석·IP 검사 ──────────────
+
+class BlockedConnect(httpcore.ConnectError):
+    """httpx가 `httpx.ConnectError`로 옮겨 올린다. 문구엔 IP가 없다."""
+
+
+def _guard(host: str, net: Network) -> IpAddress:
+    try:
+        return _checked_ip(host, net.resolver)
+    except SafeHttpError as err:
+        logger.warning("outbound blocked: %s", err)  # 해석 결과(IP)는 로그에만
+        raise BlockedConnect(f"{user_message(err)} — 연결하지 않았습니다") from err
+
+
+class _GuardedSyncBackend(httpcore.SyncBackend):
+    def __init__(self, net: Network) -> None:
+        self._net = net
+
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[httpcore.SOCKET_OPTION] | None = None,
+    ) -> httpcore.NetworkStream:
+        # TLS의 SNI·인증서 검증은 httpcore가 원래 호스트(origin)로 한다 — 여기선 TCP 주소만 바꾼다.
+        address, real_port = self._net.route(str(_guard(host, self._net)), port)
+        return super().connect_tcp(address, real_port, timeout, local_address, socket_options)
+
+
+class _GuardedAsyncBackend(AnyIOBackend):
+    def __init__(self, net: Network) -> None:
+        self._net = net
+
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[httpcore.SOCKET_OPTION] | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        import anyio.to_thread
+
+        ip = await anyio.to_thread.run_sync(_guard, host, self._net)
+        address, real_port = self._net.route(str(ip), port)
+        return await super().connect_tcp(address, real_port, timeout, local_address, socket_options)
+
+
+def _tls_for(net: Network) -> ssl.SSLContext:
+    return net.tls if net.tls is not None else httpx.create_ssl_context()
+
+
+class _GuardedTransport(httpx.HTTPTransport):
+    def __init__(self, net: Network) -> None:
+        super().__init__(trust_env=False)
+        # httpx는 network_backend를 받지 않아 풀을 바꿔 끼운다(httpx 0.28·httpcore 1.0 — test_tenant_url_guard가 고정).
+        self._pool = httpcore.ConnectionPool(ssl_context=_tls_for(net), network_backend=_GuardedSyncBackend(net))
+
+
+class _GuardedAsyncTransport(httpx.AsyncHTTPTransport):
+    def __init__(self, net: Network) -> None:
+        super().__init__(trust_env=False)
+        self._pool = httpcore.AsyncConnectionPool(
+            ssl_context=_tls_for(net), network_backend=_GuardedAsyncBackend(net)
+        )
+
+
+def guarded_http_client(timeout: float | None = 60.0) -> httpx.Client:
+    """테넌트 Provider로 가는 httpx 클라이언트. 운영은 연결마다 해석·IP 검사, 프록시 환경변수 무시.
+
+    dev·test(`private_allowed()`)는 내부 호스트를 써야 하므로 평범한 클라이언트다.
+    """
+    if private_allowed():
+        return httpx.Client(timeout=timeout)
+    return httpx.Client(transport=_GuardedTransport(NETWORK), timeout=timeout, trust_env=False)
+
+
+def platform_http_client(timeout: float | None = 60.0) -> httpx.Client:
+    """플랫폼이 정한 고정 주소(설정값 — dev ollama 등)만 부르는 평범한 클라이언트. 테넌트 URL엔 쓰지 않는다."""
+    return httpx.Client(timeout=timeout)
+
+
+def guarded_async_http_client(timeout: float | None = 60.0) -> httpx.AsyncClient:
+    if private_allowed():
+        return httpx.AsyncClient(timeout=timeout)
+    return httpx.AsyncClient(transport=_GuardedAsyncTransport(NETWORK), timeout=timeout, trust_env=False)

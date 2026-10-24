@@ -63,7 +63,7 @@ class Pki:
     key_file: Path
 
 
-def _make_pki(tmp: Path) -> Pki:
+def _make_pki(tmp: Path, hosts: Sequence[str] = tuple(CERT_HOSTS)) -> Pki:
     now = dt.datetime.now(dt.timezone.utc)
     ca_key = ec.generate_private_key(ec.SECP256R1())
     ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "safe-http test CA")])
@@ -91,7 +91,7 @@ def _make_pki(tmp: Path) -> Pki:
         .issuer_name(ca_name)
         .public_key(leaf_key.public_key()).serial_number(x509.random_serial_number())
         .not_valid_before(now - dt.timedelta(days=1)).not_valid_after(now + dt.timedelta(days=1))
-        .add_extension(x509.SubjectAlternativeName([x509.DNSName(h) for h in CERT_HOSTS]), critical=False)
+        .add_extension(x509.SubjectAlternativeName([x509.DNSName(h) for h in hosts]), critical=False)
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
         .add_extension(x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
         .add_extension(
@@ -657,16 +657,12 @@ def test_error_carries_reason_code_without_query_string(rig: Rig) -> None:
 
 APPS = Path(__file__).resolve().parent.parent / "apps"
 NETWORK_MODULES = ("httpx", "requests", "urllib.request", "http.client", "aiohttp", "urllib3", "socket")
-# 이 계층 이전부터 외부 호출을 하던 모듈(LLM 제공자 목록·RAG 웹 수집·에스컬레이션 웹훅·로그인).
-# 새로 늘리지 않는다 — 새 외부 호출은 apps.core.safe_http 를 쓴다.
+# 이 계층 밖에서 네트워크 모듈을 import해도 되는 곳 — 플랫폼이 정한 고정 주소만 부르거나 예외 타입만 쓴다.
+# 테넌트가 넣은 URL(웹 문서·웹훅·custom Provider)을 부르는 곳은 여기 없다(#108) — 새 외부 호출은 apps.core.safe_http 로.
 LEGACY_NETWORK_IMPORTERS = {
-    "agent/provider_models.py",
-    "escalation/webhook.py",
-    "tenants/operator_login.py",
-    "tenants/resource_token.py",
-    "rag/ingesters.py",
-    "rag/tasks.py",
-    "rag/web.py",
+    "tenants/operator_login.py",  # 플랫폼 인증 서버 token_url(설정값)
+    "tenants/resource_token.py",  # 플랫폼 인증 서버 JWKS(설정값)
+    "rag/tasks.py",  # httpx 예외 타입만(재시도 대상) — 연결은 safe_http 가 연다
 }
 
 

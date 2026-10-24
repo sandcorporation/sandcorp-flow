@@ -753,6 +753,16 @@ def update_config(request, body: TenantConfigIn):
     except ProviderError as e:
         return 400, {"detail": str(e)}
 
+    # 웹훅 주소는 저장 때 형식(https·IP 리터럴·포트)을 본다. 해석·IP 검사는 보낼 때마다 한다(#108).
+    if body.webhook_url:
+        from apps.core.safe_http import SafeHttpError, check_tenant_url, user_message
+        from apps.escalation.webhook import WEBHOOK_SCHEMES
+
+        try:
+            check_tenant_url(body.webhook_url, WEBHOOK_SCHEMES)
+        except SafeHttpError as e:
+            return 400, {"detail": f"웹훅 주소를 쓸 수 없습니다: {user_message(e, WEBHOOK_SCHEMES)}"}
+
     # 주제범위 제어를 켜려면 범위 설명이 있어야 한다(빈 채로 켜면 판정 기준이 없어 fail-open으로
     # 무력화됨 — 사용자에게 명시적으로 막아 안내한다, issue 199).
     eff_scope_enabled = body.topic_scope_enabled if body.topic_scope_enabled is not None else config.topic_scope_enabled

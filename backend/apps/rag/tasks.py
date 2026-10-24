@@ -1,5 +1,6 @@
-import httpx
+import httpx  # 예외 타입만(임베딩 호출의 일시 실패 재시도) — 연결은 apps.core.safe_http 가 연다
 
+from apps.rag.web import WebFetchTransientError
 from config.celery import app
 
 # 배치 태스크 공통 옵션 — 무중단 배포(docker rollout)로 worker가 SIGKILL돼도 유실 0.
@@ -10,7 +11,7 @@ from config.celery import app
 _BATCH = dict(
     bind=True,
     max_retries=3,
-    autoretry_for=(httpx.ReadTimeout, httpx.ConnectError),
+    autoretry_for=(httpx.ReadTimeout, httpx.ConnectError, WebFetchTransientError),
     default_retry_delay=60,
     acks_late=True,
     reject_on_worker_lost=True,
