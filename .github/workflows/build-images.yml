@@ -65,7 +65,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/embed-chat-${{ matrix.image }}
+          images: ghcr.io/${{ github.repository_owner }}/Sandcorp Flow-${{ matrix.image }}
           tags: |
             type=raw,value=${{ github.sha }}
             type=raw,value=latest,enable={{is_default_branch}}
@@ -78,8 +78,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # 러너 재시작에도 캐시 보존 — GHCR :buildcache 태그에 layer 캐시 저장/재사용.
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/embed-chat-${{ matrix.image }}:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/embed-chat-${{ matrix.image }}:buildcache,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/Sandcorp Flow-${{ matrix.image }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/Sandcorp Flow-${{ matrix.image }}:buildcache,mode=max
 
   # main push에서 3개 이미지 빌드가 모두 성공하면 release 브랜치를 그 SHA로 force-update한다.
   # 이 push가 GitHub 웹훅을 발화 → A1의 Jenkins가 release를 감지해 로컬 배포한다.

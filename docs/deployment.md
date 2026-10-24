@@ -10,7 +10,7 @@ git push main
    │
    ▼  GitHub Actions (.github/workflows/build-images.yml)
 [build]  sub 러너(arm64-builder)에서 QEMU buildx로 linux/arm64 빌드
-         → GHCR: ghcr.io/sandcorporation/embed-chat-{api,admin,widget}:<sha> (+ latest)
+         → GHCR: ghcr.io/sandcorporation/Sandcorp Flow-{api,admin,widget}:<sha> (+ latest)
    │
    ▼  [release]  release 브랜치를 <sha>로 force-update (내장 GITHUB_TOKEN)
    │
@@ -67,10 +67,10 @@ gunicorn/gevent→uvicorn + Celery worker-chat→taskiq로 전환하는 **첫 �
 ### A1 호스트
 ```bash
 # 1) 배포 디렉토리(.env·media·release fetch가 여기 산다)
-git clone git@github.com:sandcorporation/embed-chat.git /opt/embed-chat
+git clone git@github.com:sandcorporation/sandcorp-flow.git /opt/sandcorp-flow
 
 # 2) .env 작성 — 템플릿 복사 후 채운다 (아래 "환경변수" 참조). 이미지·git에 절대 포함 금지
-cp /opt/embed-chat/.env.prod.example /opt/embed-chat/.env && vi /opt/embed-chat/.env
+cp /opt/sandcorp-flow/.env.prod.example /opt/sandcorp-flow/.env && vi /opt/sandcorp-flow/.env
 #    NGINX_PORT(기본 8080)를 정한다. NPM이 이 포트로 붙는다. Oracle 보안목록엔 열지 말 것.
 
 # 3) GHCR pull 인증 (classic PAT, read:packages, org면 SSO authorize)
@@ -86,7 +86,7 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
   - **Execute shell**:
     ```bash
     set -euo pipefail
-    DEPLOY_DIR=/opt/embed-chat
+    DEPLOY_DIR=/opt/sandcorp-flow
     cd "$DEPLOY_DIR"
     git fetch --quiet origin release
     git reset --hard --quiet FETCH_HEAD     # untracked .env·media 보존
@@ -112,7 +112,7 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
 - 배포용 시크릿 **불필요** — release 갱신은 내장 `GITHUB_TOKEN`(contents:write).
 - A1 pull용 **classic PAT**(`read:packages`)만 A1의 `docker login`에 사용(org면 SSO authorize).
 
-## 환경변수 (`/opt/embed-chat/.env`)
+## 환경변수 (`/opt/sandcorp-flow/.env`)
 
 | 키 | 필수 | 비고 |
 |---|---|---|
@@ -155,7 +155,7 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
 # langfuse.env(시크릿: PG/Clickhouse/MinIO 비번·NEXTAUTH_SECRET·SALT·ENCRYPTION_KEY 64hex) 작성 후
 docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
 # Langfuse UI(NPM 별도 호스트, 오퍼레이터 전용)에서 프로젝트 API 키 발급 →
-# /opt/embed-chat/.env 에 LANGFUSE_HOST·PUBLIC_KEY·SECRET_KEY 입력 후 재배포
+# /opt/sandcorp-flow/.env 에 LANGFUSE_HOST·PUBLIC_KEY·SECRET_KEY 입력 후 재배포
 ```
 - env 미설정이면 앱은 **완전 no-op**(코드는 가드형). `LANGFUSE_CAPTURE_CONTENT=false`로 본문 마스킹.
 - 전용 데이터스토어(postgres·redis·clickhouse·minio)라 운영 pg/redis와 분리. Clickhouse가 메모리를 쓰므로 A1 여유 확인.

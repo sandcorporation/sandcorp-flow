@@ -77,8 +77,8 @@ relay·소비자는 흐른 이벤트를 **INFO**로 남깁니다 — `docker log
 ```
 
 ```bash
-docker logs -f embed-chat-worker-console-bridge-1   # 콘솔 델타 흐름
-docker logs -f embed-chat-relay-1                    # outbox 발행 흐름
+docker logs -f sandcorp-flow-worker-console-bridge-1   # 콘솔 델타 흐름
+docker logs -f sandcorp-flow-relay-1                    # outbox 발행 흐름
 ```
 
 ## 운영 점검

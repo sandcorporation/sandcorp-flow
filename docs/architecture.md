@@ -1,11 +1,11 @@
 # 아키텍처
 
-embed-chat(멀티테넌트 GraphRAG 챗봇)을 4개 관점으로 본다. GitHub·VSCode가 아래 mermaid를
+Sandcorp Flow(멀티테넌트 GraphRAG 챗봇)을 4개 관점으로 본다. GitHub·VSCode가 아래 mermaid를
 렌더링한다. 배포 런북은 [deployment.md](./deployment.md), 설계 근거는 [docs/adr/](./adr/) 참조.
 
 ## 1. 런타임 컴포넌트 토폴로지
 
-prod(Oracle A1) 서비스 전부와 통신 경로. 모든 backend 서비스는 같은 `embed-chat-api` 이미지를
+prod(Oracle A1) 서비스 전부와 통신 경로. 모든 backend 서비스는 같은 `sandcorp-flow-api` 이미지를
 다른 command로 띄운다.
 
 ```mermaid

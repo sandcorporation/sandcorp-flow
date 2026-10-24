@@ -17,7 +17,7 @@ function resolveVisitorId(): string {
   const explicit = new URLSearchParams(window.location.search).get('visitor_id')
   if (explicit) return explicit
 
-  const KEY = 'embed_chat_visitor_id'
+  const KEY = 'sandcorp_flow_visitor_id'
   let vid = localStorage.getItem(KEY)
   if (!vid) {
     vid = crypto.randomUUID

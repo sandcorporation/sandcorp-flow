@@ -1,6 +1,6 @@
-# Embed Chat — Tenant Guide
+# Sandcorp Flow — Tenant Guide
 
-Tenant(고객사)는 Embed Chat 플랫폼을 이용해 자사 웹사이트에 AI 챗봇을 삽입하고, 응대 메뉴얼 업로드·챗봇 설정·방문자 메모리 관리를 할 수 있습니다.
+Tenant(고객사)는 Sandcorp Flow 플랫폼을 이용해 자사 웹사이트에 AI 챗봇을 삽입하고, 응대 메뉴얼 업로드·챗봇 설정·방문자 메모리 관리를 할 수 있습니다.
 
 ## 시작하기 전에
 

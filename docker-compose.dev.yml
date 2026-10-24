@@ -1,3 +1,4 @@
+name: sandcorp-flow-dev
 include:
   - path: docker-compose.yml
 

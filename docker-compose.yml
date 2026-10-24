@@ -1,8 +1,9 @@
+name: sandcorp-flow
 services:
   db:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_DB: ${DB_NAME:-embed_chat}
+      POSTGRES_DB: ${DB_NAME:-sandcorp_flow}
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:

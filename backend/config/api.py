@@ -7,7 +7,7 @@ from apps.memory.api import memory_router, session_router
 from apps.escalation.api import escalation_router
 from apps.usage.api import tenant_usage_router, operator_usage_router
 
-api = NinjaAPI(title="Embed Chat API", version="1.0.0")
+api = NinjaAPI(title="Sandcorp Flow API", version="1.0.0")
 
 api.add_router("/", core_router)
 api.add_router("/operator", operator_router)

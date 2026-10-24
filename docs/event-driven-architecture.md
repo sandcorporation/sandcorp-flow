@@ -1,10 +1,10 @@
 # Event-Driven 아키텍처 (HITL/세션 라이프사이클)
 
-Embed Chat의 **HITL(사람 상담원 전환)/세션 라이프사이클**은 카논 도메인 이벤트로 흐릅니다.
+Sandcorp Flow의 **HITL(사람 상담원 전환)/세션 라이프사이클**은 카논 도메인 이벤트로 흐릅니다.
 이 문서는 *왜* 이렇게 설계했고 *어떻게* 동작하는지를 설명합니다. 운영(프로세스·dead-letter
 리플레이 등)은 [event-pipeline.md](./event-pipeline.md)를 보세요.
 
-관련: PRD `.scratch/embed-chatbot-platform/PRD-eventdriven-hitl-outbox.md` · [ADR-0001](./adr/0001-sse-redis-pubsub.md)(SSE/Redis) · [ADR-0002](./adr/0002-hitl-claim-model.md)(Escalation claim).
+관련: PRD `.scratch/Sandcorp Flowbot-platform/PRD-eventdriven-hitl-outbox.md` · [ADR-0001](./adr/0001-sse-redis-pubsub.md)(SSE/Redis) · [ADR-0002](./adr/0002-hitl-claim-model.md)(Escalation claim).
 
 ---
 

@@ -1,9 +1,9 @@
 # oracle(Ampere A1, arm64, GPU 없음) prod 배포 — GHCR 이미지를 pull만 한다(빌드 안 함).
 # Jenkins(A1)가 release 브랜치를 받아 scripts/deploy.sh로 docker rollout 무중단 배포한다(ADR-0015).
 #
-# - 모든 backend 서비스(api·worker·worker-chat·relay·4 bridge)는 같은 embed-chat-api 이미지.
+# - 모든 backend 서비스(api·worker·worker-chat·relay·4 bridge)는 같은 sandcorp-flow-api 이미지.
 # - 공개 TLS/도메인은 NPM(Nginx Proxy Manager)이 종단 → 공유 `proxy` 네트워크로 이 스택의 nginx
-#   (별칭 embed-chat-web:80)에 포워딩. 그래서 nginx는 호스트 포트를 열지 않는다.
+#   (별칭 sandcorp-flow-web:80)에 포워딩. 그래서 nginx는 호스트 포트를 열지 않는다.
 # - 무중단: api·worker·worker-chat만 `docker rollout`(start-first). db·redis·nginx는 싱글톤.
 # - ollama·paddle 없음(per-Tenant Provider/Vision OCR). collectstatic 없음(STATIC_ROOT 미사용).
 #
@@ -11,7 +11,7 @@
 # 이미지 태그: deploy.sh가 IMAGE_TAG=<git-sha>로 핀(롤백 = 옛 sha 재실행).
 
 x-backend: &backend
-  image: ghcr.io/sandcorporation/embed-chat-api:${IMAGE_TAG:-latest}
+  image: ghcr.io/sandcorporation/sandcorp-flow-api:${IMAGE_TAG:-latest}
   env_file: .env
   restart: unless-stopped
   depends_on:
@@ -20,11 +20,13 @@ x-backend: &backend
     redis:
       condition: service_healthy
 
+name: sandcorp-flow-prod
+
 services:
   db:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_DB: ${DB_NAME:-embed_chat}
+      POSTGRES_DB: ${DB_NAME:-sandcorp_flow}
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:
@@ -139,13 +141,13 @@ services:
 
   # 정적 SPA 빌드 산출물을 볼륨에 복사하고 종료(one-shot). nginx가 그 볼륨을 서빙.
   widget-init:
-    image: ghcr.io/sandcorporation/embed-chat-widget:${IMAGE_TAG:-latest}
+    image: ghcr.io/sandcorporation/sandcorp-flow-widget:${IMAGE_TAG:-latest}
     volumes:
       - widget_dist:/output
     restart: "no"
 
   admin-init:
-    image: ghcr.io/sandcorporation/embed-chat-admin:${IMAGE_TAG:-latest}
+    image: ghcr.io/sandcorporation/sandcorp-flow-admin:${IMAGE_TAG:-latest}
     volumes:
       - admin_dist:/output
     restart: "no"
