@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import {
   Background, BackgroundVariant, Controls, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, applyNodeChanges,
-  useReactFlow, type Connection, type Edge, type Node, type NodeChange, type NodeProps,
+  useReactFlow, useUpdateNodeInternals, type Connection, type Edge, type Node, type NodeChange, type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
@@ -128,6 +128,16 @@ function Inner(p: FlowCanvasProps) {
     setRfNodes(build)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph, byNode, selectedId, readOnly, activeNodes, p.activeNodeIds])
+
+  // 크기는 재었는데 손잡이 자리(handleBounds)가 비어 버린 노드를 다시 재게 한다(#128).
+  // 카드 데이터를 새로 만드는 것(build)과 React Flow의 측정 갱신이 한 렌더 안에서 겹치면, 측정값 없는 옛 노드가 한 번 채택되며
+  // handleBounds 가 지워지고 다음 노드는 측정값을 들고 와 「잰 노드」로 보인다. React Flow 는 크기가 그대로면 다시 재지 않아
+  // 그 노드에 닿는 선이 store 에는 있는데 그려지지 않는다(선 잇기 직후·새로고침 직후 선 0개). 그런 노드만 골라 강제로 다시 잰다.
+  const updateNodeInternals = useUpdateNodeInternals()
+  useEffect(() => {
+    const stale = rfNodes.filter((n) => n.measured && !rf.getInternalNode(n.id)?.internals.handleBounds).map((n) => n.id)
+    if (stale.length > 0) updateNodeInternals(stale)
+  }, [rfNodes, rf, updateNodeInternals])
 
   const edges: Edge[] = useMemo(
     () =>
