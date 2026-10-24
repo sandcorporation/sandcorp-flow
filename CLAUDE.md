@@ -21,7 +21,7 @@
 
 - admin의 HTTP 클라이언트(`admin/src/generated`)는 백엔드 OpenAPI에서 **orval로 자동 생성**됩니다(ADR-0014). **손으로 편집하지 마세요.**
 - **백엔드 Ninja Schema/엔드포인트를 바꾸면** `bash scripts/gen-admin-api.sh`로 재생성하고 `admin/openapi.json`·`admin/src/generated` 변경분을 **함께 커밋**하세요(전부 docker로 실행).
-- 드리프트 방지: `git config core.hooksPath scripts/hooks`로 pre-commit 훅을 켜면, 백엔드 API 변경을 재생성 없이 커밋하려 할 때 차단됩니다.
+- 드리프트 방지: `git config core.hooksPath scripts/hooks`로 pre-commit 훅을 켜면, 백엔드 API 변경(api.py·스키마 모듈, ninja/pydantic을 import하는 비테스트 `.py`)을 재생성 없이 커밋하려 할 때 차단됩니다. 그 밖의 `.py`만 바뀌면 docker 없이 통과합니다.
 - 인증·refresh·SSE는 생성 코드가 아니라 `admin/src/mutator.ts`(custom instance)와 손작성 `auth.ts`에 있습니다 — 이쪽은 직접 관리합니다.
 
 ## Agent skills
