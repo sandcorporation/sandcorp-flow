@@ -119,7 +119,7 @@ async def test_redaction_hook_runs_just_before_saving(tenant_with_key, monkeypat
     from apps.tenants.tenant_secrets import redact
 
     assert trace.REDACTORS == [redact]
-    monkeypatch.setattr(trace, "REDACTORS", [lambda s: s.replace("sk-secret-123", "[비밀]")])
+    monkeypatch.setattr(trace, "REDACTORS", [lambda _tenant_id, s: s.replace("sk-secret-123", "[비밀]")])
     tenant, _ = tenant_with_key
     session = await adb(_session)(tenant)
 

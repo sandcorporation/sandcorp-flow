@@ -2,8 +2,9 @@
 
 실행기가 노드마다 쌓은 ``TraceEntry``(핸들러가 준 ``record`` + 실행기가 잰 시간·토큰·비용)를 한 턴에 한 번의 insert로 저장한다.
 
-- **비밀 가림**: ``REDACTORS``(문자열 → 문자열)를 저장 직전 한 곳(``prepare``)에서 모든 문자열에 적용한다. 기본은
-  Tenant Secret 가림(``apps.tenants.tenant_secrets.redact``, #33) — 이 프로세스가 복호화한 비밀 원문과 그 부분 문자열.
+- **비밀 가림**: ``REDACTORS``(``(tenant_id, 문자열) → 문자열``)를 저장 직전 한 곳(``prepare``)에서 모든 문자열에 적용한다.
+  기본은 Tenant Secret 가림(``apps.tenants.tenant_secrets.redact``, #33) — **그 기록의 테넌트가** 이 프로세스에서 복호화한
+  비밀 원문과 그 부분 문자열. 다른 테넌트 비밀로는 가리지 않는다(가림 오라클 방지, #115).
 - **자르기**: 문자열 하나는 ``MAX_FIELD_CHARS``자까지(넘으면 ``…(잘림)``). 노드 수는 실행기 상한(50)이 막는다 → 한 행은
   많아야 50 × (몇 개 필드 × 2000자) 수준(수백 KB 미만)이고 JSONB 한 칸이다. 방문자 입력·답변이 이보다 긴 일은 드물고
   전문은 ChatMessage에 이미 있어 기록에서 잘라도 정보가 사라지지 않는다.
@@ -13,6 +14,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Callable
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -29,25 +31,25 @@ logger = logging.getLogger(__name__)
 MAX_FIELD_CHARS = 2000
 TRUNCATED_MARK = "…(잘림)"
 
-REDACTORS: list[Callable[[str], str]] = [redact_tenant_secrets]
-"""비밀 가림 훅. 저장 직전 모든 문자열에 차례로 적용한다."""
+REDACTORS: list[Callable[[uuid.UUID, str], str]] = [redact_tenant_secrets]
+"""비밀 가림 훅 ``(기록의 tenant_id, 문자열) → 문자열``. 저장 직전 모든 문자열에 차례로 적용한다."""
 
 
-def _clean(value: JSON) -> JSON:
+def _clean(tenant_id: uuid.UUID, value: JSON) -> JSON:
     if isinstance(value, str):
         for redact in REDACTORS:
-            value = redact(value)
+            value = redact(tenant_id, value)
         return value[:MAX_FIELD_CHARS] + TRUNCATED_MARK if len(value) > MAX_FIELD_CHARS else value
     if isinstance(value, dict):
-        return {k: _clean(v) for k, v in value.items()}
+        return {k: _clean(tenant_id, v) for k, v in value.items()}
     if isinstance(value, list):
-        return [_clean(v) for v in value]
+        return [_clean(tenant_id, v) for v in value]
     return value
 
 
-def prepare(trace: list[TraceEntry]) -> tuple[list[JSON], int, int, Decimal | None]:
-    """저장할 entries(가림·자름 적용)와 합계(입력 토큰, 출력 토큰, 비용 — 모르는 모델이 있으면 None)."""
-    entries: list[JSON] = [_clean(dict(e)) for e in trace]  # type: ignore[arg-type]  # TypedDict → JSON 객체
+def prepare(trace: list[TraceEntry], *, tenant_id: uuid.UUID) -> tuple[list[JSON], int, int, Decimal | None]:
+    """저장할 entries(이 테넌트 비밀 가림·자름 적용)와 합계(입력 토큰, 출력 토큰, 비용 — 모르는 모델이 있으면 None)."""
+    entries: list[JSON] = [_clean(tenant_id, dict(e)) for e in trace]  # type: ignore[arg-type]  # TypedDict → JSON 객체
     input_tokens = sum(e["input_tokens"] for e in trace)
     output_tokens = sum(e["output_tokens"] for e in trace)
     unknown = any(e["cost_usd"] is None and (e["input_tokens"] or e["output_tokens"]) for e in trace)
@@ -62,7 +64,7 @@ def save_decision_trace(session: ChatSession, trace: list[TraceEntry], duration_
     if not trace:
         return
     try:
-        entries, input_tokens, output_tokens, cost = prepare(trace)
+        entries, input_tokens, output_tokens, cost = prepare(trace, tenant_id=session.tenant_id)
         DecisionTrace.objects.create(
             tenant_id=session.tenant_id,
             session=session,
