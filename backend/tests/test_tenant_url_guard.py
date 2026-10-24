@@ -446,3 +446,77 @@ def test_production_settings_forbid_private_addresses():
 
     prod_settings = (Path(__file__).resolve().parent.parent / "config" / "settings" / "prod.py").read_text()
     assert "OUTBOUND_PRIVATE_ALLOWED = False" in prod_settings
+
+
+# ── 일반 설정 PATCH: 플랫폼 기본(type="")이어도 base_url을 저장 때 본다(#110) ──────
+
+BASE_URL_FIELDS = ("llm_base_url", "embed_base_url", "ocr_base_url")
+
+
+def _patch_config(client, token: str, body: dict[str, str]):
+    return client.patch(
+        "/api/tenant/config/", body,
+        content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("field_name", BASE_URL_FIELDS)
+@pytest.mark.parametrize("base_url", [
+    "http://172.17.0.1:18093/v1",          # 사설(도커 브리지)
+    "http://169.254.169.254/v1",           # 클라우드 메타데이터
+    "https://169.254.169.254/v1",
+    "https://127.0.0.1/v1",                # 루프백
+    "https://[::1]/v1",
+    "https://intranet.example.com/v1",     # 사설로 풀리는 도메인
+])
+def test_config_patch_refuses_internal_base_url_without_provider_type(
+    client, tenant_admin_token, prod: Prod, field_name: str, base_url: str,
+):
+    from apps.tenants.models import TenantConfig
+
+    resp = _patch_config(client, tenant_admin_token, {field_name: base_url})
+    assert resp.status_code == 400, resp.content
+    detail = resp.json()["detail"]
+    assert detail.startswith("Provider 주소를 쓸 수 없습니다"), detail
+    _no_ip(detail)
+    assert all(getattr(c, field_name) == "" for c in TenantConfig.objects.all())
+    assert prod.route.calls == []
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("field_name", BASE_URL_FIELDS)
+def test_config_patch_refuses_internal_base_url_with_provider_type(
+    client, tenant_admin_token, prod: Prod, field_name: str,
+):
+    kind = field_name.removesuffix("_base_url")
+    resp = _patch_config(client, tenant_admin_token, {f"{kind}_provider_type": "openai", field_name: "https://meta.example.com/v1"})
+    assert resp.status_code == 400, resp.content
+    assert INTERNAL_WORDING in resp.json()["detail"]
+    assert prod.route.calls == []
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("field_name", BASE_URL_FIELDS)
+def test_config_patch_saves_public_base_url(client, tenant_admin_token, prod: Prod, field_name: str):
+    resp = _patch_config(client, tenant_admin_token, {field_name: "https://llm.example.com/v1"})
+    assert resp.status_code == 200, resp.content
+    assert resp.json()[field_name] == "https://llm.example.com/v1"
+
+
+@pytest.mark.django_db
+def test_config_patch_clearing_base_url_is_allowed(client, tenant_admin_token, prod: Prod):
+    resp = _patch_config(client, tenant_admin_token, {f: "" for f in BASE_URL_FIELDS})
+    assert resp.status_code == 200, resp.content
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("field_name", BASE_URL_FIELDS)
+def test_dev_setting_allows_internal_base_url_in_config_patch(
+    client, tenant_admin_token, settings, servers: Servers, field_name: str,
+):
+    settings.OUTBOUND_PRIVATE_ALLOWED = True
+    base = f"http://127.0.0.1:{servers.http_port}/v1"
+    resp = _patch_config(client, tenant_admin_token, {field_name: base})
+    assert resp.status_code == 200, resp.content
+    assert resp.json()[field_name] == base
