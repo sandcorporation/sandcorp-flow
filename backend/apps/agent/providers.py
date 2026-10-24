@@ -42,7 +42,9 @@ def build_llm_client(provider: LLMProvider):
     # openai / custom / "" → OpenAI-호환
     from langchain_openai import ChatOpenAI
 
-    kwargs: dict[str, Any] = {"model": provider.model}
+    # stream_usage: 스트리밍 요청에 stream_options.include_usage를 싣는다. OpenAI는 이게 없으면 스트리밍 응답에 usage를
+    # 주지 않는다. langchain_openai는 base_url을 지정하면 이 기본을 끄므로(플랫폼 키·custom이 그렇다) 늘 명시한다(#86).
+    kwargs: dict[str, Any] = {"model": provider.model, "stream_usage": True}
     if provider.api_key:
         kwargs["api_key"] = provider.api_key
     if provider.base_url:
