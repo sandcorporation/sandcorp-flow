@@ -473,6 +473,10 @@
             "title": "Role",
             "type": "string"
           },
+          "sub_tail": {
+            "title": "Sub Tail",
+            "type": "string"
+          },
           "user_id": {
             "title": "User Id",
             "type": "string"
@@ -483,6 +487,7 @@
           "user_id",
           "name",
           "email",
+          "sub_tail",
           "is_active",
           "role"
         ],

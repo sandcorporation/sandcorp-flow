@@ -15,7 +15,7 @@ import HitlTab from './components/HitlTab'
 import TenantUsageTab from './components/TenantUsageTab'
 import OperatorUsageTab from './components/OperatorUsageTab'
 import { getAccess, bootSilentRefresh } from './auth'
-import { operatorLogout, operatorLogoutAll, agentLogout, agentLogoutAll } from './api'
+import { operatorLogout, operatorLogoutAll, agentLogout, agentLogoutAll, memberMe, memberLoginUrl, ACCOUNT_URL } from './api'
 
 const ICON = 'h-4 w-4'
 const operatorNav: NavItem[] = [
@@ -41,6 +41,7 @@ export default function App() {
   const [agentAuthed, setAgentAuthed] = useState(() => !!getAccess('agent'))
   const [agentBooting, setAgentBooting] = useState(true)
   const [agentUsername, setAgentUsername] = useState(() => localStorage.getItem('agent_username'))
+  const [tenantName, setTenantName] = useState<string | null>(null)
 
   useEffect(() => {
     // 새로고침으로 sessionStorage access가 사라져도 refresh 쿠키로 무중단 복구.
@@ -50,6 +51,18 @@ export default function App() {
       bootSilentRefresh('agent').then((ok) => setAgentAuthed(ok)).finally(() => setAgentBooting(false)),
     ])
   }, [])
+
+  // 콜백으로 바로 들어오면 이름을 모른다 — 세션이 열리면 /me 로 조직 이름과 내 이름을 채운다.
+  useEffect(() => {
+    if (!agentAuthed) return
+    memberMe()
+      .then((me) => {
+        setTenantName(me.tenant_name)
+        const who = me.name || me.email
+        if (who) { localStorage.setItem('agent_username', who); setAgentUsername(who) }
+      })
+      .catch(() => {})
+  }, [agentAuthed])
 
   const handleOperatorLogout = async () => {
     await operatorLogout()
@@ -69,6 +82,13 @@ export default function App() {
     localStorage.removeItem('agent_username')
     setAgentAuthed(false)
     setAgentUsername(null)
+    setTenantName(null)
+  }
+  // 조직 바꾸기: 이 세션을 닫고 고객 진입으로 다시 간다. sandcorp 계정 세션이 살아 있어 곧장 조직 선택으로 돌아온다.
+  const handleTenantSwitch = async () => {
+    await agentLogout()
+    endAgentSession()
+    window.location.assign(memberLoginUrl())
   }
   const handleTenantLogout = async () => {
     await agentLogout()
@@ -91,7 +111,7 @@ export default function App() {
   const tenantEl = agentBooting
     ? <div aria-busy="true" />
     : agentAuthed
-      ? <DashboardLayout brand="Tenant" navItems={tenantNav} user={agentUsername} onLogout={handleTenantLogout} onLogoutAll={handleTenantLogoutAll} />
+      ? <DashboardLayout brand={tenantName ?? '내 조직'} navItems={tenantNav} user={agentUsername} accountHref={ACCOUNT_URL} onSwitch={handleTenantSwitch} onLogout={handleTenantLogout} onLogoutAll={handleTenantLogoutAll} />
       : <TenantLogin onLogin={handleTenantLogin} />
 
   return (

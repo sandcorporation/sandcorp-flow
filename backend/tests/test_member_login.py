@@ -435,3 +435,48 @@ def test_member_token_from_helper_matches_login_session(tenant_with_key) -> None
     m = make_membership(tenant, "member")
     me = Client().get("/api/tenant/members/me", **_hdr(member_token(m)))
     assert me.status_code == 200 and me.json()["id"] == str(m.id)
+
+
+@pytest.mark.django_db
+def test_member_list_gives_sub_tail_for_members_without_profile(tenant_with_key) -> None:
+    """이름·이메일 캐시가 없는 멤버도 목록에서 구별하도록 sub 끝 6자리를 준다(#56)."""
+    tenant, _ = tenant_with_key
+    admin = make_membership(tenant, "admin", name="관리자", email="a@example.com")
+    ghost = make_membership(tenant, "member", sub="m_ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+    rows = Client().get("/api/tenant/members/", **_hdr(member_token(admin))).json()
+
+    by_id = {r["id"]: r for r in rows}
+    assert by_id[str(ghost.id)]["sub_tail"] == "UVWXYZ"
+    assert by_id[str(ghost.id)]["name"] is None and by_id[str(ghost.id)]["email"] is None
+
+
+@pytest.mark.django_db
+def test_seed_e2e_member_accepts_invite_dropped_in_file(tenant_with_key, tmp_path, settings) -> None:
+    """E2E 대역: 파일에 떨어진 초대 원문을 콜백과 같은 accept_invite로 수락하고 세션 토큰을 쓴다."""
+    from django.core.management import call_command
+
+    from apps.tenants.members import create_invite
+
+    tenant, _ = tenant_with_key
+    _, raw = create_invite(tenant, "member")
+    invite_file, token_file = tmp_path / "invite", tmp_path / "token"
+    invite_file.write_text(raw)
+
+    # 시작할 때 남은 원문은 버리므로, 시작 뒤에 다시 쓰는 것처럼 스레드로 떨군다.
+    import threading
+    import time
+
+    def drop() -> None:
+        time.sleep(0.3)
+        invite_file.write_text(raw)
+
+    threading.Thread(target=drop).start()
+    call_command(
+        "seed_e2e_member", "--sub", "m_E2EINVITEE0000000000000001",
+        "--accept-invite-from", str(invite_file), "--token-file", str(token_file),
+        "--wait-seconds", "10", "--once",
+    )
+
+    me = Client().get("/api/tenant/members/me", **_hdr(token_file.read_text()))
+    assert me.status_code == 200 and me.json()["tenant_id"] == str(tenant.id) and me.json()["role"] == "member"

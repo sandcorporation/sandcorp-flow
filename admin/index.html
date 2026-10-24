@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sandcorp Flow Admin</title>
+    <script>
+      // 로그인 화면에는 테마 토글이 없다 — 고른 테마를 첫 페인트 전에 적용한다(ThemeToggle과 같은 키).
+      try { if (localStorage.getItem('admin_theme') === 'dark') document.documentElement.classList.add('dark') } catch (e) {}
+    </script>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f7fafc; color: #2d3748; }
