@@ -60,30 +60,12 @@ class PlainResponse(BaseModel):
 
 def _local_search_sync(state: dict) -> dict:
     """엔티티 중심 근거 — 질의로 resolved Entity를 찾고 그 이웃 관계를 모은다(ADR-0010). DB(sync)."""
-    from apps.rag.graph_store import GraphStore
+    from apps.rag import services
 
-    gs = GraphStore(state["tenant_id"])
-    matched = gs.search_entities(state["user_message"], top_k=state.get("search_top_k", 5))  # 흐름 지식 검색 노드의 top_k(#23)
-
-    chunks = []
-    seen_entities = set()
-    seen_edges = set()
-    for ent in matched:
-        name = ent["name"]
-        if name in seen_entities:
-            continue
-        seen_entities.add(name)
-        desc = ent.get("description") or ""
-        chunks.append(f"{name}: {desc}".strip(": ") if desc else name)
-
-        for edge in gs.neighbors(name)["edges"]:
-            key = (edge["source"], edge["target"], edge.get("description"))
-            if key in seen_edges:
-                continue
-            seen_edges.add(key)
-            chunks.append(f"{edge['source']} —{edge.get('description') or ''}→ {edge['target']}")
-
-    return {"rag_chunks": chunks}
+    hits = services.local_search(
+        state["tenant_id"], state["user_message"], top_k=state.get("search_top_k", 5)  # 흐름 지식 검색 노드의 top_k(#23)
+    )
+    return {"rag_chunks": services.hits_as_chunks(hits)}
 
 
 def _observe_retrieval(name: str, state: dict, result: dict) -> None:

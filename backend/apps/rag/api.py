@@ -7,6 +7,7 @@ from django.conf import settings
 from django.shortcuts import get_object_or_404
 from apps.tenants.auth import member_auth
 from apps.rag.models import Document
+from apps.rag import services
 from apps.rag.ingesters import MIME_TO_INGESTER
 
 rag_router = Router(tags=["rag"], auth=member_auth)
@@ -104,8 +105,7 @@ def refetch_url_document(request, document_id: str):
 
 @rag_router.get("/", response=List[DocumentOut])
 def list_documents(request):
-    tenant = request.auth.tenant
-    docs = Document.objects.filter(tenant_id=tenant.id)
+    docs = services.list_documents(request.auth.tenant.id)
     return [
         {"id": str(d.id), "name": d.name, "status": d.status, "error_message": d.error_message}
         for d in docs
@@ -141,25 +141,7 @@ class RebuildOut(Schema):
 @rag_router.get("/graph/search", response=GraphOut)
 def graph_search(request, q: str):
     """Knowledge Graph 인스펙터 — 이름/설명 매칭 엔티티 + 각 1홉 이웃을 {nodes, edges}로 반환."""
-    from apps.rag.graph_store import GraphStore
-
-    tenant = request.auth.tenant
-    gs = GraphStore(str(tenant.id))
-    matched = gs.search_entities(q)
-
-    nodes_by_name = {}
-    edges = []
-    seen_edges = set()
-    for ent in matched:
-        sub = gs.neighbors(ent["name"])
-        for n in sub["nodes"]:
-            nodes_by_name[n["name"]] = n
-        for e in sub["edges"]:
-            key = (e["source"], e["target"])
-            if key not in seen_edges:
-                seen_edges.add(key)
-                edges.append(e)
-    return {"nodes": list(nodes_by_name.values()), "edges": edges}
+    return services.search_subgraph(request.auth.tenant.id, q)
 
 
 @rag_router.get("/graph/neighbors", response=GraphOut)
@@ -221,10 +203,7 @@ class ChunkOut(Schema):
 @rag_router.get("/graph/status", response=GraphStatusOut)
 def graph_status(request):
     """Tenant Knowledge Graph의 신선도(fresh/stale/rebuilding)를 반환한다."""
-    from apps.rag.graph_store import GraphStore
-
-    tenant = request.auth.tenant
-    return {"freshness": GraphStore(str(tenant.id)).get_freshness()}
+    return {"freshness": services.graph_freshness(request.auth.tenant.id)}
 
 
 @rag_router.post("/graph/rebuild", response={202: RebuildOut})
