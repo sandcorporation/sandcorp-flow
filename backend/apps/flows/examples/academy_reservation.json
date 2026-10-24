@@ -1,0 +1,33 @@
+{
+  "nodes": [
+    {"id": "start", "kind": "start", "code": "N-01", "name": "시작", "position": {"x": 0, "y": 0}, "config": {}},
+    {"id": "classify", "kind": "ai_classify", "code": "N-02", "name": "의도 분류", "position": {"x": 240, "y": 0}, "config": {"instructions": "학원 상담 문의의 의도를 분류한다. 레벨 테스트 예약이면 희망 날짜(YYYY-MM-DD)·레벨(초급/중급/고급)·이름을 뽑는다.", "labels": ["course_info", "level_test", "human_request"], "fields": [{"name": "date", "type": "string", "description": "희망 날짜. YYYY-MM-DD 모양으로. 없으면 비운다"}, {"name": "level", "type": "string", "description": "초급·중급·고급 중 하나. 없으면 비운다"}, {"name": "name", "type": "string", "description": "수강생 이름. 없으면 비운다"}]}},
+    {"id": "route", "kind": "condition", "code": "N-03", "name": "의도에 따라", "position": {"x": 480, "y": 0}, "config": {"branches": [{"name": "test", "when": "label == 'level_test'"}, {"name": "human", "when": "label == 'human_request' or confidence < 0.5"}]}},
+    {"id": "ready", "kind": "condition", "code": "N-04", "name": "예약 정보가 다 모였나", "position": {"x": 720, "y": -160}, "config": {"branches": [{"name": "complete", "when": "fields.date != null and fields.level != null"}]}},
+    {"id": "ask", "kind": "ai_answer", "code": "N-05", "name": "빠진 정보 되묻기", "position": {"x": 960, "y": -280}, "config": {"instructions": "예약에 필요한 희망 날짜와 레벨(초급·중급·고급) 중 빠진 것 하나만 짧게 되묻는다.", "await_reply": true}},
+    {"id": "reserve", "kind": "http_tool", "code": "N-06", "name": "레벨 테스트 예약", "position": {"x": 960, "y": -160}, "config": {"method": "POST", "url": "https://demo-api.flow.sandcorp.co.kr/reservations", "body_template": "{\"date\": \"{{state.fields.date}}\", \"level\": \"{{state.fields.level}}\", \"name\": \"{{state.fields.name}}\"}", "save": {"reserved": "$.reserved", "reservation_no": "$.reservation_no", "time": "$.time", "level_label": "$.level_label"}}},
+    {"id": "done", "kind": "condition", "code": "N-07", "name": "예약 결과", "position": {"x": 1200, "y": -160}, "config": {"branches": [{"name": "ok", "when": "fields.reserved == true"}]}},
+    {"id": "confirm", "kind": "ai_answer", "code": "N-08", "name": "예약 확인 안내", "position": {"x": 1440, "y": -200}, "config": {"instructions": "레벨 테스트 예약이 잡혔다고 안내한다. 예약 정보는 문자로 따로 간다고 하고, 시간 변경은 사람 연결을 안내한다."}},
+    {"id": "say_error", "kind": "ai_answer", "code": "N-09", "name": "예약 실패 안내", "position": {"x": 1440, "y": -40}, "config": {"instructions": "예약이 지금은 안 됐다고 사과하고, 날짜 모양을 확인해 다시 말씀해 주시거나 사람과 이야기하겠다고 하시면 된다고 안내한다."}},
+    {"id": "courses", "kind": "knowledge_search", "code": "N-10", "name": "강좌 찾기", "position": {"x": 720, "y": 120}, "config": {"top_k": 4}},
+    {"id": "course_answer", "kind": "ai_answer", "code": "N-11", "name": "수강 안내", "position": {"x": 960, "y": 120}, "config": {"instructions": "찾은 강좌·수강료 자료로만 답한다. 자료에 없는 건 모른다고 하고 사람 연결을 안내한다. 수강료·할인을 새로 약속하지 않는다."}},
+    {"id": "guard", "kind": "guardrail", "code": "N-12", "name": "가드레일", "position": {"x": 1200, "y": 120}, "config": {"rules": ["price_promise"], "action": "rewrite"}},
+    {"id": "handoff", "kind": "handoff", "code": "N-13", "name": "사람 넘김", "position": {"x": 720, "y": 280}, "config": {"reason": "수강생이 사람을 원하거나 의도가 불확실함"}}
+  ],
+  "edges": [
+    {"from": "start", "to": "classify"},
+    {"from": "classify", "to": "route"},
+    {"from": "route", "to": "ready", "handle": "test"},
+    {"from": "route", "to": "handoff", "handle": "human"},
+    {"from": "route", "to": "courses", "handle": "else"},
+    {"from": "ready", "to": "reserve", "handle": "complete"},
+    {"from": "ready", "to": "ask", "handle": "else"},
+    {"from": "ask", "to": "classify"},
+    {"from": "reserve", "to": "done"},
+    {"from": "reserve", "to": "say_error", "handle": "error"},
+    {"from": "done", "to": "confirm", "handle": "ok"},
+    {"from": "done", "to": "say_error", "handle": "else"},
+    {"from": "courses", "to": "course_answer"},
+    {"from": "course_answer", "to": "guard"}
+  ]
+}
