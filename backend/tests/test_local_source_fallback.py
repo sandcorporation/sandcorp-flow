@@ -175,6 +175,5 @@ async def test_session_retrievals_recovers_chunks_from_history(tenant_with_key, 
     assert last["chunk_count"] >= 1
     assert any("1920" in c for c in last["chunks"])
     # 실행 노드 흐름도 히스토리(versions_seen)에서 복원된다 — 원문 폴백 경로
-    assert last["nodes"][:2] == ["local_search", "call_llm"]
-    assert "source_search" in last["nodes"]
-    assert last["nodes"][-1] == "save_messages"
+    # 실행 노드는 흐름 노드 id(#72). 원문 폴백은 AI 답변 핸들러 안에서 돌아 따로 보이지 않는다.
+    assert last["nodes"] == ["start", "search", "answer", "__flow_finish__"]
