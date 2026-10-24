@@ -96,6 +96,8 @@ class _FakeChatLLM:
         # 안정 prefix를 그래프 종단에서 검증하기 위함(issue 201). stream/astream/acomplete는 모두
         # complete_structured를 경유하므로 여기 한 곳에서 잡힌다.
         self.captured: list[tuple[str, list]] = []
+        # 스키마 이름 → callable(messages, schema) -> schema 인스턴스. 동적으로 만든 스키마(AI 분류·추출 ClassifyResult)용.
+        self.by_schema: dict = {}
 
     def complete_structured(self, provider, messages, schema):
         self.last_provider = provider
@@ -113,6 +115,8 @@ class _FakeChatLLM:
                     {"source": "FOOTSWITCH", "target": "EXPRESSION_PEDAL", "description": "paired with"},
                 ],
             )
+        if schema.__name__ in self.by_schema:
+            return self.by_schema[schema.__name__](messages, schema)
         if self.override is not None:
             return self.override(messages)
         # HITL-OFF 경로(response-only 스키마)는 needs_hitl 필드가 없다
@@ -136,6 +140,9 @@ class _FakeChatLLM:
         insc = d.get("in_scope", True)
         resp = d.get("response", "") or ""
         ctrl = {"context_sufficient": cs, "in_scope": insc}
+        if "needs_hitl" in d:  # 넘김 판단 필드도 response보다 먼저 도착한다(스키마 필드 순서)
+            ctrl["needs_hitl"] = d["needs_hitl"]
+            ctrl["hitl_reason"] = d.get("hitl_reason", "")
         yield dict(ctrl)                                              # 제어필드 먼저(in_scope 포함)
         if resp:
             mid = max(1, len(resp) // 2)

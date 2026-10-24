@@ -23,6 +23,9 @@ RULES = [
     "start 노드는 정확히 하나이고, start로 들어오는 선은 안 된다. 모든 노드는 start에서 갈 수 있어야 한다.",
     "한 갈래에서 나가는 선은 하나. next 갈래는 선이 없어도 된다(거기서 턴이 끝난다).",
     "condition 노드는 branches[].name 갈래와 else 갈래 모두에 선이 있어야 한다(else·next는 갈래 이름으로 못 쓴다).",
+    "condition의 when은 작은 식 언어다: 이름 label·confidence·fields(fields.키)·user_message, 비교 == != < <= > >=, "
+    "포함 in/not in, and/or/not, 값 '문자열'·숫자·true/false/null·목록. 위에서부터 처음 참인 갈래로 가고 없으면 else. "
+    "ai_classify는 labels(분류)나 fields(추출 {name, description, type}) 중 하나 이상이 필요하고 결과를 label·fields·confidence(0~1)로 낸다.",
     "ai_answer의 handoff 갈래는 선택 — 선이 있을 때만 AI가 사람 넘김을 판단한다. handoff 노드에서는 나가는 선이 없다.",
     "순환은 await_reply: true인 ai_answer를 하나 이상 지나야 한다(그 노드에서 턴이 끝나고 다음 턴이 이어 간다).",
     f"실행기는 한 턴에 노드를 {MAX_STEPS_PER_TURN}개까지만 실행한다.",

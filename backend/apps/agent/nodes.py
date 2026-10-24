@@ -46,9 +46,10 @@ _IN_SCOPE_DESC = (
 class HITLResponse(BaseModel):
     context_sufficient: bool = Field(default=True, description=_CONTEXT_SUFFICIENT_DESC)
     in_scope: bool = Field(default=True, description=_IN_SCOPE_DESC)
-    response: str
+    # 넘김 판단은 response보다 먼저 — 넘기기로 했는데 모델 답이 먼저 방문자에게 흐르는 모순을 막는다(#25)
     needs_hitl: bool
     hitl_reason: str = ""
+    response: str
 
 
 class PlainResponse(BaseModel):
@@ -148,6 +149,12 @@ def _user_turn_content(state: dict) -> str:
     return "\n\n".join(parts)
 
 
+def _node_instructions_block(state: dict) -> str:
+    """흐름의 AI 답변 노드 ``instructions``(#25). 안정 prefix(테넌트 system+보안 지침)를 깨지 않게 맨 끝에 붙인다."""
+    text = (state.get("node_instructions") or "").strip()
+    return f"\n## 이 단계의 지침\n{text}" if text else ""
+
+
 def _assemble_lc_messages(state: dict) -> list:
     """캐시 친화 LLM 입력을 조립한다(안정 prefix=테넌트-불변 system, 휘발성은 마지막 턴)."""
     from apps.agent.scope import scope_instruction
@@ -156,6 +163,7 @@ def _assemble_lc_messages(state: dict) -> list:
         state["system_prompt"]
         + scope_instruction(state.get("topic_scope_enabled", False), state.get("scope_description", ""))
         + _ANTI_DISCLOSURE
+        + _node_instructions_block(state)
     )
 
     lc_messages: list[BaseMessage] = [SystemMessage(content=system_content)]
@@ -224,14 +232,16 @@ async def _astream_and_route(state: dict, schema) -> tuple:
     lc_messages = _assemble_lc_messages(state)
     published = 0
     streaming = None  # None=미결정, True=흘림, False=억제
+    # 넘김 판단(needs_hitl)이 있는 스키마는 그 판단이 도착해야 흘릴지 정한다 — 넘기는 턴엔 모델 답을 흘리지 않는다(#25)
+    gate_on_hitl = "needs_hitl" in schema.model_fields
     scope_refused = False  # in_scope=False면 off-topic 응답을 흘리지 않도록 일찍 억제
     final: dict = {}
     async for chunk in llm_boundary.astream_structured(get_chat_provider(), lc_messages, schema):
         final.update(chunk)
         if not scope_refused and "in_scope" in chunk:
             scope_refused = _scope_gate(state, chunk.get("in_scope", True), "")[0]
-        if streaming is None and "context_sufficient" in chunk:
-            streaming = not _will_fallback_dict(state, chunk)
+        if streaming is None and "context_sufficient" in final and (not gate_on_hitl or "needs_hitl" in final):
+            streaming = not _will_fallback_dict(state, final) and not final.get("needs_hitl", False)
         if scope_refused:
             streaming = False  # 범위 밖이면 모델 응답 델타를 흘리지 않는다(거절로 덮음)
         if streaming:
@@ -250,7 +260,7 @@ async def _astream_and_route(state: dict, schema) -> tuple:
     if streaming:
         if published > 0:  # 흘린 게 있을 때만 done(빈 응답=needs_hitl 무-멘트는 무발행)
             await apublish_done(sid)
-    elif response and not _will_fallback_dict(state, final):
+    elif response and not _will_fallback_dict(state, final) and not final.get("needs_hitl", False):
         # 자동 저하: 안전 종단인데 못 흘림(제어필드 늦음/부분없음) → one-shot
         await apublish_token(sid, response)
         await apublish_done(sid)
@@ -259,8 +269,10 @@ async def _astream_and_route(state: dict, schema) -> tuple:
 
 async def call_llm_structured(state: dict) -> dict:
     final, response = await _astream_and_route(state, HITLResponse)
+    needs_hitl = bool(final.get("needs_hitl", False))
     return {
-        "assistant_response": response,
+        # 넘기는 턴엔 모델 답을 내보내지도 저장하지도 않는다 — 방문자에게는 넘김 안내만 보인다(#25)
+        "assistant_response": "" if needs_hitl else response,
         "needs_hitl": bool(final.get("needs_hitl", False)),
         "hitl_reason": final.get("hitl_reason", "") or "",
         "context_sufficient": bool(final.get("context_sufficient", True)),

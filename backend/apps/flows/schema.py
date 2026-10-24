@@ -23,6 +23,8 @@ from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from apps.flows.expr import ExprError, compile_when
+
 type JSON = dict[str, JSON] | list[JSON] | str | int | float | bool | None
 
 DEFAULT_HANDLE = "next"
@@ -97,6 +99,16 @@ class ConditionBranch(BaseModel):
 
     name: str = Field(min_length=1, max_length=64)
     when: str = Field(min_length=1)
+    """갈래를 고르는 식(``apps/flows/expr.py``). 위에서부터 처음 참인 갈래로 간다."""
+
+    @field_validator("when")
+    @classmethod
+    def _valid_when(cls, when: str) -> str:
+        try:
+            compile_when(when)
+        except ExprError as exc:
+            raise ValueError(f"when 식 오류: {exc}") from exc
+        return when
 
 
 class ConditionConfig(NodeConfig):
@@ -131,9 +143,36 @@ class KnowledgeSearchConfig(NodeConfig):
     top_k: int = Field(default=5, ge=1, le=20)
 
 
+class ExtractField(BaseModel):
+    """추출할 필드 하나. 모델이 못 찾으면 null(누락)로 둔다."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$", max_length=64)
+    description: str = ""
+    type: Literal["string", "number", "boolean"] = "string"
+
+
 class AiClassifyConfig(NodeConfig):
+    """AI 분류·추출(ADR-0027, #25). ``labels``로 분류하고 ``fields``로 추출한다 — 둘 중 하나 이상.
+
+    결과는 상태의 ``label``·``fields``·``confidence``(0~1)에 쓰고, 조건 노드가 읽는다.
+    """
+
     instructions: str = ""
-    labels: list[str] = Field(min_length=1)
+    labels: list[str] = Field(default_factory=list)
+    fields: list[ExtractField] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _labels_or_fields(self) -> "AiClassifyConfig":
+        if not self.labels and not self.fields:
+            raise ValueError("labels(분류 라벨)나 fields(추출 필드) 중 하나는 있어야 합니다")
+        if len(set(self.labels)) != len(self.labels) or any(not label.strip() for label in self.labels):
+            raise ValueError("labels는 비어 있지 않고 중복이 없어야 합니다")
+        names = [f.name for f in self.fields]
+        if len(set(names)) != len(names):
+            raise ValueError("fields 이름이 중복됩니다")
+        return self
 
 
 GuardrailRule = Literal["banned_words", "pii", "price_promise"]
