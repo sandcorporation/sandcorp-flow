@@ -13,9 +13,15 @@ class ChatSession(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
     is_hitl = models.BooleanField(default=False)
+    # 대화가 시작 때 고정된 Flow Version(ADR-0027). 배포가 진행 중 대화를 바꾸지 않는다.
+    # 이 칸이 생기기 전 세션과 공개 흐름이 없는 테넌트의 세션은 비어 있다.
+    flow_version = models.ForeignKey(
+        "flows.FlowVersion", null=True, blank=True, on_delete=models.PROTECT, related_name="sessions"
+    )
 
     # 역참조 매니저(related_name) — django-types는 역참조를 추론하지 못하므로 명시 주석한다.
     if TYPE_CHECKING:
+        flow_version_id: uuid.UUID | None
         messages: "models.Manager[ChatMessage]"
         escalations: "models.Manager[Escalation]"
 
@@ -24,6 +30,16 @@ class ChatSession(models.Model):
         indexes = [
             models.Index(fields=["tenant_id", "visitor_id"]),
         ]
+
+    def save(self, *args, **kwargs) -> None:
+        if self._state.adding:
+            from apps.flows.models import Flow, FlowVersion
+
+            if self.flow_version_id is None:
+                self.flow_version = Flow.public_version_for(self.tenant_id)
+            elif not FlowVersion.objects.for_tenant(self.tenant_id).filter(pk=self.flow_version_id).exists():
+                raise ValueError("다른 테넌트의 Flow Version에 대화를 고정할 수 없습니다")
+        super().save(*args, **kwargs)
 
 
 class ChatMessage(models.Model):

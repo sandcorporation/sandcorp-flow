@@ -1,0 +1,42 @@
+{
+  "nodes": [
+    {"id": "start", "kind": "start", "code": "N-01", "name": "시작", "position": {"x": 0, "y": 0}, "config": {}},
+    {"id": "classify", "kind": "ai_classify", "code": "N-02", "name": "의도 분류", "position": {"x": 240, "y": 0},
+     "config": {"instructions": "방문자 의도를 분류하고, 프로젝트 요구사항(목적·규모·기한)이 다 모였는지 함께 판단한다.",
+                "labels": ["project_inquiry", "human_request", "other"]}},
+    {"id": "route", "kind": "condition", "code": "N-03", "name": "의도에 따라", "position": {"x": 480, "y": 0},
+     "config": {"branches": [{"name": "inquiry", "when": "label == 'project_inquiry'"},
+                             {"name": "human", "when": "label == 'human_request' or confidence < 0.5"}]}},
+    {"id": "enough", "kind": "condition", "code": "N-04", "name": "요구사항이 다 모였나", "position": {"x": 720, "y": -120},
+     "config": {"branches": [{"name": "complete", "when": "fields.requirements_complete == true"}]}},
+    {"id": "ask", "kind": "ai_answer", "code": "N-05", "name": "요구사항 되묻기", "position": {"x": 960, "y": -240},
+     "config": {"instructions": "빠진 요구사항(목적·규모·기한) 중 하나만 짧게 되묻는다.", "await_reply": true}},
+    {"id": "cases", "kind": "knowledge_search", "code": "N-06", "name": "사례 찾기", "position": {"x": 960, "y": -120},
+     "config": {"top_k": 5}},
+    {"id": "draft", "kind": "ai_answer", "code": "N-07", "name": "범위·기간 초안", "position": {"x": 1200, "y": -120},
+     "config": {"instructions": "찾은 사례를 근거로 범위와 기간의 초안을 제시한다. 가격은 확정하지 않는다."}},
+    {"id": "guard", "kind": "guardrail", "code": "N-08", "name": "가드레일", "position": {"x": 1440, "y": -120},
+     "config": {"rules": ["price_promise", "pii"], "action": "rewrite"}},
+    {"id": "submit", "kind": "http_tool", "code": "N-09", "name": "문의 접수", "position": {"x": 1680, "y": -120},
+     "config": {"method": "POST", "url": "https://api.sandcorp.co.kr/inquiries",
+                "headers": {"Authorization": "Bearer {{secret.inquiry_api_key}}"},
+                "body_template": "{\"summary\": \"{{state.summary}}\"}"}},
+    {"id": "handoff", "kind": "handoff", "code": "N-10", "name": "사람 넘김", "position": {"x": 720, "y": 120},
+     "config": {"reason": "방문자가 사람을 원하거나 의도가 불확실함"}},
+    {"id": "general", "kind": "ai_answer", "code": "N-11", "name": "일반 답변", "position": {"x": 720, "y": 0},
+     "config": {"instructions": "회사 소개 범위에서 짧게 답한다."}}
+  ],
+  "edges": [
+    {"from": "start", "to": "classify"},
+    {"from": "classify", "to": "route"},
+    {"from": "route", "to": "enough", "handle": "inquiry"},
+    {"from": "route", "to": "handoff", "handle": "human"},
+    {"from": "route", "to": "general", "handle": "else"},
+    {"from": "enough", "to": "cases", "handle": "complete"},
+    {"from": "enough", "to": "ask", "handle": "else"},
+    {"from": "ask", "to": "classify"},
+    {"from": "cases", "to": "draft"},
+    {"from": "draft", "to": "guard"},
+    {"from": "guard", "to": "submit"}
+  ]
+}
