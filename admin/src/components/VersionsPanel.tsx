@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Eye, RotateCcw, Rocket } from 'lucide-react'
 import { appsFlowsApiFlowsDeploy, appsFlowsApiFlowsRollback, appsFlowsApiFlowsSaveVersion } from '../generated/endpoints/flows/flows'
 import type { DeployRequestOut, VersionOut } from '../generated/model'
@@ -28,6 +28,13 @@ export default function VersionsPanel({ flowId, versions, deployedVersion, pendi
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
 
+  // 대기 요청이 있다가 사라지면(거절·승인·취소) 「배포를 요청했습니다」 안내는 더는 사실이 아니다(#103).
+  const hadPending = useRef(false)
+  useEffect(() => {
+    if (hadPending.current && !pending) setInfo('')
+    hadPending.current = !!pending
+  }, [pending])
+
   const run = async (job: () => Promise<string | void>, fail: string) => {
     setBusy(true)
     setError('')
@@ -46,8 +53,9 @@ export default function VersionsPanel({ flowId, versions, deployedVersion, pendi
 
   const saveVersion = () => run(async () => {
     const r = await appsFlowsApiFlowsSaveVersion(flowId, { note: note.trim() || null })
-    setNote('')
-    return (r.data as unknown as { created: boolean }).created ? '' : '초안이 마지막 버전과 같아 새 버전을 만들지 않았습니다.'
+    const created = (r.data as unknown as { created: boolean }).created
+    if (created) setNote('')  // 중복 가드로 새 버전이 안 생겼으면 적은 메모를 남겨 다음 저장에 쓴다(#103)
+    return created ? '' : '초안이 마지막 버전과 같아 새 버전을 만들지 않았습니다.'
   }, '버전을 저장하지 못했습니다.')
 
   const deploy = (version: number) => {

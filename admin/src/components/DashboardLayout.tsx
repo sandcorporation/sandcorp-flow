@@ -33,8 +33,8 @@ export default function DashboardLayout({
 }) {
   const [menuOpen, setMenuOpen] = useState(false)  // 좁은 폭에서만 쓰는 메뉴 접힘(햄버거, #90)
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground md:flex-row">
-      <aside className="flex flex-shrink-0 flex-col border-b border-border bg-surface md:w-60 md:border-b-0 md:border-r">
+    <div className="flex min-h-screen flex-col bg-background text-foreground md:h-screen md:flex-row">
+      <aside className="flex flex-shrink-0 flex-col md:overflow-y-auto border-b border-border bg-surface md:w-60 md:border-b-0 md:border-r">
         <div className="flex min-h-12 items-center gap-2 border-b-2 border-ink bg-head px-5 font-cond text-base font-semibold tracking-[0.02em] text-head-foreground">
           <span aria-hidden className="h-4 w-4 flex-none bg-[linear-gradient(180deg,#e7c46a_0_55%,#8a6214_55%_100%)]" />
           <span className="min-w-0 flex-1 truncate">{brand}</span>
@@ -64,7 +64,7 @@ export default function DashboardLayout({
         </nav>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col md:min-h-0">
         <header className="flex min-h-12 flex-wrap items-center justify-end gap-2 border-b-2 border-ink bg-head px-4 py-2 text-head-foreground md:px-6">
           {user && <span className="mr-2 truncate font-mono text-xs text-head-foreground/70">{user}</span>}
           {accountHref && (
@@ -85,7 +85,7 @@ export default function DashboardLayout({
             모든 기기에서 로그아웃
           </Button>
         </header>
-        <main className="flex-1 overflow-auto p-4 md:p-6">
+        <main className="flex min-h-0 flex-1 flex-col overflow-auto p-4 md:p-6">
           {banner}
           <Outlet />
         </main>

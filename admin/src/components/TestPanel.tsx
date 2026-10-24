@@ -10,6 +10,7 @@ import {
 } from '@/lib/testTrace'
 import { Button } from './ui/button'
 import { Textarea } from './ui/textarea'
+import { notifyTrialChanged } from './TrialBanner'
 
 const blank = (n: number, message: string): TestTurn => ({ n, message, reply: '', entries: [], ran: false, handoff: false, note: '', errors: [], failure: '', pending: true })
 
@@ -63,6 +64,7 @@ export function useTestSession(flowId: string, beforeSend: () => Promise<void>) 
     try {
       await beforeSend() // 편집 중인 초안 저장이 끝난 뒤에 시험한다
       await streamTestTurn(flowId, message, sessionRef.current, onEvent)
+      if (done) notifyTrialChanged() // 턴이 끝났으니 상단 체험 배너의 남은 턴을 다시 읽게 한다(#103)
       if (done && !(done as { ran: boolean }).ran) {
         const d = done as { note: string; errors: FlowError[] }
         let trial: string | null = null
