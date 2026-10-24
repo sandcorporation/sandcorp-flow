@@ -106,8 +106,8 @@ export default function FlowEditorPage() {
       {flowErrors.map((e, i) => <p key={i} role="alert" className="text-sm text-destructive">{e.message}</p>)}
       {save.state === 'failed' && <p role="alert" className="text-sm text-destructive">{save.message}</p>}
 
-      <div className="grid gap-3 lg:grid-cols-[190px_minmax(0,1fr)_300px]">
-        <aside className="space-y-2 border border-line-soft bg-surface p-3">
+      <div className="grid gap-3 lg:h-[calc(100dvh-9rem)] lg:min-h-[480px] lg:grid-cols-[190px_minmax(0,1fr)_300px]">
+        <aside className="space-y-2 border border-line-soft bg-surface p-3 lg:min-h-0 lg:overflow-y-auto">
           <h2 className="hmi-label">노드 목록</h2>
           {readOnly ? (
             <ul className="space-y-1 text-sm">
@@ -138,7 +138,7 @@ export default function FlowEditorPage() {
           )}
         </aside>
 
-        <div className="relative h-[420px] min-w-0 overflow-hidden border border-line-soft bg-background lg:h-[620px]" data-testid="flow-canvas">
+        <div className="relative h-[420px] min-w-0 overflow-hidden border border-line-soft bg-background lg:h-auto lg:min-h-0" data-testid="flow-canvas">
           <FlowCanvas
             graph={graph}
             errors={errors}
@@ -156,7 +156,7 @@ export default function FlowEditorPage() {
           />
         </div>
 
-        <aside className="min-w-0 space-y-3 border border-line-soft bg-surface p-3" aria-label="노드 설정">
+        <aside className="min-w-0 space-y-3 border border-line-soft bg-surface p-3 lg:min-h-0 lg:overflow-y-auto" aria-label="노드 설정">
           {selected ? (
             <NodePanel key={selected.id} node={selected} schema={schemas[selected.kind]?.config} errors={errors} readOnly={readOnly} commit={commit} onDeleted={() => setSelectedId(null)} />
           ) : (

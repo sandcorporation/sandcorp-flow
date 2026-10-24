@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { newNode, outHandles, errorsByNode, nextCode, nodeStyle, flowLevelErrors, applyOps, pathTo, edgeKey, type FlowGraph } from './flowGraph'
+import { newNode, outHandles, errorsByNode, nextCode, nodeStyle, flowLevelErrors, applyOps, pathTo, edgeKey, type FlowGraph , fitViewport } from './flowGraph'
 
 const g = (nodes: FlowGraph['nodes'] = [], edges: FlowGraph['edges'] = []): FlowGraph => ({ nodes, edges })
 const n = (id: string, kind: string, code: string, config = {}) => ({ id, kind, code, name: '', position: { x: 0, y: 0 }, config })
@@ -68,5 +68,23 @@ describe('flowGraph — 편집기 순수 규칙', () => {
     expect([...p.nodes].sort()).toEqual(['a', 'b', 's'])
     expect([...p.edges].sort()).toEqual([edgeKey({ from: 's', to: 'a' }), edgeKey({ from: 'a', to: 'b' })].sort())
     expect(pathTo(graph, 'zzz').edges.size).toBe(0)
+  })
+})
+
+describe('fitViewport — 맞춤 보기는 글자가 읽히는 배율 아래로 줄이지 않는다', () => {
+  const opts = { minZoom: 0.75, maxZoom: 1, padding: 24 }
+  it('작은 흐름은 화면 가운데에 크기 1로 둔다', () => {
+    const v = fitViewport({ x: 0, y: 0, width: 400, height: 200 }, { width: 1000, height: 600 }, opts)
+    expect(v).toEqual({ x: 300, y: 200, zoom: 1 })
+  })
+  it('넓은 흐름은 배율을 minZoom 에 멈추고 왼쪽 위(시작 쪽)에서 보여 준다', () => {
+    const v = fitViewport({ x: -100, y: -50, width: 2000, height: 400 }, { width: 800, height: 600 }, opts)
+    expect(v.zoom).toBe(0.75)
+    expect(v.x).toBe(24 + 100 * 0.75)
+    expect(v.y).toBe((600 - 400 * 0.75) / 2 + 50 * 0.75)
+  })
+  it('minZoom 이상으로 들어가면 화면에 딱 맞춘다', () => {
+    const v = fitViewport({ x: 0, y: 0, width: 1000, height: 100 }, { width: 800, height: 600 }, { ...opts, minZoom: 0.1 })
+    expect(v.zoom).toBeCloseTo((800 - 48) / 1000)
   })
 })
