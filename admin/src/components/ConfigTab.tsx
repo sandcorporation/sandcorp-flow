@@ -621,7 +621,7 @@ export default function ConfigTab() {
       )}
 
       {/* 항상 보이는 atomic 저장 (Slug 저장·키 재발급은 별도) */}
-      {section !== 'billing' && (
+      {section !== 'billing' && section !== 'secrets' && (
         <div className="mt-8 space-y-2 border-t border-border pt-6">
           {saveError && <p className={errorCls}>{saveError}</p>}
           <Button onClick={handleSave}>{saved ? '✓ 저장됨' : '저장'}</Button>
