@@ -178,3 +178,18 @@ export function pathTo(graph: FlowGraph, target: string): { nodes: Set<string>; 
   }
   return out
 }
+
+export type Rect = { x: number; y: number; width: number; height: number }
+
+/** 맞춤 보기: 흐름 전체가 들어오게 하되 배율이 minZoom 아래로 내려가면(노드 글자가 안 읽힌다) minZoom 에 멈추고 왼쪽 위(시작 쪽)부터 보여 준다. */
+export function fitViewport(
+  bounds: Rect, size: { width: number; height: number }, o: { minZoom: number; maxZoom: number; padding: number },
+): { x: number; y: number; zoom: number } {
+  const fit = Math.min((size.width - 2 * o.padding) / bounds.width, (size.height - 2 * o.padding) / bounds.height)
+  const zoom = Math.min(o.maxZoom, Math.max(o.minZoom, fit))
+  const place = (extent: number, pos: number, len: number) => {
+    const free = extent - len * zoom
+    return (free >= 2 * o.padding ? free / 2 : o.padding) - pos * zoom
+  }
+  return { x: place(size.width, bounds.x, bounds.width), y: place(size.height, bounds.y, bounds.height), zoom }
+}

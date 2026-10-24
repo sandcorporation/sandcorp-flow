@@ -1,6 +1,7 @@
 // 시험용: 흐름 API(/api/tenant/flows/...)를 흉내 내는 fetch 대역. 네트워크 경계만 바꾸고 화면·생성 클라이언트는 실제를 쓴다.
 import { vi } from 'vitest'
 import type { FlowGraph, FlowError } from './lib/flowGraph'
+import nodeSchema from './lib/__fixtures__/nodeSchema.json'
 
 export type Call = { method: string; path: string; body: any }
 
@@ -23,6 +24,7 @@ export function fakeFlowsApi(opts: {
     calls.push({ method, path, body })
     if (method === 'GET' && path.endsWith('/api/tenant/flows/')) return json(200, opts.flows ?? [flowOut])
     if (method === 'POST' && path.endsWith('/api/tenant/flows/')) return json(201, { ...flowOut, id: 'f2', name: body.name })
+    if (method === 'GET' && path.endsWith('/api/tenant/flows/node-schema/')) return json(200, { kinds: nodeSchema })
     if (method === 'GET' && /\/flows\/[^/]+\/$/.test(path)) {
       return json(200, { flow: flowOut, draft: { graph: opts.graph, errors: state.errors, valid: state.errors.length === 0 }, versions: [], pending_request: null })
     }

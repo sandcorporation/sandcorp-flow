@@ -22,7 +22,7 @@ from pydantic import Field
 
 from apps.flows import services
 from apps.flows.models import DeployRequest, Flow, FlowVersion
-from apps.flows.schema import JSON
+from apps.flows.schema import JSON, NODE_CONFIG_MODELS
 from apps.flows.services import PatchOp
 from apps.tenants.auth import active_membership_for_token, member_or_tenant_key_auth
 from apps.tenants.models import Membership, Tenant
@@ -245,6 +245,12 @@ def flows_list(request):
 def flows_create(request, body: FlowCreateIn):
     require_permission(request.auth, FLOW_EDIT)
     return 201, _flow_out(services.create_flow(_tenant_id(request.auth), body.name, body.graph))
+
+
+@flow_router.get("/node-schema/", response=dict[str, dict[str, JSON]])
+def flows_node_schema(request):
+    """편집기 노드 설정 폼의 틀 — 종류별 config 의 JSON 스키마(필드·enum·필수·기본값). get_flow_schema 와 같은 모델에서 뽑는다."""
+    return {"kinds": {k.value: {"config": m.model_json_schema()} for k, m in NODE_CONFIG_MODELS.items()}}
 
 
 @flow_router.get("/{flow_id}/", response=FlowDetailOut)

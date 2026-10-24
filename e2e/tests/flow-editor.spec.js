@@ -58,10 +58,18 @@ test.describe('흐름 편집기 — 실제 스택', () => {
     await expect(page.locator('.react-flow__edge')).toHaveCount(3)
     await expect(page.getByLabel(/N-02 오류/)).toHaveCount(0, { timeout: 10000 })
 
-    // 범용 JSON 설정 저장
+    // 종류별 폼으로 설정: AI 답변 지침, 가드레일(처리=가리기 + 금지어 규칙·목록)
     await page.locator('[data-node-id="ai_answer_1"]').click()
-    await page.getByLabel('설정(JSON)').fill('{"instructions": "환불 규정을 안내한다", "await_reply": false}')
-    await page.getByRole('button', { name: '설정 적용' }).click()
+    await page.getByLabel('답변 지침').fill('환불 규정을 안내한다')
+    await page.getByLabel('답변 지침').blur()
+    await page.locator('[data-node-id="guardrail_1"]').click()
+    await expect(page.getByText(/나가는 말을 바꾸거나 막을 수 있습니다/)).toBeVisible()
+    await page.getByLabel('처리').selectOption('mask')
+    await page.getByRole('checkbox', { name: '금지어' }).check()
+    await page.getByLabel('금지어 목록').fill('환불 보장\n공짜')
+    await page.getByLabel('금지어 목록').blur()
+    await expect(page.getByRole('status').filter({ hasText: '초안 저장됨' })).toBeVisible()
+    await page.waitForTimeout(500)
     await expect(page.getByRole('status').filter({ hasText: '초안 저장됨' })).toBeVisible()
     await shot(page, 'editor-light')
 
@@ -70,6 +78,10 @@ test.describe('흐름 편집기 — 실제 스택', () => {
     await expect(page.locator('.react-flow__node')).toHaveCount(4)
     await expect(page.locator('.react-flow__edge')).toHaveCount(3, { timeout: 15000 })
     await expect(page.getByText('환불 규정을 안내한다')).toBeVisible()
+    await page.locator('[data-node-id="guardrail_1"]').click()
+    await expect(page.getByLabel('처리')).toHaveValue('mask')
+    await expect(page.getByRole('checkbox', { name: '금지어' })).toBeChecked()
+    await expect(page.getByLabel('금지어 목록')).toHaveValue('환불 보장\n공짜')
     await expect(page.getByText('검증 통과')).toBeVisible()
 
     // 위치 이동도 저장된다(화면 좌표는 새로고침 때 맞춤 보기로 바뀌므로 저장된 초안의 좌표로 본다)

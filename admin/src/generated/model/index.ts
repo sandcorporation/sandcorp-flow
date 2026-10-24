@@ -16,6 +16,7 @@ export * from './appsChatApiSendMessage429';
 export * from './appsChatApiStreamParams';
 export * from './appsEscalationApiEscalationStreamParams';
 export * from './appsFlowsApiDeployRequestsListParams';
+export * from './appsFlowsApiFlowsNodeSchema200';
 export * from './appsFlowsApiListDeployRequestsParams';
 export * from './appsMemoryApiGetSessionCheckpoint200';
 export * from './appsMemoryApiGetSessionRetrievals200';

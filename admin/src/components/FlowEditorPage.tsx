@@ -2,14 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Trash2 } from 'lucide-react'
 import { currentAgentRole } from '../api'
-import { appsFlowsApiFlowsGet, appsFlowsApiFlowsPatchDraft } from '../generated/endpoints/flows/flows'
+import { appsFlowsApiFlowsGet, appsFlowsApiFlowsNodeSchema, appsFlowsApiFlowsPatchDraft } from '../generated/endpoints/flows/flows'
 import type { DraftPatchIn, FlowDetailOut } from '../generated/model'
 import { HttpError } from '../mutator'
 import {
   KINDS, applyOps, flowLevelErrors, kindLabel, newNode,
   type FlowError, type FlowGraph, type FlowNodeJson, type PatchOp,
 } from '@/lib/flowGraph'
+import { fieldErrors } from '@/lib/nodeForm'
 import FlowCanvas from './FlowCanvas'
+import NodeConfigForm from './NodeConfigForm'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -27,6 +29,7 @@ export default function FlowEditorPage() {
   const [errors, setErrors] = useState<FlowError[]>([])
   const [loaded, setLoaded] = useState(false)
   const [loadError, setLoadError] = useState('')
+  const [schemas, setSchemas] = useState<Record<string, { config: object }>>({})
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [save, setSave] = useState<{ state: SaveState; message: string }>({ state: 'saved', message: '' })
   const graphRef = useRef(graph)
@@ -43,6 +46,11 @@ export default function FlowEditorPage() {
     setGraph({ nodes: raw.nodes ?? [], edges: raw.edges ?? [] })
     setErrors(d.draft.errors as FlowError[])
   }, [id])
+
+  useEffect(() => {
+    // 폼 틀(종류별 JSON 스키마). 못 받아도 「고급」 JSON 탭으로 편집할 수 있다.
+    appsFlowsApiFlowsNodeSchema().then((r) => setSchemas((r.data as unknown as { kinds?: Record<string, { config: object }> }).kinds ?? {})).catch(() => {})
+  }, [])
 
   useEffect(() => {
     load().then(() => setLoaded(true)).catch(() => setLoadError('흐름을 불러오지 못했습니다.'))
@@ -98,8 +106,8 @@ export default function FlowEditorPage() {
       {flowErrors.map((e, i) => <p key={i} role="alert" className="text-sm text-destructive">{e.message}</p>)}
       {save.state === 'failed' && <p role="alert" className="text-sm text-destructive">{save.message}</p>}
 
-      <div className="grid gap-3 lg:grid-cols-[190px_minmax(0,1fr)_300px]">
-        <aside className="space-y-2 border border-line-soft bg-surface p-3">
+      <div className="grid gap-3 lg:h-[calc(100dvh-9rem)] lg:min-h-[480px] lg:grid-cols-[190px_minmax(0,1fr)_300px]">
+        <aside className="space-y-2 border border-line-soft bg-surface p-3 lg:min-h-0 lg:overflow-y-auto">
           <h2 className="hmi-label">노드 목록</h2>
           {readOnly ? (
             <ul className="space-y-1 text-sm">
@@ -130,7 +138,7 @@ export default function FlowEditorPage() {
           )}
         </aside>
 
-        <div className="relative h-[420px] min-w-0 overflow-hidden border border-line-soft bg-background lg:h-[620px]" data-testid="flow-canvas">
+        <div className="relative h-[420px] min-w-0 overflow-hidden border border-line-soft bg-background lg:h-auto lg:min-h-0" data-testid="flow-canvas">
           <FlowCanvas
             graph={graph}
             errors={errors}
@@ -148,9 +156,9 @@ export default function FlowEditorPage() {
           />
         </div>
 
-        <aside className="min-w-0 space-y-3 border border-line-soft bg-surface p-3" aria-label="노드 설정">
+        <aside className="min-w-0 space-y-3 border border-line-soft bg-surface p-3 lg:min-h-0 lg:overflow-y-auto" aria-label="노드 설정">
           {selected ? (
-            <NodePanel key={selected.id} node={selected} errors={errors} readOnly={readOnly} commit={commit} onDeleted={() => setSelectedId(null)} />
+            <NodePanel key={selected.id} node={selected} schema={schemas[selected.kind]?.config} errors={errors} readOnly={readOnly} commit={commit} onDeleted={() => setSelectedId(null)} />
           ) : (
             <Overview errors={errors} graph={graph} onPick={setSelectedId} />
           )}
@@ -184,15 +192,17 @@ function Overview({ errors, graph, onPick }: { errors: FlowError[]; graph: FlowG
   )
 }
 
-/** 종류별 폼은 #98 이 이 자리를 채운다. 지금은 모든 종류에 쓰는 범용 JSON 편집. */
-function NodePanel({ node, errors, readOnly, commit, onDeleted }: {
-  node: FlowNodeJson; errors: FlowError[]; readOnly: boolean; commit: (ops: PatchOp[]) => void; onDeleted: () => void
+/** 노드 하나의 설정: 이름 + 「폼」(종류별) / 「고급」(JSON) 탭. 저장은 어느 쪽이든 config 통째 교체. */
+function NodePanel({ node, schema, errors, readOnly, commit, onDeleted }: {
+  node: FlowNodeJson; schema?: object; errors: FlowError[]; readOnly: boolean; commit: (ops: PatchOp[]) => void; onDeleted: () => void
 }) {
   const pretty = JSON.stringify(node.config ?? {}, null, 2)
   const [text, setText] = useState(pretty)
   const [nameDraft, setNameDraft] = useState(node.name ?? '')
   const [problem, setProblem] = useState('')
-  const mine = errors.filter((e) => e.node_id === node.id)
+  const [tab, setTab] = useState<'form' | 'json'>('form')
+  const { byPath, general } = fieldErrors(errors.filter((e) => e.node_id === node.id))
+  const showForm = tab === 'form' && schema !== undefined
 
   useEffect(() => setText(pretty), [pretty])
 
@@ -204,16 +214,25 @@ function NodePanel({ node, errors, readOnly, commit, onDeleted }: {
     commit([{ op: 'upsert_node', id: node.id, config: parsed as Record<string, unknown> }])
   }
 
+  const tabButton = (id: 'form' | 'json', label: string) => (
+    <button
+      type="button" role="tab" aria-selected={(id === 'form') === showForm} onClick={() => setTab(id)}
+      className={`border-b-2 px-3 py-1 text-sm ${(id === 'form') === showForm ? 'border-ink font-semibold text-ink' : 'border-transparent text-muted-foreground hover:text-ink'}`}
+    >
+      {label}
+    </button>
+  )
+
   return (
     <div className="space-y-3">
       <div>
         <p className="hmi-code text-muted-foreground">{node.code} · {kindLabel(node.kind)}</p>
         <h2 className="font-cond text-base font-semibold text-ink">{node.name || kindLabel(node.kind)}</h2>
       </div>
-      {mine.length > 0 && (
-        <ul className="space-y-1 text-sm">
-          {mine.map((e, i) => <li key={i} className="border-l-2 border-alarm pl-2"><span className="hmi-code">{e.code}</span><p className="text-muted-foreground">{e.message}</p></li>)}
-        </ul>
+      {general.length > 0 && (
+        <div role="alert" className="space-y-1 text-sm">
+          {general.map((e, i) => <p key={i} className="border-l-2 border-alarm pl-2"><span className="hmi-code">{e.code}</span> <span className="text-muted-foreground">{e.message}</span></p>)}
+        </div>
       )}
       <div className="space-y-1">
         <Label htmlFor="node-name">이름</Label>
@@ -225,14 +244,22 @@ function NodePanel({ node, errors, readOnly, commit, onDeleted }: {
           onBlur={() => { if (!readOnly && nameDraft !== (node.name ?? '')) commit([{ op: 'upsert_node', id: node.id, name: nameDraft }]) }}
         />
       </div>
-      <div className="space-y-1">
-        <Label htmlFor="node-config">설정(JSON)</Label>
-        <Textarea id="node-config" className="hmi-code min-h-[180px] w-full" value={text} readOnly={readOnly} onChange={(e) => setText(e.target.value)} spellCheck={false} />
-        {problem && <p role="alert" className="text-sm text-destructive">{problem}</p>}
-      </div>
+      {schema !== undefined && <div role="tablist" className="flex border-b border-line-soft">{tabButton('form', '폼')}{tabButton('json', '고급')}</div>}
+      {showForm ? (
+        <NodeConfigForm
+          kind={node.kind} schema={schema} config={node.config ?? {}} readOnly={readOnly} errors={byPath}
+          onChange={(next) => commit([{ op: 'upsert_node', id: node.id, config: next }])}
+        />
+      ) : (
+        <div className="space-y-1">
+          <Label htmlFor="node-config">설정(JSON)</Label>
+          <Textarea id="node-config" className="hmi-code min-h-[180px] w-full" value={text} readOnly={readOnly} onChange={(e) => setText(e.target.value)} spellCheck={false} />
+          {problem && <p role="alert" className="text-sm text-destructive">{problem}</p>}
+          {!readOnly && <Button type="button" size="sm" onClick={apply}>설정 적용</Button>}
+        </div>
+      )}
       {!readOnly && (
         <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" onClick={apply}>설정 적용</Button>
           <Button type="button" size="sm" variant="outline" onClick={() => { commit([{ op: 'delete_node', id: node.id }]); onDeleted() }}><Trash2 className="h-4 w-4" />노드 삭제</Button>
         </div>
       )}

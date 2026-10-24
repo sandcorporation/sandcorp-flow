@@ -5,7 +5,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
-  DEFAULT_HANDLE, edgeKey, errorsByNode, kindLabel, nodeStyle, nodeSummary, outHandles, pathTo,
+  DEFAULT_HANDLE, edgeKey, errorsByNode, fitViewport, kindLabel, nodeStyle, nodeSummary, outHandles, pathTo,
   type FlowError, type FlowGraph, type FlowNodeJson,
 } from '@/lib/flowGraph'
 
@@ -60,6 +60,8 @@ function FlowNodeCard({ data }: NodeProps<Node<CardData>>) {
 }
 
 const nodeTypes = { flow: FlowNodeCard }
+/** 맞춤 보기가 내려가는 가장 작은 배율. 노드 카드 글자(13.5px 안팎)가 10px 아래로 줄지 않게 한다. */
+const FIT_MIN_ZOOM = 0.75
 
 export type FlowCanvasProps = {
   graph: FlowGraph
@@ -149,6 +151,15 @@ function Inner(p: FlowCanvasProps) {
     [graph, activeEdges, readOnly],
   )
 
+  /** 맞춤 보기. 노드 글자가 읽히는 배율(FIT_MIN_ZOOM) 아래로는 줄이지 않고, 넘치면 끌어서 본다. */
+  const fit = () => {
+    const el = wrap.current
+    const nodes = rf.getNodes()
+    if (!el || nodes.length === 0) return
+    const b = rf.getNodesBounds(nodes)
+    void rf.setViewport(fitViewport(b, { width: el.clientWidth, height: el.clientHeight }, { minZoom: FIT_MIN_ZOOM, maxZoom: 1, padding: 24 }))
+  }
+
   const onNodesChange = useCallback((changes: NodeChange<Node<CardData>>[]) => setRfNodes((ns) => applyNodeChanges(changes, ns)), [])
 
   const onConnect = (c: Connection) => {
@@ -186,7 +197,7 @@ function Inner(p: FlowCanvasProps) {
         nodesConnectable={!readOnly}
         elementsSelectable
         deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
-        onInit={() => { if (fitOnMount.current) setTimeout(() => rf.fitView({ padding: 0.15, maxZoom: 1 }), 50) }}
+        onInit={() => { if (fitOnMount.current) setTimeout(fit, 50) }}
         minZoom={0.1}
         colorMode="system"
       >
