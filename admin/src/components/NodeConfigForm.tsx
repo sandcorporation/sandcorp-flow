@@ -3,7 +3,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import type { JsonObject } from '@/lib/flowGraph'
 import { fieldsOf, withValue, type FieldSpec } from '@/lib/nodeForm'
 import { FIELD_TEXT, GUARDRAIL_WARNING, HTTP_LIVE_NOTICE, KIND_NOTE, WHEN_KEYS, headerNeedsSecretRef } from '@/lib/nodeFormLabels'
-import { hostAllowed, secretNamesUsed, urlHost } from '@/lib/httpToolWarn'
+import { hostAllowed, isDemoApiUrl, secretNamesUsed, urlHost } from '@/lib/httpToolWarn'
 import { listAllowedDomains, listSecrets } from '../api'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -73,6 +73,13 @@ function useHttpLookups(enabled: boolean) {
 
 /** 주소 호스트가 허용 도메인에 없으면 알린다(서버 AllowList 와 같은 규칙, 최종 판정은 서버). */
 function HostWarning({ url, domains }: { url: string; domains: string[] | null }) {
+  if (isDemoApiUrl(url)) {
+    return (
+      <p role="status" className="border-l-4 border-ink/30 bg-ink/5 px-2 py-1.5 text-xs text-ink">
+        예제용 <b>가짜 API</b> — 허용 도메인 없이 호출되고, 실제 네트워크로 나가지 않고 정해진 규칙대로 응답합니다.
+      </p>
+    )
+  }
   const host = urlHost(url)
   if (domains === null || host === null || hostAllowed(host, domains)) return null
   return (

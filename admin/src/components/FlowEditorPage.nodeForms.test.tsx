@@ -193,6 +193,24 @@ describe('노드 설정 패널 — 종류별 폼', () => {
     expect(screen.getByRole('link', { name: /설정에서 허용 도메인 추가/ })).toHaveAttribute('href', '/tenant/config?section=secrets')
   })
 
+  it('HTTP 도구: 가짜 API 예약 호스트는 허용 목록에 없어도 경고하지 않고 가짜 API 라고 알린다', async () => {
+    vi.mocked(api.listAllowedDomains).mockResolvedValue([])
+    const fake = fakeFlowsApi({ graph: GRAPH })
+    renderEditor()
+    await pick('주문 조회')
+    const url = await screen.findByLabelText('주소(https)')
+    await waitFor(() => expect(api.listAllowedDomains).toHaveBeenCalled())
+    fireEvent.change(url, { target: { value: 'https://demo-api.flow.sandcorp.co.kr/orders/{{state.fields.order_no}}' } })
+    fireEvent.blur(url)
+    await waitFor(() => expect(lastConfig(fake, 'http1').url).toBe('https://demo-api.flow.sandcorp.co.kr/orders/{{state.fields.order_no}}'))
+    expect(screen.queryByText(para(/허용 도메인에 없습니다/))).toBeNull()
+    expect(screen.getByText(para(/가짜 API.*실제 네트워크로 나가지 않고/))).toBeInTheDocument()
+    // 비슷한 호스트(하위 도메인)는 예약 호스트가 아니다 → 허용 목록 밖 경고
+    fireEvent.change(url, { target: { value: 'https://x.demo-api.flow.sandcorp.co.kr/orders/1' } })
+    fireEvent.blur(url)
+    expect(await screen.findByText(para(/x\.demo-api\.flow\.sandcorp\.co\.kr.*허용 도메인에 없습니다/))).toBeInTheDocument()
+  })
+
   it('HTTP 도구: 등록되지 않은 {{secret.이름}} 을 경고하고 등록된 이름은 목록으로 보인다', async () => {
     vi.mocked(api.listSecrets).mockResolvedValue([{ name: 'shop_key', created_at: '', updated_at: '' }])
     const g: FlowGraph = { ...GRAPH, nodes: GRAPH.nodes.map((n) => n.id === 'http1' ? { ...n, config: { ...n.config, headers: { Authorization: 'Bearer {{secret.shop_key}}', 'X-A': '{{secret.nope}}' } } } : n) }
