@@ -195,8 +195,9 @@ async def test_example_flow_runs_one_turn_up_to_the_http_node(tenant_with_key, f
     compile_flow(graph)  # 모든 노드 종류에 핸들러가 있다(HTTP 도구 #34까지)
 
     # HTTP 노드만 빼고 같은 분기를 돈다(HTTP 호출은 test_flow_http_tool.py) — 가격 약속 판정은 걸리지 않게 둔다
-    trimmed = {"nodes": [n for n in graph["nodes"] if n["kind"] != "http_tool"],
-               "edges": [e for e in graph["edges"] if "submit" not in {e["from"], e["to"]}]}
+    dropped = {"submit", "submitted", "submit_failed"}
+    trimmed = {"nodes": [n for n in graph["nodes"] if n["id"] not in dropped],
+               "edges": [e for e in graph["edges"] if not dropped & {e["from"], e["to"]}]}
     fake_chat_llm.by_schema["GuardrailVerdict"] = lambda m, schema: schema(violates=False)
     _classifier(fake_chat_llm, label="project_inquiry", confidence=0.9,
                 fields={"requirements_complete": True})

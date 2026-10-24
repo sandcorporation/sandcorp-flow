@@ -1,0 +1,36 @@
+{
+  "nodes": [
+    {"id": "start", "kind": "start", "code": "N-01", "name": "시작", "position": {"x": 0, "y": 0}, "config": {}},
+    {"id": "classify", "kind": "ai_classify", "code": "N-02", "name": "의도 분류", "position": {"x": 240, "y": 0}, "config": {"instructions": "쇼핑몰 고객의 의도를 분류하고, 말에 주문번호(숫자 4~12자리)가 있으면 뽑는다.", "labels": ["order_status", "return_or_faq", "human_request"], "fields": [{"name": "order_no", "type": "string", "description": "주문번호. 숫자만 4~12자리. 없으면 비운다"}]}},
+    {"id": "route", "kind": "condition", "code": "N-03", "name": "의도에 따라", "position": {"x": 480, "y": 0}, "config": {"branches": [{"name": "status", "when": "label == 'order_status'"}, {"name": "human", "when": "label == 'human_request' or confidence < 0.5"}]}},
+    {"id": "has_order", "kind": "condition", "code": "N-04", "name": "주문번호가 있나", "position": {"x": 720, "y": -160}, "config": {"branches": [{"name": "given", "when": "fields.order_no != null"}]}},
+    {"id": "ask_order", "kind": "ai_answer", "code": "N-05", "name": "주문번호 되묻기", "position": {"x": 960, "y": -280}, "config": {"instructions": "주문번호(숫자만)를 알려 달라고 짧게 부탁한다.", "await_reply": true}},
+    {"id": "order", "kind": "http_tool", "code": "N-06", "name": "주문 조회", "position": {"x": 960, "y": -160}, "config": {"method": "GET", "url": "https://demo-api.flow.sandcorp.co.kr/orders/{{state.fields.order_no}}", "save": {"found": "$.found", "order_status": "$.status", "status_label": "$.status_label", "tracking_no": "$.tracking_no"}}},
+    {"id": "result", "kind": "condition", "code": "N-07", "name": "조회 결과에 따라", "position": {"x": 1200, "y": -160}, "config": {"branches": [{"name": "missing", "when": "fields.found == false"}, {"name": "shipping", "when": "fields.order_status == 'shipping'"}, {"name": "delivered", "when": "fields.order_status == 'delivered'"}]}},
+    {"id": "say_missing", "kind": "ai_answer", "code": "N-08", "name": "주문 없음 안내", "position": {"x": 1440, "y": -320}, "config": {"instructions": "그 번호의 주문을 찾을 수 없다고 안내하고, 번호를 다시 확인해 달라고 부탁한다."}},
+    {"id": "say_shipping", "kind": "ai_answer", "code": "N-09", "name": "배송 중 안내", "position": {"x": 1440, "y": -200}, "config": {"instructions": "주문이 지금 배송 중이라고 안내한다. 도착 날짜는 약속하지 않는다."}},
+    {"id": "say_delivered", "kind": "ai_answer", "code": "N-10", "name": "배송 완료 안내", "position": {"x": 1440, "y": -80}, "config": {"instructions": "주문이 배송 완료 상태라고 안내하고, 받지 못했다면 반품·교환 안내나 사람 연결이 가능하다고 덧붙인다."}},
+    {"id": "say_preparing", "kind": "ai_answer", "code": "N-11", "name": "상품 준비 중 안내", "position": {"x": 1440, "y": 40}, "config": {"instructions": "주문이 상품 준비 중이라고 안내한다. 출고 날짜는 약속하지 않는다."}},
+    {"id": "say_error", "kind": "ai_answer", "code": "N-12", "name": "조회 실패 안내", "position": {"x": 1200, "y": 40}, "config": {"instructions": "주문 조회가 지금은 안 된다고 사과하고, 잠시 뒤 다시 말씀해 주시거나 사람과 이야기하겠다고 하시면 된다고 안내한다."}},
+    {"id": "policy", "kind": "knowledge_search", "code": "N-13", "name": "정책 찾기", "position": {"x": 720, "y": 120}, "config": {"top_k": 4}},
+    {"id": "policy_answer", "kind": "ai_answer", "code": "N-14", "name": "배송·반품 안내", "position": {"x": 960, "y": 120}, "config": {"instructions": "찾은 배송·반품 정책으로만 답한다. 정책에 없는 건 모른다고 하고 사람 연결을 안내한다."}},
+    {"id": "handoff", "kind": "handoff", "code": "N-15", "name": "사람 넘김", "position": {"x": 720, "y": 280}, "config": {"reason": "고객이 사람을 원하거나 의도가 불확실함"}}
+  ],
+  "edges": [
+    {"from": "start", "to": "classify"},
+    {"from": "classify", "to": "route"},
+    {"from": "route", "to": "has_order", "handle": "status"},
+    {"from": "route", "to": "handoff", "handle": "human"},
+    {"from": "route", "to": "policy", "handle": "else"},
+    {"from": "has_order", "to": "order", "handle": "given"},
+    {"from": "has_order", "to": "ask_order", "handle": "else"},
+    {"from": "ask_order", "to": "classify"},
+    {"from": "order", "to": "result"},
+    {"from": "order", "to": "say_error", "handle": "error"},
+    {"from": "result", "to": "say_missing", "handle": "missing"},
+    {"from": "result", "to": "say_shipping", "handle": "shipping"},
+    {"from": "result", "to": "say_delivered", "handle": "delivered"},
+    {"from": "result", "to": "say_preparing", "handle": "else"},
+    {"from": "policy", "to": "policy_answer"}
+  ]
+}

@@ -176,6 +176,11 @@ AUTH_MEMBER_REDIRECT = os.environ.get("AUTH_MEMBER_REDIRECT", "/admin-ui/tenant"
 # 탈퇴 웹훅(/api/auth/webhook, #55) 서명 비밀. 비면 웹훅을 모두 거부(503)한다.
 AUTH_WEBHOOK_SECRET = os.environ.get("AUTH_WEBHOOK_SECRET", "")
 
+# Sandcorp 테넌트 시드(#35, `manage.py seed_sandcorp`) — 홈 상담 흐름의 문의 접수 대상.
+# URL 기본은 가짜 API(예약 호스트, ADR-0029 보충). 실제 portfolio 문의 접수 URL과 Bearer 키는 운영 env에서 넣는다.
+SANDCORP_INQUIRY_URL = os.environ.get("SANDCORP_INQUIRY_URL", "https://demo-api.flow.sandcorp.co.kr/inquiries")
+SANDCORP_INQUIRY_API_KEY = os.environ.get("SANDCORP_INQUIRY_API_KEY", "")  # 비우면 Authorization 헤더 없음
+
 # CORS
 CORS_ALLOW_ALL_ORIGINS = True
 
