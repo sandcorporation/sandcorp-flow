@@ -6,6 +6,7 @@
  */
 const fs = require('fs')
 const path = require('path')
+const { test } = require('@playwright/test')
 
 const DIR = process.env.E2E_SHARED_DIR || '/e2e-shared'
 
@@ -38,6 +39,11 @@ async function provisionTenant(name, timeoutMs = 15000, { defaultFlow = false } 
   const dir = path.join(DIR, 'tenant_requests')
   fs.mkdirSync(dir, { recursive: true })
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  // 조직 이름은 대소문자 무시 유일(uq_tenant_name_ci)이다. `--repeat-each`로 같은 시험이 나란히 돌면 `Date.now()`만으로는
+  // 같은 ms 에 이름이 겹쳐 시드 대역이 UniqueViolation 으로 죽고, 그 뒤 모든 조직 요청이 시간 초과한다(#128).
+  // 반복 판에서만 반복 번호를 붙인다 — 보통 판의 이름 길이는 그대로 둔다(좁은 폭 넘침 시험이 이름 길이에 민감하다).
+  const repeat = test.info().repeatEachIndex
+  if (repeat > 0) name = `${name} r${repeat}`
   fs.writeFileSync(path.join(dir, `${id}.req.tmp`), defaultFlow ? `${name}\ndefault-flow` : name)
   fs.renameSync(path.join(dir, `${id}.req.tmp`), path.join(dir, `${id}.req`))
   const tokenFile = path.join(dir, `${id}.token`)
