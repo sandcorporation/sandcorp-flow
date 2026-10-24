@@ -1,4 +1,5 @@
-import { ReactNode } from 'react'
+import { ReactNode, useState } from 'react'
+import { Menu, X } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -30,22 +31,28 @@ export default function DashboardLayout({
   onLogoutAll: () => void
   banner?: ReactNode  // 본문 위 안내(체험 한도 등, #41)
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)  // 좁은 폭에서만 쓰는 메뉴 접힘(햄버거, #90)
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground md:flex-row">
       <aside className="flex flex-shrink-0 flex-col border-b border-border bg-surface md:w-60 md:border-b-0 md:border-r">
         <div className="flex min-h-12 items-center gap-2 border-b-2 border-ink bg-head px-5 font-cond text-base font-semibold tracking-[0.02em] text-head-foreground">
           <span aria-hidden className="h-4 w-4 flex-none bg-[linear-gradient(180deg,#e7c46a_0_55%,#8a6214_55%_100%)]" />
-          <span className="truncate">{brand}</span>
+          <span className="min-w-0 flex-1 truncate">{brand}</span>
+          <button type="button" aria-label="메뉴" aria-expanded={menuOpen} onClick={() => setMenuOpen(o => !o)}
+            className="flex h-8 w-8 flex-none items-center justify-center border border-head-foreground/40 md:hidden">
+            {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+          </button>
         </div>
-        <nav className="flex gap-1 overflow-x-auto px-3 py-2 md:flex-col md:py-3" aria-label="주 메뉴">
+        <nav className={cn('flex-col gap-1 px-3 py-2 md:flex md:py-3', menuOpen ? 'flex' : 'hidden')} aria-label="주 메뉴">
           {navItems.map(item => (
             <NavLink
               key={item.to}
               to={item.to}
               end
+              onClick={() => setMenuOpen(false)}
               className={({ isActive }) =>
                 cn(
-                  'flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md border border-transparent border-l-[3px] px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-raised hover:text-ink',
+                  'flex shrink-0 items-center gap-2 rounded-md border border-transparent border-l-[3px] px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-raised hover:text-ink',
                   isActive && 'border-border border-l-primary bg-raised font-semibold text-ink',
                 )
               }

@@ -1,10 +1,23 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 
+// 좁은 폭(<640px)에서는 카드형으로 접힌다(index.css .flow-table). 열 이름은 머리 칸 글자에서 셀의 data-label로 옮긴다.
 export function Table({ className, ...props }: React.HTMLAttributes<HTMLTableElement>) {
+  const ref = React.useRef<HTMLTableElement>(null)
+  React.useLayoutEffect(() => {
+    const table = ref.current
+    if (!table) return
+    const heads = Array.from(table.querySelectorAll('thead th')).map(th => (th.textContent ?? '').trim())
+    table.querySelectorAll('tbody tr').forEach(tr => {
+      Array.from(tr.children).forEach((td, i) => {
+        if (td.hasAttribute('colspan') || !heads[i]) td.removeAttribute('data-label')
+        else td.setAttribute('data-label', heads[i])
+      })
+    })
+  })
   return (
-    <div className="relative w-full overflow-auto">
-      <table className={cn('w-full caption-bottom text-sm tabular-nums', className)} {...props} />
+    <div className="flow-table relative w-full overflow-auto">
+      <table ref={ref} className={cn('w-full caption-bottom text-sm tabular-nums', className)} {...props} />
     </div>
   )
 }

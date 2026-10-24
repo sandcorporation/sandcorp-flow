@@ -92,6 +92,7 @@ services:
     volumes:
       - ./admin:/app
       - admin_node_modules:/app/node_modules
+      - ./e2e/tests/narrow-routes.json:/e2e/narrow-routes.json:ro  # 390폭 넘침 e2e 라우트 목록 일치 시험(#90)
     command: sh -c "npm install && npm run dev"
     environment:
       VITE_PROXY_TARGET: http://api:8000

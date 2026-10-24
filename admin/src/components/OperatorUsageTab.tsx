@@ -1,3 +1,4 @@
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { useState, useEffect } from 'react'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -39,23 +40,23 @@ export default function OperatorUsageTab() {
           <Card>
             <CardContent className="space-y-4 pt-6">
               <div className="text-sm font-semibold">테넌트별</div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-muted-foreground"><th className="pb-1">테넌트</th><th>토큰</th><th>호출</th></tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow><TableHead>테넌트</TableHead><TableHead>토큰</TableHead><TableHead>호출</TableHead></TableRow>
+                </TableHeader>
+                <TableBody>
                   {data.by_tenant.map(t => (
-                    <tr key={t.tenant_id} data-testid="tenant-row" className="border-t border-border">
-                      <td className="py-1.5">{t.tenant_name}</td>
-                      <td>{t.total_tokens.toLocaleString()}</td>
-                      <td>{t.request_count.toLocaleString()}</td>
-                    </tr>
+                    <TableRow key={t.tenant_id} data-testid="tenant-row">
+                      <TableCell>{t.tenant_name}</TableCell>
+                      <TableCell>{t.total_tokens.toLocaleString()}</TableCell>
+                      <TableCell>{t.request_count.toLocaleString()}</TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={data.by_tenant}>
-                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="tenant_name" /><YAxis /><Tooltip />
+                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="tenant_name" tickFormatter={(v: string) => (v.length > 8 ? `${v.slice(0, 8)}…` : v)} /><YAxis /><Tooltip />
                   <Bar dataKey="total_tokens" fill="hsl(var(--flow-accent))" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

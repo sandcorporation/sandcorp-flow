@@ -105,7 +105,8 @@ export async function createTenant(name: string) {
   return (await appsTenantsApiCreateTenant({ name })).data
 }
 export async function operatorAdminInvite(id: string) {
-  return (await appsTenantsApiOperatorAdminInvite(id)).data
+  // 백엔드가 응답 스키마를 선언하지 않아 생성 타입이 unknown이다 — 실제 응답은 {url}.
+  return (await appsTenantsApiOperatorAdminInvite(id)).data as { url: string }
 }
 export async function suspendTenant(id: string) {
   return (await appsTenantsApiSuspendTenant(id)).data

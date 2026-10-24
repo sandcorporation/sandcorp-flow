@@ -55,7 +55,7 @@ function SessionList({ visitorId, onSelectSession }: { visitorId: string; onSele
       {sessions.map(sess => (
         <button key={sess.session_id} onClick={() => onSelectSession(sess.session_id)}
           className="rounded-md border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent">
-          <div className="flex items-center gap-2 text-sm font-semibold">
+          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
             {sess.session_id.slice(0, 8)}…
             {sess.is_hitl && <Badge variant="secondary" className="bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">HITL</Badge>}
           </div>

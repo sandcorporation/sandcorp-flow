@@ -1,0 +1,5 @@
+{
+  "_doc": "admin/src/App.tsx 의 <Route path> 전부. 새 라우트를 App.tsx 에 더하면 admin 단위 시험(narrow-routes.test.ts)이 여기 없다고 실패한다 — 여기에 더하고, 파라미터 자리는 narrow-overflow.spec.js 의 PARAMS 에 값을 준다.",
+  "operator": ["tenants", "usage"],
+  "tenant": ["documents", "graph", "visitors", "visitors/:visitorId", "sessions/:sessionId", "config", "agents", "hitl", "hitl/:escalationId", "usage"]
+}
