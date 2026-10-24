@@ -17,6 +17,7 @@ import type {
   AppsTenantsApiAgentRefresh401,
   AppsTenantsApiAgentSignup400,
   AppsTenantsApiAgentSignup409,
+  AppsTenantsApiAgentSignup429,
   AppsTenantsApiChangeAgentRole400,
   AppsTenantsApiChangeAgentRole409,
   AppsTenantsApiChangePassword200,
@@ -255,6 +256,8 @@ export const appsTenantsApiAgentRefresh = async ( options?: RequestInit): Promis
 
 /**
  * 공개 가입(ADR-0025) — 조직 이름·username·password로 Tenant + 첫 Tenant Admin 생성 후 즉시 로그인.
+
+남용 방지: IP당 1시간 1회(성공 가입만 슬롯 소비 — 실패는 안 막음).
  * @summary Agent Signup
  */
 export type appsTenantsApiAgentSignupResponse201 = {
@@ -271,11 +274,16 @@ export type appsTenantsApiAgentSignupResponse409 = {
   data: AppsTenantsApiAgentSignup409
   status: 409
 }
+
+export type appsTenantsApiAgentSignupResponse429 = {
+  data: AppsTenantsApiAgentSignup429
+  status: 429
+}
     
 export type appsTenantsApiAgentSignupResponseSuccess = (appsTenantsApiAgentSignupResponse201) & {
   headers: Headers;
 };
-export type appsTenantsApiAgentSignupResponseError = (appsTenantsApiAgentSignupResponse400 | appsTenantsApiAgentSignupResponse409) & {
+export type appsTenantsApiAgentSignupResponseError = (appsTenantsApiAgentSignupResponse400 | appsTenantsApiAgentSignupResponse409 | appsTenantsApiAgentSignupResponse429) & {
   headers: Headers;
 };
 

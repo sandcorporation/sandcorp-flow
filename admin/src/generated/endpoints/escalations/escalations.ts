@@ -51,6 +51,10 @@ export const appsEscalationApiListEscalations = async ( options?: RequestInit): 
 
 
 /**
+ * 상담원 콘솔 SSE — hitl:{tenant} 채널을 async 구독해 라이브 이벤트를 전달한다(issue 212).
+
+async 뷰 + async redis(get_async_redis_client) + async generator로 한다 — sync 블로킹 스트림은
+uvicorn ASGI에서 streaming_content가 sync라 라이브 전달이 안 됐다(chat SSE의 async 전환과 동일 처리).
  * @summary Escalation Stream
  */
 export type appsEscalationApiEscalationStreamResponse200 = {

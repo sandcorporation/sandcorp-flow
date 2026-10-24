@@ -1564,6 +1564,53 @@
         ]
       }
     },
+    "/api/chat/resolve": {
+      "get": {
+        "description": "공개 위젯 진입 가드 — slug가 활성 Tenant로 해석되면 200(+공개 브랜드), 아니면 404.\n\n위젯이 렌더 전에 호출해, 유효하지 않은 slug면 챗 셸 대신 not-found를 띄운다(EventSource는 HTTP\n상태를 못 읽어 404와 일시 오류를 구분 못 하므로, 사전 검증이 필요하다).",
+        "operationId": "apps_chat_api_resolve_widget",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Resolve Widget",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
     "/api/chat/stream": {
       "get": {
         "operationId": "apps_chat_api_stream",
@@ -2126,7 +2173,7 @@
     },
     "/api/tenant/agents/auth/signup": {
       "post": {
-        "description": "공개 가입(ADR-0025) — 조직 이름·username·password로 Tenant + 첫 Tenant Admin 생성 후 즉시 로그인.",
+        "description": "공개 가입(ADR-0025) — 조직 이름·username·password로 Tenant + 첫 Tenant Admin 생성 후 즉시 로그인.\n\n남용 방지: IP당 1시간 1회(성공 가입만 슬롯 소비 — 실패는 안 막음).",
         "operationId": "apps_tenants_api_agent_signup",
         "parameters": [],
         "requestBody": {
@@ -2173,6 +2220,18 @@
               }
             },
             "description": "Conflict"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           }
         },
         "summary": "Agent Signup",
@@ -2869,6 +2928,7 @@
     },
     "/api/tenant/escalations/stream": {
       "get": {
+        "description": "상담원 콘솔 SSE — hitl:{tenant} 채널을 async 구독해 라이브 이벤트를 전달한다(issue 212).\n\nasync 뷰 + async redis(get_async_redis_client) + async generator로 한다 — sync 블로킹 스트림은\nuvicorn ASGI에서 streaming_content가 sync라 라이브 전달이 안 됐다(chat SSE의 async 전환과 동일 처리).",
         "operationId": "apps_escalation_api_escalation_stream",
         "parameters": [
           {
