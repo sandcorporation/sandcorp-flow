@@ -29,7 +29,7 @@ export default function Landing() {
     <div className="landing">
       <section className="container hero">
         <div className="hero-copy">
-          <div className="eyebrow">EMBED CHAT</div>
+          <div className="eyebrow">SANDCORP FLOW</div>
           <h1>지식그래프 기반<br />AI 챗봇 플랫폼</h1>
           <p>
             문서를 지식그래프로 구조화해 더 정확하게 답하고, 실시간 스트리밍으로 응답하며,

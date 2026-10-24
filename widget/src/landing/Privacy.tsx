@@ -6,7 +6,7 @@ export default function Privacy() {
   return (
     <div className="landing">
       <header className="doc-header">
-        <div className="container"><a href="/" className="doc-home">← Embed Chat</a></div>
+        <div className="container"><a href="/" className="doc-home">← Sandcorp Flow</a></div>
       </header>
       <main className="container doc">
         <h1>개인정보처리방침</h1>

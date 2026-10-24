@@ -7,7 +7,7 @@ export default function SiteFooter() {
       <div className="container footer-inner">
         <div className="footer-top">
           <div className="footer-brand">
-            <div className="footer-logo">Embed Chat</div>
+            <div className="footer-logo">Sandcorp Flow</div>
             <p className="footer-tagline">지식그래프 기반 AI 챗봇 플랫폼</p>
           </div>
           <nav className="footer-links">

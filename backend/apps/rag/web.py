@@ -13,7 +13,7 @@ def fetch_html(url: str, timeout: float = 20.0) -> str:
         url,
         timeout=timeout,
         follow_redirects=True,
-        headers={"User-Agent": "Mozilla/5.0 (compatible; embed-chat-ingester)"},
+        headers={"User-Agent": "Mozilla/5.0 (compatible; sandcorp-flow-ingester)"},
     )
     resp.raise_for_status()
     return resp.text

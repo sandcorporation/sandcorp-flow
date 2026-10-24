@@ -1,4 +1,4 @@
-# Embed Chat — 챗봇 이용 안내 (Visitor Guide)
+# Sandcorp Flow — 챗봇 이용 안내 (Visitor Guide)
 
 이 챗봇은 AI가 여러분의 질문에 실시간으로 답변하는 대화형 서비스입니다.
 

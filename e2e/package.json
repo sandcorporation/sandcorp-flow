@@ -1,5 +1,5 @@
 {
-  "name": "embed-chat-e2e",
+  "name": "sandcorp-flow-e2e",
   "private": true,
   "scripts": {
     "test": "playwright test",

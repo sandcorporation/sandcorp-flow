@@ -1,3 +1,4 @@
+name: sandcorp-flow-test
 services:
   # ── 공용 인프라 ──────────────────────────────────────────────────────────
   ollama-test:
@@ -33,7 +34,7 @@ services:
   db-test:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_DB: embed_chat
+      POSTGRES_DB: sandcorp_flow
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     tmpfs:
@@ -94,7 +95,7 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
       DB_HOST: db-test
-      DB_NAME: embed_chat
+      DB_NAME: sandcorp_flow
       DB_USER: postgres
       DB_PASSWORD: postgres
       REDIS_URL: redis://redis-test:6379/0
@@ -125,7 +126,7 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
       DB_HOST: db-test
-      DB_NAME: embed_chat
+      DB_NAME: sandcorp_flow
       DB_USER: postgres
       DB_PASSWORD: postgres
       REDIS_URL: redis://redis-test:6379/0
@@ -195,7 +196,7 @@ services:
     environment: &worker-e2e-env
       DJANGO_SETTINGS_MODULE: config.settings.dev
       DB_HOST: db-test
-      DB_NAME: embed_chat
+      DB_NAME: sandcorp_flow
       DB_USER: postgres
       DB_PASSWORD: postgres
       REDIS_URL: redis://redis-test:6379/0
@@ -236,7 +237,7 @@ services:
     environment: &event-pipeline-e2e-env
       DJANGO_SETTINGS_MODULE: config.settings.dev
       DB_HOST: db-test
-      DB_NAME: embed_chat
+      DB_NAME: sandcorp_flow
       DB_USER: postgres
       DB_PASSWORD: postgres
       REDIS_URL: redis://redis-test:6379/0

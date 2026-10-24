@@ -1,6 +1,8 @@
-# Embed Chat — GraphRAG 기반 멀티테넌트 챗봇 플랫폼
+# Sandcorp Flow — 상담 흐름을 편집·배포하는 멀티테넌트 챗봇 플랫폼
 
-Embed Chat는 타사 웹사이트에 iframe으로 삽입하는 챗봇을 제공하는 멀티테넌트 SaaS 플랫폼입니다. **Operator**(운영자)가 플랫폼을 관리하고 **Tenant**(고객사)를 생성하면, Tenant는 자기 문서·Excel·웹 URL을 올려 **지식그래프(Knowledge Graph) 기반 RAG**로 답하는 챗봇을 **공개 URL `/chatbot/{slug}/`**(토큰 발급 없이)로 자기 사이트의 **Visitor**에게 노출합니다. Tenant는 **자기 LLM·임베딩 Provider를 설정해 비용을 직접 부담**할 수 있고, **HITL(Human-in-the-Loop)** 사용 여부도 선택합니다 — 켜진 경우 AI가 불확실하거나 방문자가 상담원을 찾으면 사람 상담원에게 넘어갑니다.
+> **Sandcorp Flow**(`flow.sandcorp.co.kr`)는 옛 「Embed Chat」을 넓힌 셀프 가입 SaaS입니다. 테넌트가 상담 **흐름(Flow)** 을 편집·시험·배포하고, 위젯에서 방문자가 그 흐름과 대화합니다([ADR-0026](./docs/adr/0026-sandcorp-flow-saas-pivot.md)). 아래 설명은 Embed Chat 시절부터 이어진 엔진(GraphRAG·HITL·위젯·Admin) 기준입니다. 이름 변경에 따라 compose 프로젝트는 `sandcorp-flow`(dev는 `-dev`, 테스트는 `-test`, 운영은 `-prod`), GHCR 이미지는 `sandcorp-flow-{api,admin,widget}`, 기본 DB 이름은 `sandcorp_flow`입니다.
+
+Sandcorp Flow는 타사 웹사이트에 iframe으로 삽입하는 챗봇을 제공하는 멀티테넌트 SaaS 플랫폼입니다. **Operator**(운영자)가 플랫폼을 관리하고 **Tenant**(고객사)를 생성하면, Tenant는 자기 문서·Excel·웹 URL을 올려 **지식그래프(Knowledge Graph) 기반 RAG**로 답하는 챗봇을 **공개 URL `/chatbot/{slug}/`**(토큰 발급 없이)로 자기 사이트의 **Visitor**에게 노출합니다. Tenant는 **자기 LLM·임베딩 Provider를 설정해 비용을 직접 부담**할 수 있고, **HITL(Human-in-the-Loop)** 사용 여부도 선택합니다 — 켜진 경우 AI가 불확실하거나 방문자가 상담원을 찾으면 사람 상담원에게 넘어갑니다.
 
 용어는 [`CONTEXT.md`](./CONTEXT.md)(도메인 글로서리), 설계 결정은 [`docs/adr/`](./docs/adr/)를 참조하세요.
 
@@ -32,7 +34,7 @@ Embed Chat는 타사 웹사이트에 iframe으로 삽입하는 챗봇을 제공�
 
 ## 2. 지식그래프 기반 RAG 원리
 
-기존의 2-step 벡터 RAG(쿼리 임베딩 → 최근접 청크 → LLM)는 (a) 본문에 제품명이 없는 엔티티 질의, (b) 여러 문서를 가로지르는 멀티홉/요약 질의에 약했습니다. Embed Chat는 이를 **Microsoft GraphRAG식 지식그래프**로 대체했습니다.
+기존의 2-step 벡터 RAG(쿼리 임베딩 → 최근접 청크 → LLM)는 (a) 본문에 제품명이 없는 엔티티 질의, (b) 여러 문서를 가로지르는 멀티홉/요약 질의에 약했습니다. Sandcorp Flow는 이를 **Microsoft GraphRAG식 지식그래프**로 대체했습니다.
 
 ### 2.1 그래프 구조
 
