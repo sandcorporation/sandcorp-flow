@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { FileText, Network, Users, Settings, UserCog, Headphones, Building2, BarChart3 } from 'lucide-react'
+import { FileText, Network, Users, Settings, UserCog, Headphones, Building2, BarChart3, Workflow } from 'lucide-react'
 import OperatorLogin from './pages/OperatorLogin'
 import OperatorTenants from './pages/OperatorTenants'
 import TenantLogin from './pages/TenantLogin'
@@ -13,6 +13,8 @@ import SessionDetailPage from './components/SessionDetailPage'
 import ConfigTab from './components/ConfigTab'
 import AgentsTab from './components/AgentsTab'
 import HitlTab from './components/HitlTab'
+import FlowsTab from './components/FlowsTab'
+import FlowEditorPage from './components/FlowEditorPage'
 import TenantUsageTab from './components/TenantUsageTab'
 import OperatorUsageTab from './components/OperatorUsageTab'
 import { getAccess, bootSilentRefresh } from './auth'
@@ -29,6 +31,7 @@ const tenantNav: NavItem[] = [
   { to: '/tenant/visitors', label: 'Visitors', icon: <Users className={ICON} /> },
   { to: '/tenant/config', label: '설정', icon: <Settings className={ICON} /> },
   { to: '/tenant/agents', label: '팀원', icon: <UserCog className={ICON} /> },
+  { to: '/tenant/flows', label: '흐름', icon: <Workflow className={ICON} /> },
   { to: '/tenant/hitl', label: 'HITL 상담', icon: <Headphones className={ICON} /> },
   { to: '/tenant/usage', label: '사용량', icon: <BarChart3 className={ICON} /> },
 ]
@@ -136,6 +139,8 @@ export default function App() {
         <Route path="agents" element={<AgentsTab />} />
         <Route path="hitl" element={<HitlTab />} />
         <Route path="hitl/:escalationId" element={<HitlTab />} />
+        <Route path="flows" element={<FlowsTab />} />
+        <Route path="flows/:id" element={<FlowEditorPage />} />
         <Route path="usage" element={<TenantUsageTab />} />
       </Route>
     </Routes>

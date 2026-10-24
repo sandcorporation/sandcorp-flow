@@ -172,3 +172,20 @@
 
 /* 안 보이는 차트 툴팁이 위치만으로 문서 폭을 밀지 않게 — 숨은 동안은 아예 그리지 않는다(#90) */
 .recharts-tooltip-wrapper[style*="visibility: hidden"] { display: none !important; }
+
+/* React Flow(편집기 캔버스, #29) — 기본 밝은 테마 변수를 HMI 토큰으로 바꾼다 */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke-default: hsl(var(--flow-muted));
+  --xy-handle-background-color-default: hsl(var(--flow-ink));
+  --xy-handle-border-color-default: hsl(var(--flow-raised));
+  --xy-controls-button-background-color-default: hsl(var(--flow-raised));
+  --xy-controls-button-background-color-hover-default: hsl(var(--flow-hover));
+  --xy-controls-button-color-default: hsl(var(--flow-text));
+  --xy-controls-button-border-color-default: hsl(var(--flow-line-soft));
+  --xy-attribution-background-color-default: hsl(var(--flow-bg) / 0.7);
+  font-family: var(--flow-font-sans);
+}
+.react-flow__node { cursor: pointer; }
+.react-flow__handle { width: 9px; height: 9px; border-radius: 0; }
+.react-flow__attribution a { color: hsl(var(--flow-muted)); }
