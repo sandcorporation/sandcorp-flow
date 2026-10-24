@@ -85,6 +85,9 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
 
 ### Jenkins (A1, 도커로 구동)
 - **이미지**: docker CLI + `docker compose` v2 + **`docker rollout` 플러그인** + git + python3 포함하게 빌드(`/usr/local/lib/docker/cli-plugins/docker-rollout`에 전역 설치).
+- **`docker rollout` 플러그인은 에이전트(빌드 실행 유저) 쪽에 설치**한다: 운영은 `/root/.docker/cli-plugins/docker-rollout`.
+  확인은 `docker rollout --help | grep 'Rollout new Compose'` — 플러그인이 없으면 `docker rollout --help`가 docker 일반 도움말을 **exit 0**으로 내서
+  「있음」으로 오판한다(첫 배포 build 2가 이걸로 롤링 단계에서 실패). `scripts/deploy.sh`도 시작할 때 같은 grep으로 확인하고 없으면 migrate 전에 멈춘다.
 - **Job(freestyle)**:
   - SCM: Git, 브랜치 `*/release`. **"Clean before checkout" 끄기**(untracked `.env`·`media` 보존).
   - Build Triggers: ☑ **GitHub hook trigger for GITScm polling**.
@@ -169,7 +172,7 @@ bridge·relay 5개는 합치면 메모리를 ~250M 더 아끼지만 이벤트 �
 
 - **무한 리다이렉트(NPM 뒤)**: `SECURE_PROXY_SSL_HEADER`(prod.py) + nginx가 NPM의 `X-Forwarded-Proto` 전달(둘 다 적용됨). NPM이 https 종단하는지 확인.
 - **NPM이 502/연결 안 됨**: NPM Forward가 `<A1 호스트 IP>:${NGINX_PORT}`인지 확인(컨테이너 NPM이면 host-gateway). nginx 컨테이너가 그 포트로 `up` 됐는지(`docker compose ... ps nginx`)도 확인.
-- **rollout이 안 먹음/명령 없음**: Jenkins 컨테이너에 `docker rollout` 플러그인 미설치. 전역 cli-plugins 경로 확인.
+- **rollout이 안 먹음/명령 없음**: 에이전트에 `docker rollout` 플러그인 미설치. `docker rollout --help | grep 'Rollout new Compose'`로 확인(없으면 일반 도움말이 exit 0으로 나온다).
 - **GHCR pull 403/denied**: A1 `docker login` 만료 또는 PAT 권한/ SSO. classic `read:packages` + org authorize.
 - **스모크/healthcheck가 `/api/health`에서 400**: `ALLOWED_HOSTS`에 `127.0.0.1,localhost` 누락(DisallowedHost). → 추가. (301로 바뀌면 SSL 리다이렉트 문제 — prod.py의 `SECURE_REDIRECT_EXEMPT`가 health를 제외하므로 새 이미지로 배포돼야 적용됨.)
 - **첫 배포 `migrate` 실패**: `.env`의 `DJANGO_SETTINGS_MODULE`·DB 변수 확인. db 컨테이너 healthy 대기 후 migrate(deploy.sh가 처리).
@@ -198,7 +201,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
    - [x] 배포 디렉터리 = Jenkins 워크스페이스 `/var/jenkins_home/workspace/sandcorp-flow`, 호스트 심볼릭 링크 `/home/jenkins/agent/workspace → /var/jenkins_home/workspace`(위 「A1 호스트」).
    - [x] 워크스페이스에 `cp .env.prod.example .env` 후 아래 필수 키를 채운다. 파일 권한 600.
    - [ ] `docker login ghcr.io`(Jenkins 실행 유저, `read:packages` PAT) 확인. 이미지 이름은 `sandcorp-flow-{api,admin,widget}`.
-   - [ ] `docker rollout` 플러그인이 Jenkins 컨테이너에 있는지 확인(이미 다른 잡이 쓰면 생략).
+   - [x] `docker rollout` 플러그인을 에이전트 `/root/.docker/cli-plugins/docker-rollout`에 설치, 확인은 `docker rollout --help | grep 'Rollout new Compose'`(exit 0만 보면 오판).
 3. [x] **운영 `.env` 필수 키**(16개 투입, `NGINX_PORT=18095`)(이름만): `DJANGO_SETTINGS_MODULE=config.settings.prod`, `SECRET_KEY`(생성 후 **영구 고정**), `ALLOWED_HOSTS`(`flow.sandcorp.co.kr,127.0.0.1,localhost`), `CSRF_TRUSTED_ORIGINS`(`https://flow.sandcorp.co.kr`), `DB_HOST`·`DB_PORT`·`DB_NAME=sandcorp_flow`·`DB_USER`·`DB_PASSWORD`, `REDIS_URL`, `EVENTS_TOPIC`, `NGINX_PORT`. `AUTH_OWNER_SUB=farrar142`(#20). `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`·`AUTH_REDIRECT_URI`·`AUTH_WEBHOOK_SECRET`(#21, 7번). 이후 티켓이 더할 이름: `PLATFORM_*`(#39).
 4. [x] **NGINX_PORT 정하기**(18095): 박스에서 비어 있는 호스트 포트(`ss -ltn`)를 골라 `.env`에 쓴다. Oracle 보안목록에는 열지 않는다.
 5. [x] **NPM**(NPMplus 호스트 19·인증서 27, `flow.sandcorp.co.kr` → `172.17.0.1:18095`): Proxy Host `flow.sandcorp.co.kr` → Forward `<A1 호스트>:<NGINX_PORT>`(http), Websockets 켬, SSL Let's Encrypt + Force SSL, Advanced 칸에 `proxy_buffering off; proxy_request_buffering off; proxy_read_timeout 3600s;`(SSE).
@@ -216,7 +219,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
      2. **탈퇴 웹훅 비밀 발급**: `manage.py clients webhook --client-id <id> --url https://flow.sandcorp.co.kr/api/auth/webhook`. 웹훅 수신부는 별도 티켓이다(지금 Flow엔 그 경로가 없다) — 비밀만 받아 둔다.
      3. **운영 `.env`에 넣기**: `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`(1에서 발급), `AUTH_REDIRECT_URI=https://flow.sandcorp.co.kr/api/auth/callback`, `AUTH_WEBHOOK_SECRET`(2에서 발급). `AUTH_AUTHORIZE_URL`(기본 `<AUTH_ISSUER>/authorize`)·`AUTH_TOKEN_URL`(기본 `<AUTH_ISSUER>/token`)·`AUTH_LOGIN_REDIRECT`(기본 `/admin-ui/operator`)는 기본값이면 적지 않는다. 클라이언트 값이 비면 로그인 버튼이 「설정되지 않음」 거절 화면으로 간다.
    - [ ] **확인**: `https://flow.sandcorp.co.kr/admin-ui/operator` → 「sandcorp 계정으로 로그인」 → sandcorp-auth 로그인·동의 → Tenants 화면. 대표가 아닌 계정이면 「로그인할 수 없습니다」.
-8. **첫 배포 확인**: `main` push → Actions 3개 이미지 빌드 → `release` 갱신(release 잡도 self-hosted `arm64-builder` 러너 — 비공개 저장소라 GitHub 호스팅 러너는 과금 막힘) → Jenkins 실행. 끝나면 `curl -sI https://flow.sandcorp.co.kr/api/health`가 200, `https://flow.sandcorp.co.kr/admin-ui/`가 열리는지, `docker compose -f docker-compose.prod.oracle.yml ps`에서 전부 Up/healthy인지, `docker stats --no-stream`이 위 상한 안인지 본다.
+8. [x] **첫 배포 확인**(2026-10-24 Jenkins build 3, deb7835 — `/api/health`·`/admin-ui/` 200, 보호 리소스 메타데이터·401 헤더 정상, 컨테이너 12개 Up, 메모리 약 0.95G): `main` push → Actions 3개 이미지 빌드 → `release` 갱신(release 잡도 self-hosted `arm64-builder` 러너 — 비공개 저장소라 GitHub 호스팅 러너는 과금 막힘) → Jenkins 실행. 끝나면 `curl -sI https://flow.sandcorp.co.kr/api/health`가 200, `https://flow.sandcorp.co.kr/admin-ui/`가 열리는지, `docker compose -f docker-compose.prod.oracle.yml ps`에서 전부 Up/healthy인지, `docker stats --no-stream`이 위 상한 안인지 본다.
 9. **Operator 계정**: 만들 것이 없다. Operator 비밀번호 로그인은 없고(#21), 7번 등록을 마친 뒤 대표 계정으로 관리 화면에 로그인하면 첫 로그인 때 Flow 쪽 사용자·Operator 행이 생긴다. `createsuperuser`는 쓰지 않는다.
 
 ## 관련 문서
