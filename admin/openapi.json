@@ -4194,6 +4194,41 @@
         ]
       }
     },
+    "/api/tenant/flows/node-schema/": {
+      "get": {
+        "description": "편집기 노드 설정 폼의 틀 — 종류별 config 의 JSON 스키마(필드·enum·필수·기본값). get_flow_schema 와 같은 모델에서 뽑는다.",
+        "operationId": "apps_flows_api_flows_node_schema",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "additionalProperties": {
+                      "$ref": "#/components/schemas/JSON"
+                    },
+                    "type": "object"
+                  },
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Node Schema",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
     "/api/tenant/flows/{flow_id}/": {
       "get": {
         "operationId": "apps_flows_api_flows_get",

@@ -6,6 +6,7 @@
  */
 import type {
   AppsFlowsApiDeployRequestsListParams,
+  AppsFlowsApiFlowsNodeSchema200,
   DecisionIn,
   DeployIn,
   DeployOut,
@@ -210,6 +211,42 @@ export const appsFlowsApiFlowsCreate = async (flowCreateIn: FlowCreateIn, option
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
       flowCreateIn,)
+  }
+);}
+
+
+/**
+ * 편집기 노드 설정 폼의 틀 — 종류별 config 의 JSON 스키마(필드·enum·필수·기본값). get_flow_schema 와 같은 모델에서 뽑는다.
+ * @summary Flows Node Schema
+ */
+export type appsFlowsApiFlowsNodeSchemaResponse200 = {
+  data: AppsFlowsApiFlowsNodeSchema200
+  status: 200
+}
+    
+export type appsFlowsApiFlowsNodeSchemaResponseSuccess = (appsFlowsApiFlowsNodeSchemaResponse200) & {
+  headers: Headers;
+};
+;
+
+export type appsFlowsApiFlowsNodeSchemaResponse = (appsFlowsApiFlowsNodeSchemaResponseSuccess)
+
+export const getAppsFlowsApiFlowsNodeSchemaUrl = () => {
+
+
+  
+
+  return `/api/tenant/flows/node-schema/`
+}
+
+export const appsFlowsApiFlowsNodeSchema = async ( options?: RequestInit): Promise<appsFlowsApiFlowsNodeSchemaResponse> => {
+  
+  return customInstance<appsFlowsApiFlowsNodeSchemaResponse>(getAppsFlowsApiFlowsNodeSchemaUrl(),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
   }
 );}
 

@@ -319,3 +319,26 @@ def test_test_conversation_unknown_flow_and_session(client, admin_token):
     fid = new_flow(client, admin_token)
     r = jpost(client, f"{BASE}{fid}/test/", {"message": "x", "session_id": "00000000-0000-0000-0000-000000000000"}, admin_token)
     assert r.status_code == 404
+
+
+# ── 노드 config 스키마(#98) ──────────────────────────────────────────────────
+
+
+def test_node_schema_lists_every_kind_with_fields_enums_and_required(client, admin_token):
+    from apps.flows.schema import NodeKind
+
+    res = client.get(f"{BASE}node-schema/", **h(admin_token))
+
+    assert res.status_code == 200
+    kinds = res.json()["kinds"]
+    assert set(kinds) == {k.value for k in NodeKind}
+    guard = kinds["guardrail"]["config"]
+    assert guard["properties"]["action"]["enum"] == ["block", "rewrite", "mask"]
+    assert guard["properties"]["rules"]["items"]["enum"] == ["banned_words", "pii", "price_promise"]
+    assert "rules" in guard["required"]
+    assert "url" in kinds["http_tool"]["config"]["required"]
+
+
+def test_node_schema_needs_no_flow_edit_permission(client, tenant_admin_token):
+    """읽기 전용 멤버도 폼 틀을 읽을 수 있어야 한다(저장만 flow.edit)."""
+    assert client.get(f"{BASE}node-schema/").status_code == 401
