@@ -17,6 +17,8 @@ export function fakeFlowsApi(opts: {
   /** 시험 대화 POST 가 차례로 돌려줄 SSE 이벤트들(턴마다 하나). 다 쓰면 마지막 것을 되풀이한다. */
   testTurns?: { event: string; data: object }[][]
   testStatus?: number
+  /** DELETE /flows/{id}/ (보관)이 돌려줄 상태(기본 204). 409면 {detail, code:'flow_in_use'}. */
+  archiveStatus?: number
   /** true면 버전 저장이 「마지막 버전과 같음」(created:false)으로 새 버전을 만들지 않는다. */
   duplicateVersion?: boolean
   trial?: { state: string; remaining: number; limit: number } | (() => { state: string; remaining: number; limit: number })  // 함수면 호출할 때마다 계산(턴 뒤 감소 흉내)
@@ -38,6 +40,8 @@ export function fakeFlowsApi(opts: {
     new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
   const versions: FakeVersion[] = [...(opts.versions ?? [])]
   const st = { deployed: opts.deployedVersion ?? null as number | null, pending: opts.pending ?? null as FakeRequest | null, requests: [...(opts.requests ?? [])] }
+  let listed: object[] | null = null
+  const flowList = () => (listed ??= [...(opts.flows ?? [flowOut()])])
   const flowOut = () => ({ id: 'f1', name: '기본 흐름', is_public: false, deployed_version: st.deployed, updated_at: '2026-10-01T09:00:00Z', has_pending_request: st.pending !== null })
   const versionOut = (v: FakeVersion) => ({ hash: `h${v.number}`, ...v, deployed: v.number === st.deployed })
   const newRequest = (version: number): FakeRequest => ({ id: `r${st.requests.length + 1}`, flow_id: 'f1', flow_name: '기본 흐름', version, status: 'pending', requested_by_name: opts.me?.name ?? '나', decided_by_name: null, decided_at: null, decision_note: '', created_at: '2026-10-02T09:00:00Z' })
@@ -54,7 +58,13 @@ export function fakeFlowsApi(opts: {
     const method = (init?.method ?? 'GET').toUpperCase()
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
     calls.push({ method, path, body })
-    if (method === 'GET' && path.endsWith('/api/tenant/flows/')) return json(200, opts.flows ?? [flowOut()])
+    if (method === 'GET' && path.endsWith('/api/tenant/flows/')) return json(200, flowList())
+    const archived = method === 'DELETE' ? path.match(/\/api\/tenant\/flows\/([^/]+)\/$/) : null
+    if (archived) {
+      if (opts.archiveStatus && opts.archiveStatus !== 204) return json(opts.archiveStatus, { detail: '위젯이 쓰고 있는 흐름이라 보관할 수 없습니다. 먼저 다른 흐름을 배포하세요.', code: 'flow_in_use' })
+      listed = flowList().filter((f) => (f as { id: string }).id !== archived[1])
+      return new Response(null, { status: 204 })
+    }
     if (method === 'POST' && path.endsWith('/api/tenant/flows/')) return json(201, { ...flowOut(), id: 'f2', name: body.name })
     if (method === 'POST' && path.endsWith('/test/')) {
       if (opts.testStatus && opts.testStatus !== 200) return json(opts.testStatus, { detail: '권한이 없습니다.' })

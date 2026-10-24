@@ -26,7 +26,7 @@ from mcp_helpers import (  # noqa: F401 — clock·signer·flow_validator는 픽
 from resource_token_fakes import Signer
 
 EXAMPLE = Path(settings.BASE_DIR) / "apps" / "flows" / "examples" / "sandcorp_home.json"
-WRITE_TOOLS = ["create_flow", "update_flow", "save_version", "deploy_version", "test_turn"]
+WRITE_TOOLS = ["create_flow", "update_flow", "save_version", "deploy_version", "test_turn", "archive_flow"]
 
 
 def ok(body: dict) -> dict:
@@ -116,10 +116,12 @@ def test_member_reads_but_every_write_tool_is_refused(signer: Signer) -> None:
         "save_version": {"flow_id": str(flow.id)},
         "deploy_version": {"flow_id": str(flow.id), "version": 1},
         "test_turn": {"flow_id": str(flow.id), "message": "안녕"},
+        "archive_flow": {"flow_id": str(flow.id)},
     }
     for tool in WRITE_TOOLS:
         assert "admin_required" in err(call(token, tool, args[tool])), tool
     assert services.flow_detail(tenant.id, flow.id).draft.graph == {"nodes": [], "edges": []}
+    assert services.get_flow(tenant.id, flow.id).archived_at is None
 
 
 @pytest.mark.django_db
@@ -237,3 +239,36 @@ def test_save_version_note_shows_in_version_list_and_is_capped(signer: Signer) -
     ok(call(token, "update_flow", {"flow_id": flow_id, "ops": [{"op": "upsert_node", "id": "answer", "name": "바뀜"}]}))
     assert "note_too_long" in err(call(token, "save_version", {"flow_id": flow_id, "note": "가" * 201}))
     assert len(ok(call(token, "get_flow", {"flow_id": flow_id}))["versions"]) == 1
+
+
+@pytest.mark.django_db
+def test_archive_flow_hides_it_from_list_and_get(signer: Signer) -> None:
+    admin()
+    token = mcp_token(signer)
+    keep = new_flow(token, "남길 흐름")
+    gone = new_flow(token, "지울 흐름", ops=SIMPLE_OPS)
+    ok(call(token, "save_version", {"flow_id": gone}))
+
+    result = ok(call(token, "archive_flow", {"flow_id": gone}))
+
+    assert result["archived"] is True and result["id"] == gone
+    assert [f["id"] for f in ok(call(token, "list_flows"))["flows"]] == [keep]
+    assert "flow_not_found" in err(call(token, "get_flow", {"flow_id": gone}))
+    assert "flow_not_found" in err(call(token, "archive_flow", {"flow_id": gone}))
+
+
+@pytest.mark.django_db
+def test_archive_flow_refuses_the_widget_flow_and_other_tenants(signer: Signer) -> None:
+    tenant = admin("acme")
+    from apps.flows import services
+    from apps.flows.defaults import ensure_default_flow
+
+    ensure_default_flow(tenant.id)
+    public = next(f for f in services.list_flows(tenant.id) if f.is_public)
+    foreign = services.create_flow(make_tenant("other").id, "남의 흐름")
+    token = mcp_token(signer)
+
+    assert "flow_in_use" in err(call(token, "archive_flow", {"flow_id": str(public.id)}))
+    assert "flow_not_found" in err(call(token, "archive_flow", {"flow_id": str(foreign.id)}))
+    assert services.get_flow(tenant.id, public.id).archived_at is None
+    assert services.get_flow(foreign.tenant_id, foreign.id).archived_at is None

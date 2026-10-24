@@ -47,7 +47,7 @@ def ensure_default_flow(tenant_id: uuid.UUID) -> Flow:
 
     with transaction.atomic():
         Tenant.objects.select_for_update().only("id").get(pk=tenant_id)
-        existing = Flow.objects.for_tenant(tenant_id).order_by("created_at").first()
+        existing = Flow.objects.for_tenant(tenant_id).active().order_by("created_at").first()
         if existing is not None:
             return existing
         flow = Flow.objects.create(tenant_id=tenant_id, name=DEFAULT_FLOW_NAME, is_public=True)

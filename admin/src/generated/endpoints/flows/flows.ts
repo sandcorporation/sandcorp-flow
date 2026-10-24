@@ -252,6 +252,42 @@ export const appsFlowsApiFlowsNodeSchema = async ( options?: RequestInit): Promi
 
 
 /**
+ * 흐름 보관(soft delete). 위젯이 쓰는 공개 흐름은 409 — 버전·세션·판단 기록은 남는다.
+ * @summary Flows Archive
+ */
+export type appsFlowsApiFlowsArchiveResponse204 = {
+  data: void
+  status: 204
+}
+    
+export type appsFlowsApiFlowsArchiveResponseSuccess = (appsFlowsApiFlowsArchiveResponse204) & {
+  headers: Headers;
+};
+;
+
+export type appsFlowsApiFlowsArchiveResponse = (appsFlowsApiFlowsArchiveResponseSuccess)
+
+export const getAppsFlowsApiFlowsArchiveUrl = (flowId: string,) => {
+
+
+  
+
+  return `/api/tenant/flows/${flowId}/`
+}
+
+export const appsFlowsApiFlowsArchive = async (flowId: string, options?: RequestInit): Promise<appsFlowsApiFlowsArchiveResponse> => {
+  
+  return customInstance<appsFlowsApiFlowsArchiveResponse>(getAppsFlowsApiFlowsArchiveUrl(flowId),
+  {      
+    ...options,
+    method: 'DELETE'
+    
+    
+  }
+);}
+
+
+/**
  * @summary Flows Get
  */
 export type appsFlowsApiFlowsGetResponse200 = {
@@ -438,6 +474,42 @@ export const appsFlowsApiFlowsPutDraft = async (flowId: string,
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
       draftPutIn,)
+  }
+);}
+
+
+/**
+ * 보관한 흐름을 되돌린다(화면 없음 — API만).
+ * @summary Flows Restore
+ */
+export type appsFlowsApiFlowsRestoreResponse200 = {
+  data: FlowOut
+  status: 200
+}
+    
+export type appsFlowsApiFlowsRestoreResponseSuccess = (appsFlowsApiFlowsRestoreResponse200) & {
+  headers: Headers;
+};
+;
+
+export type appsFlowsApiFlowsRestoreResponse = (appsFlowsApiFlowsRestoreResponseSuccess)
+
+export const getAppsFlowsApiFlowsRestoreUrl = (flowId: string,) => {
+
+
+  
+
+  return `/api/tenant/flows/${flowId}/restore/`
+}
+
+export const appsFlowsApiFlowsRestore = async (flowId: string, options?: RequestInit): Promise<appsFlowsApiFlowsRestoreResponse> => {
+  
+  return customInstance<appsFlowsApiFlowsRestoreResponse>(getAppsFlowsApiFlowsRestoreUrl(flowId),
+  {      
+    ...options,
+    method: 'POST'
+    
+    
   }
 );}
 

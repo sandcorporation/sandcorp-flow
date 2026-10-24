@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Annotated, Literal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 from pydantic import BaseModel, ConfigDict, Field
 
 from apps.flows.models import DeployRequest, Flow, FlowDraft, FlowVersion
@@ -113,12 +114,12 @@ class SaveVersionResult:
 
 
 def list_flows(tenant_id: uuid.UUID) -> list[Flow]:
-    return list(Flow.objects.for_tenant(tenant_id).select_related("deployed_version").order_by("created_at"))
+    return list(Flow.objects.for_tenant(tenant_id).active().select_related("deployed_version").order_by("created_at"))
 
 
 def get_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
     try:
-        return Flow.objects.for_tenant(tenant_id).select_related("deployed_version").get(pk=flow_id)
+        return Flow.objects.for_tenant(tenant_id).active().select_related("deployed_version").get(pk=flow_id)
     except (Flow.DoesNotExist, DjangoValidationError, ValueError, TypeError) as exc:  # UUID가 아닌 문자열
         raise FlowNotFound(f"흐름 '{flow_id}'이 이 테넌트에 없습니다.") from exc
 
@@ -158,6 +159,47 @@ def create_flow(tenant_id: uuid.UUID, name: str, graph: JSON | None = None) -> F
             FlowDraft.objects.create(flow=flow, graph=graph if graph is not None else copy.deepcopy(EMPTY_GRAPH))
     except IntegrityError as exc:
         raise FlowServiceError(f"이름이 '{name}'인 흐름이 이미 있습니다.", code="duplicate_name") from exc
+    return flow
+
+
+class FlowInUse(FlowServiceError):
+    """위젯이 쓰는 공개 흐름이라 보관할 수 없다."""
+
+    code = "flow_in_use"
+
+
+def archive_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
+    """흐름을 보관한다(soft delete). 위젯이 쓰는 공개 흐름은 ``FlowInUse`` — 먼저 다른 흐름을 배포해야 한다.
+
+    버전·세션·판단 기록은 지우지 않는다. 기다리던 배포 요청은 ``superseded``로 닫는다(승인해도 갈 곳이 없다).
+    """
+    pk = get_flow(tenant_id, flow_id).pk
+    with transaction.atomic():
+        flow = Flow.objects.select_for_update().get(pk=pk)
+        if flow.archived_at is not None:  # 잠금을 기다리는 사이 다른 호출이 먼저 보관했다
+            raise FlowNotFound(f"흐름 '{flow_id}'이 이 테넌트에 없습니다.")
+        if flow.is_public:
+            raise FlowInUse(
+                f"'{flow.name}'은(는) 위젯이 쓰고 있는 흐름이라 보관할 수 없습니다. 먼저 다른 흐름을 배포해 위젯이 그 흐름으로 돌게 하세요."
+            )
+        flow.archived_at = timezone.now()
+        flow.save(update_fields=["archived_at", "updated_at"])
+        DeployRequest.objects.filter(flow=flow, status=DeployRequest.PENDING).update(status=DeployRequest.SUPERSEDED)
+    return flow
+
+
+def restore_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
+    """보관한 흐름을 되돌린다. 보관 사이 같은 이름의 흐름이 생겼으면 ``duplicate_name``."""
+    try:
+        flow = Flow.objects.for_tenant(tenant_id).filter(archived_at__isnull=False).select_related("deployed_version").get(pk=flow_id)
+    except (Flow.DoesNotExist, DjangoValidationError, ValueError, TypeError) as exc:
+        raise FlowNotFound(f"보관된 흐름 '{flow_id}'이 이 테넌트에 없습니다.") from exc
+    flow.archived_at = None
+    try:
+        with transaction.atomic():
+            flow.save(update_fields=["archived_at", "updated_at"])
+    except IntegrityError as exc:
+        raise FlowServiceError(f"이름이 '{flow.name}'인 흐름이 이미 있어 되돌릴 수 없습니다. 그 흐름 이름을 먼저 바꾸세요.", code="duplicate_name") from exc
     return flow
 
 
