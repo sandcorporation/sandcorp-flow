@@ -92,7 +92,7 @@ HTTP 도구의 인증 계열 헤더(이름에 `authorization`·`cookie`·`token`
 ## 검증
 
 `validate_flow(data)`는 오류 목록을 돌려준다(빈 목록이면 유효). 오류마다 `node_id`(흐름 전체 오류면 `null`),
-`code`, 사람이 읽을 `message`가 있다. 편집기는 `node_id`로 노드에 표시한다.
+`code`, 사람이 읽을 `message`가 있다. 편집기는 `node_id`로 노드에 표시한다. `invalid_config` 의 `message` 는 `경로: 이유; 경로: 이유` 꼴(경로 예 `branches.0.when`)이라 편집기가 해당 필드 아래에 보인다(경로 없는 이유는 노드 전체에). 폼의 틀은 `GET /api/tenant/flows/node-schema/`(종류별 config JSON 스키마, MCP `get_flow_schema`와 같은 모델)에서 뽑는다.
 
 | code | 뜻 |
 |---|---|
