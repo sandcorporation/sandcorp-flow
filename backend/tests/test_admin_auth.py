@@ -5,41 +5,20 @@
 import pytest
 
 
-def _make_operator(client, username="admin", password="pw123456"):
-    from apps.tenants.models import Operator
-    op = Operator.objects.create(username=username)
-    op.set_password(password)
-    op.save()
-    return op
+def _operator_login(client):
+    """sandcorp-auth 콜백(#21, test_operator_login.py)이 연 세션과 같은 상태를 만든다: 대표 Operator +
+    Refresh Family + 쿠키. 돌려주는 값은 그 세션의 Access Token."""
+    from apps.tenants.auth import create_operator_access_token
+    from apps.tenants.operator_login import owner_operator
+    from apps.tenants.refresh_tokens import issue_session
 
-
-def _operator_login(client, username="admin", password="pw123456"):
-    return client.post(
-        "/api/operator/auth/login",
-        {"username": username, "password": password},
-        content_type="application/json",
-    )
-
-
-# ── Tracer: Operator 로그인이 access + refresh 쿠키를 발급 ─────────────────────
-
-@pytest.mark.django_db
-def test_operator_login_sets_httponly_refresh_cookie(client):
-    _make_operator(client)
-    resp = _operator_login(client)
-
-    assert resp.status_code == 200
-    assert "access_token" in resp.json()
-    assert "op_refresh" in resp.cookies
-    cookie = resp.cookies["op_refresh"]
-    assert cookie.value  # refresh 원문이 쿠키에 담김
-    assert cookie["httponly"]
-    assert cookie["samesite"].lower() == "strict"
+    op = owner_operator("https://auth.sandcorp.co.kr", "farrar142")
+    client.cookies["op_refresh"] = issue_session(op)
+    return create_operator_access_token(op)
 
 
 @pytest.mark.django_db
 def test_operator_refresh_rotates_cookie_and_returns_new_access(client):
-    _make_operator(client)
     _operator_login(client)
     old = client.cookies["op_refresh"].value
 
@@ -58,7 +37,6 @@ def test_operator_refresh_without_cookie_rejected(client):
 
 @pytest.mark.django_db
 def test_operator_refresh_reuse_is_rejected(client):
-    _make_operator(client)
     _operator_login(client)
     old = client.cookies["op_refresh"].value
     client.post("/api/operator/auth/refresh")  # 회전 → old 소비됨
@@ -126,7 +104,6 @@ def test_agent_refresh_without_cookie_rejected(client):
 
 @pytest.mark.django_db
 def test_operator_logout_revokes_current_session(client):
-    _make_operator(client)
     _operator_login(client)
     raw = client.cookies["op_refresh"].value
 
@@ -140,13 +117,11 @@ def test_operator_logout_revokes_current_session(client):
 @pytest.mark.django_db
 def test_operator_logout_all_revokes_every_device(client):
     from django.test import Client
-    _make_operator(client)
 
     # 기기 1·2에서 각각 로그인(별도 클라이언트 = 별도 Family)
     c1, c2 = Client(), Client()
-    login1 = _operator_login(c1)
+    access1 = _operator_login(c1)
     _operator_login(c2)
-    access1 = login1.json()["access_token"]
     raw2 = c2.cookies["op_refresh"].value
 
     # 기기 1에서 전체 로그아웃(access 토큰으로 주체 식별)

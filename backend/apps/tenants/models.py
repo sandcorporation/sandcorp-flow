@@ -8,7 +8,46 @@ from django.db.models.functions import Lower
 from django.contrib.auth.models import AbstractUser
 
 
+class User(models.Model):
+    """sandcorp-auth 사용자 — External Identity `(iss, sub)`로 식별한다(ADR-0028).
+
+    대표(`acct="owner"`, Operator가 된다)와 일반 사용자(`acct="member"`, #40에서 로그인)를 함께 받는다.
+    이름·이메일은 ID 토큰에서 받은 캐시일 뿐 식별에 쓰지 않는다 — 이메일로 계정을 묶지 않는다.
+    """
+
+    class Acct(models.TextChoices):
+        OWNER = "owner"
+        MEMBER = "member"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    iss = models.CharField(max_length=255)
+    sub = models.CharField(max_length=255)
+    acct = models.CharField(max_length=10, choices=Acct.choices)
+    name = models.CharField(max_length=255, null=True, blank=True)
+    email = models.CharField(max_length=320, null=True, blank=True)
+    email_verified = models.BooleanField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "users"
+        constraints = [
+            models.UniqueConstraint(fields=["iss", "sub"], name="users_unique_external_identity"),
+        ]
+
+
 class Operator(AbstractUser):
+    """Flow 안의 Operator 주체. Django `AUTH_USER_MODEL`이자 RefreshToken(ADR-0013)의 FK 대상이다.
+
+    비밀번호는 쓰지 않는다(로그인은 sandcorp-auth, #21). 대표 `User`에 1:1로 잇는다.
+    """
+
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, null=True, blank=True, related_name="operator"
+    )
+    if TYPE_CHECKING:
+        user_id: uuid.UUID | None
+
     class Meta:
         db_table = "operators"
 

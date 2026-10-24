@@ -5,11 +5,9 @@
  * OpenAPI spec version: 1.0.0
  */
 import type {
-  AppsTenantsApiLogin401,
   AppsTenantsApiOperatorLogout200,
   AppsTenantsApiOperatorLogoutAll200,
   AppsTenantsApiOperatorRefresh401,
-  LoginIn,
   LoginOut,
   TenantCreatedOut,
   TenantIn,
@@ -17,49 +15,6 @@ import type {
 } from '../../model';
 
 import { customInstance } from '../../../mutator';
-
-/**
- * @summary Login
- */
-export type appsTenantsApiLoginResponse200 = {
-  data: LoginOut
-  status: 200
-}
-
-export type appsTenantsApiLoginResponse401 = {
-  data: AppsTenantsApiLogin401
-  status: 401
-}
-    
-export type appsTenantsApiLoginResponseSuccess = (appsTenantsApiLoginResponse200) & {
-  headers: Headers;
-};
-export type appsTenantsApiLoginResponseError = (appsTenantsApiLoginResponse401) & {
-  headers: Headers;
-};
-
-export type appsTenantsApiLoginResponse = (appsTenantsApiLoginResponseSuccess | appsTenantsApiLoginResponseError)
-
-export const getAppsTenantsApiLoginUrl = () => {
-
-
-  
-
-  return `/api/operator/auth/login`
-}
-
-export const appsTenantsApiLogin = async (loginIn: LoginIn, options?: RequestInit): Promise<appsTenantsApiLoginResponse> => {
-  
-  return customInstance<appsTenantsApiLoginResponse>(getAppsTenantsApiLoginUrl(),
-  {      
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      loginIn,)
-  }
-);}
-
 
 /**
  * @summary Operator Logout

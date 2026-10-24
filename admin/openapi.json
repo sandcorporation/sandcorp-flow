@@ -447,24 +447,6 @@
         "title": "IdentityIn",
         "type": "object"
       },
-      "LoginIn": {
-        "properties": {
-          "password": {
-            "title": "Password",
-            "type": "string"
-          },
-          "username": {
-            "title": "Username",
-            "type": "string"
-          }
-        },
-        "required": [
-          "username",
-          "password"
-        ],
-        "title": "LoginIn",
-        "type": "object"
-      },
       "LoginOut": {
         "properties": {
           "access_token": {
@@ -1668,50 +1650,6 @@
         "summary": "Health",
         "tags": [
           "core"
-        ]
-      }
-    },
-    "/api/operator/auth/login": {
-      "post": {
-        "operationId": "apps_tenants_api_login",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LoginIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LoginOut"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          }
-        },
-        "summary": "Login",
-        "tags": [
-          "operator"
         ]
       }
     },
