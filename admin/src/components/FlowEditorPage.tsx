@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Trash2 } from 'lucide-react'
 import { currentAgentRole } from '../api'
-import { appsFlowsApiFlowsGet, appsFlowsApiFlowsNodeSchema, appsFlowsApiFlowsPatchDraft } from '../generated/endpoints/flows/flows'
-import type { DraftPatchIn, FlowDetailOut } from '../generated/model'
+import { appsFlowsApiFlowsGet, appsFlowsApiFlowsGetVersion, appsFlowsApiFlowsNodeSchema, appsFlowsApiFlowsPatchDraft } from '../generated/endpoints/flows/flows'
+import { appsTenantsApiGetConfig } from '../generated/endpoints/tenant/tenant'
+import { appsTenantsApiMemberMe } from '../generated/endpoints/tenant-members/tenant-members'
+import type { DeployRequestOut, DraftPatchIn, FlowDetailOut, VersionOut } from '../generated/model'
 import { HttpError } from '../mutator'
 import {
   KINDS, applyOps, flowLevelErrors, kindLabel, newNode,
@@ -11,6 +13,8 @@ import {
 } from '@/lib/flowGraph'
 import { fieldErrors } from '@/lib/nodeForm'
 import FlowCanvas from './FlowCanvas'
+import VersionsPanel from './VersionsPanel'
+import type { Me } from './DeployRequestCard'
 import NodeConfigForm from './NodeConfigForm'
 import { DecisionLog, TestChat, useTestSession } from './TestPanel'
 import { turnPath, type TestTurn } from '@/lib/testTrace'
@@ -25,7 +29,14 @@ const EMPTY: FlowGraph = { nodes: [], edges: [] }
 /** 편집기: 왼쪽 노드 목록 · 가운데 캔버스 · 오른쪽 패널. 모든 편집은 패치 연산으로 곧바로 초안에 저장한다. */
 export default function FlowEditorPage() {
   const { id = '' } = useParams()
-  const readOnly = currentAgentRole() !== 'admin' // flow.edit 는 Admin 전용(백엔드 permissions.py 와 같은 판정)
+  const isAdmin = currentAgentRole() === 'admin' // flow.edit·deploy·approve 는 Admin 전용(백엔드 permissions.py 와 같은 판정)
+  const [viewing, setViewing] = useState<{ number: number; graph: FlowGraph } | null>(null)
+  const readOnly = !isAdmin || viewing !== null // 버전을 보는 동안은 초안을 고치지 못한다
+  const [versions, setVersions] = useState<VersionOut[]>([])
+  const [deployedVersion, setDeployedVersion] = useState<number | null>(null)
+  const [pendingRequest, setPendingRequest] = useState<DeployRequestOut | null>(null)
+  const [requiresApproval, setRequiresApproval] = useState(false)
+  const [me, setMe] = useState<Me>(null)
   const [name, setName] = useState('')
   const [graph, setGraph] = useState<FlowGraph>(EMPTY)
   const [errors, setErrors] = useState<FlowError[]>([])
@@ -49,7 +60,31 @@ export default function FlowEditorPage() {
     const raw = d.draft.graph as unknown as Partial<FlowGraph>
     setGraph({ nodes: raw.nodes ?? [], edges: raw.edges ?? [] })
     setErrors(d.draft.errors as FlowError[])
+    setVersions(d.versions)
+    setDeployedVersion(d.flow.deployed_version ?? null)
+    setPendingRequest(d.pending_request ?? null)
   }, [id])
+
+  /** 버전·배포 상태만 다시 받는다(초안 그래프는 건드리지 않는다 — 줄 선 저장과 부딪히지 않게). */
+  const reloadMeta = useCallback(async () => {
+    const d = (await appsFlowsApiFlowsGet(id)).data as unknown as FlowDetailOut
+    setVersions(d.versions)
+    setDeployedVersion(d.flow.deployed_version ?? null)
+    setPendingRequest(d.pending_request ?? null)
+  }, [id])
+
+  const viewVersion = async (n: number) => {
+    try {
+      const v = (await appsFlowsApiFlowsGetVersion(id, n)).data as unknown as { graph: Partial<FlowGraph> }
+      setViewing({ number: n, graph: { nodes: v.graph.nodes ?? [], edges: v.graph.edges ?? [] } })
+      setSelectedId(null)
+    } catch { setSave({ state: 'failed', message: `v${n}을(를) 불러오지 못했습니다.` }) }
+  }
+
+  useEffect(() => {
+    appsTenantsApiMemberMe().then((r) => { const m = r.data as unknown as { name: string; email: string }; setMe({ name: m.name ?? '', email: m.email ?? '' }) }).catch(() => {})
+    appsTenantsApiGetConfig().then((r) => setRequiresApproval(!!(r.data as unknown as { deploy_requires_approval?: boolean }).deploy_requires_approval)).catch(() => {})
+  }, [])
 
   useEffect(() => {
     // 폼 틀(종류별 JSON 스키마). 못 받아도 「고급」 JSON 탭으로 편집할 수 있다.
@@ -95,7 +130,9 @@ export default function FlowEditorPage() {
     setSelectedId(n.id)
   }
 
-  const selected = graph.nodes.find((n) => n.id === selectedId) ?? null
+  const shownGraph = viewing?.graph ?? graph
+  const shownErrors = viewing ? [] : errors
+  const selected = shownGraph.nodes.find((n) => n.id === selectedId) ?? null
   const flowErrors = flowLevelErrors(errors)
 
   if (loadError) return <p role="alert" className="text-sm text-destructive">{loadError}</p>
@@ -111,24 +148,26 @@ export default function FlowEditorPage() {
           {save.state === 'saving' ? '저장 중' : save.state === 'failed' ? '저장 실패' : '초안 저장됨'}
         </span>
         <span className="hmi-label">{errors.length === 0 ? '검증 통과' : `검증 오류 ${errors.length}건`}</span>
-        {readOnly && <span className="hmi-label border border-line-soft px-1.5 py-0.5">읽기 전용 — 흐름 편집 권한이 없습니다</span>}
+        {!isAdmin && <span className="hmi-label border border-line-soft px-1.5 py-0.5">읽기 전용 — 흐름 편집 권한이 없습니다</span>}
+        {deployedVersion !== null && <span className="hmi-label flex items-center gap-1.5"><span className="lamp lamp-ok" />v{deployedVersion} 배포 중</span>}
       </div>
       {flowErrors.map((e, i) => <p key={i} role="alert" className="text-sm text-destructive">{e.message}</p>)}
       {save.state === 'failed' && <p role="alert" className="text-sm text-destructive">{save.message}</p>}
 
-      <div className="grid gap-3 lg:h-[calc(100dvh-9rem)] lg:min-h-[480px] lg:grid-cols-[190px_minmax(0,1fr)_300px]">
-        <aside className="space-y-2 border border-line-soft bg-surface p-3 lg:min-h-0 lg:overflow-y-auto">
+      <div className="grid gap-3 lg:h-[calc(100dvh-9rem)] lg:min-h-[480px] lg:grid-cols-[220px_minmax(0,1fr)_300px]">
+        <aside className="min-w-0 space-y-4 border border-line-soft bg-surface p-3 lg:flex lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-3 lg:overflow-hidden">
+          <section aria-label="노드 목록" className="space-y-2 lg:max-h-[38%] lg:shrink-0 lg:overflow-y-auto">
           <h2 className="hmi-label">노드 목록</h2>
           {readOnly ? (
             <ul className="space-y-1 text-sm">
-              {graph.nodes.map((n) => (
+              {shownGraph.nodes.map((n) => (
                 <li key={n.id}><button type="button" className="w-full truncate text-left hover:underline" onClick={() => setSelectedId(n.id)}><span className="hmi-code text-muted-foreground">{n.code}</span> {n.name || kindLabel(n.kind)}</button></li>
               ))}
             </ul>
           ) : (
             <>
               <p className="text-xs text-muted-foreground">눌러서 더하거나 캔버스로 끌어다 놓습니다.</p>
-              <ul className="grid grid-cols-2 gap-1 lg:grid-cols-1">
+              <ul className="grid grid-cols-2 gap-1">
                 {KINDS.map((k) => (
                   <li key={k.kind}>
                     <button
@@ -137,7 +176,7 @@ export default function FlowEditorPage() {
                       onDragStart={(e) => { e.dataTransfer.setData('application/x-flow-kind', k.kind); e.dataTransfer.effectAllowed = 'copy' }}
                       onClick={() => addNode(k.kind)}
                       title={k.hint}
-                      className="w-full border border-line-soft bg-raised px-2 py-1.5 text-left text-sm hover:bg-accent"
+                      className="w-full truncate border border-line-soft bg-raised px-2 py-1.5 text-left text-xs hover:bg-accent"
                     >
                       {k.label}
                     </button>
@@ -146,12 +185,29 @@ export default function FlowEditorPage() {
               </ul>
             </>
           )}
+          </section>
+          <div className="border-t border-line-soft pt-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+            <VersionsPanel
+              flowId={id} versions={versions} deployedVersion={deployedVersion} pending={pendingRequest}
+              requiresApproval={requiresApproval} canDeploy={isAdmin} me={me} testedTurns={testSession.turns.length}
+              viewing={viewing?.number ?? null} onView={viewVersion}
+              onChanged={() => { reloadMeta().catch(() => {}); appsTenantsApiGetConfig().then((r) => setRequiresApproval(!!(r.data as unknown as { deploy_requires_approval?: boolean }).deploy_requires_approval)).catch(() => {}) }}
+            />
+          </div>
         </aside>
 
         <div className="relative h-[420px] min-w-0 overflow-hidden border border-line-soft bg-background lg:h-auto lg:min-h-0" data-testid="flow-canvas">
+          {viewing && (
+            <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-2 border-b border-ink bg-raised px-3 py-1.5 text-sm" role="status">
+              <span className="font-semibold text-ink">v{viewing.number} 보는 중</span>
+              <span className="text-muted-foreground">읽기 전용 — 저장된 버전은 고칠 수 없습니다</span>
+              <Button type="button" size="sm" variant="outline" className="ml-auto h-7" onClick={() => setViewing(null)}>초안으로 돌아가기</Button>
+            </div>
+          )}
           <FlowCanvas
-            graph={graph}
-            errors={errors}
+            key={viewing ? `v${viewing.number}` : 'draft'}
+            graph={shownGraph}
+            errors={shownErrors}
             selectedId={selectedId}
             readOnly={readOnly}
             spotRef={spotRef}
@@ -178,7 +234,7 @@ export default function FlowEditorPage() {
             ))}
           </div>
           {rightTab === 'test' && <TestChat {...testSession} readOnly={readOnly} />}
-          {rightTab === 'log' && <DecisionLog turns={testSession.turns} graph={graph} onFocus={focusTurn} />}
+          {rightTab === 'log' && <DecisionLog turns={testSession.turns} graph={shownGraph} onFocus={focusTurn} />}
           {rightTab === 'config' && (selected ? (
             <NodePanel key={selected.id} node={selected} schema={schemas[selected.kind]?.config} errors={errors} readOnly={readOnly} commit={commit} onDeleted={() => setSelectedId(null)} />
           ) : (

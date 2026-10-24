@@ -3,6 +3,9 @@ import { vi } from 'vitest'
 import type { FlowGraph, FlowError } from './lib/flowGraph'
 import nodeSchema from './lib/__fixtures__/nodeSchema.json'
 
+export type FakeVersion = { number: number; note: string; created_by_name: string | null; created_at: string; deployed?: boolean; hash?: string }
+export type FakeRequest = { id: string; flow_id: string; flow_name: string; version: number; status: string; requested_by_name: string | null; decided_by_name: string | null; decided_at: string | null; decision_note: string; created_at: string }
+
 export type Call = { method: string; path: string; body: any }
 
 export function fakeFlowsApi(opts: {
@@ -15,12 +18,25 @@ export function fakeFlowsApi(opts: {
   testTurns?: { event: string; data: object }[][]
   testStatus?: number
   trial?: { state: string; remaining: number; limit: number }
+  /** 버전 이력(번호 오름차순) — 없으면 비어 있다. graphs 에 번호별 그래프를 주면 「버전 보기」가 그것을 돌려준다. */
+  versions?: FakeVersion[]
+  graphs?: Record<number, FlowGraph>
+  deployedVersion?: number | null
+  requiresApproval?: boolean
+  pending?: FakeRequest | null
+  /** GET /deploy-requests/ 가 돌려줄 목록(상태 필터를 따른다). */
+  requests?: FakeRequest[]
+  me?: { name: string; email: string }
 }) {
   const calls: Call[] = []
   const state = { errors: opts.errors ?? [] }
   const json = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-  const flowOut = { id: 'f1', name: '기본 흐름', is_public: false, deployed_version: null, updated_at: '2026-10-01T09:00:00Z', has_pending_request: false }
+  const versions: FakeVersion[] = [...(opts.versions ?? [])]
+  const st = { deployed: opts.deployedVersion ?? null as number | null, pending: opts.pending ?? null as FakeRequest | null, requests: [...(opts.requests ?? [])] }
+  const flowOut = () => ({ id: 'f1', name: '기본 흐름', is_public: false, deployed_version: st.deployed, updated_at: '2026-10-01T09:00:00Z', has_pending_request: st.pending !== null })
+  const versionOut = (v: FakeVersion) => ({ hash: `h${v.number}`, ...v, deployed: v.number === st.deployed })
+  const newRequest = (version: number): FakeRequest => ({ id: `r${st.requests.length + 1}`, flow_id: 'f1', flow_name: '기본 흐름', version, status: 'pending', requested_by_name: opts.me?.name ?? '나', decided_by_name: null, decided_at: null, decision_note: '', created_at: '2026-10-02T09:00:00Z' })
   let turnNo = 0
   const sse = (events: { event: string; data: object }[]) => {
     const text = events.map((e) => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`).join('')
@@ -34,8 +50,8 @@ export function fakeFlowsApi(opts: {
     const method = (init?.method ?? 'GET').toUpperCase()
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
     calls.push({ method, path, body })
-    if (method === 'GET' && path.endsWith('/api/tenant/flows/')) return json(200, opts.flows ?? [flowOut])
-    if (method === 'POST' && path.endsWith('/api/tenant/flows/')) return json(201, { ...flowOut, id: 'f2', name: body.name })
+    if (method === 'GET' && path.endsWith('/api/tenant/flows/')) return json(200, opts.flows ?? [flowOut()])
+    if (method === 'POST' && path.endsWith('/api/tenant/flows/')) return json(201, { ...flowOut(), id: 'f2', name: body.name })
     if (method === 'POST' && path.endsWith('/test/')) {
       if (opts.testStatus && opts.testStatus !== 200) return json(opts.testStatus, { detail: '권한이 없습니다.' })
       const turns = opts.testTurns ?? []
@@ -43,8 +59,54 @@ export function fakeFlowsApi(opts: {
     }
     if (method === 'GET' && path.endsWith('/api/tenant/trial/')) return json(200, opts.trial ?? { state: 'byok', remaining: 0, limit: 20 })
     if (method === 'GET' && path.endsWith('/api/tenant/flows/node-schema/')) return json(200, { kinds: nodeSchema })
+    if (method === 'GET' && path.endsWith('/api/tenant/members/me')) return json(200, { id: 'm1', tenant_id: 't1', tenant_name: '조직', role: 'admin', ...(opts.me ?? { name: '나', email: 'me@x.kr' }) })
+    if (method === 'GET' && path.endsWith('/api/tenant/config/')) return json(200, { deploy_requires_approval: !!opts.requiresApproval })
+    let m = path.match(/\/flows\/[^/]+\/versions\/(\d+)\/$/)
+    if (m && method === 'GET') {
+      const v = versions.find((x) => x.number === Number(m![1]))
+      return v ? json(200, { ...versionOut(v), graph: opts.graphs?.[v.number] ?? opts.graph }) : json(404, { detail: '없는 버전', code: 'version_not_found' })
+    }
+    if (method === 'POST' && path.endsWith('/versions/')) {
+      if (state.errors.length) return json(422, { detail: '초안에 오류가 있어 저장할 수 없습니다.', code: 'invalid_flow', errors: state.errors })
+      const v: FakeVersion = { number: versions.length + 1, note: body?.note ?? '', created_by_name: opts.me?.name ?? '나', created_at: '2026-10-02T10:00:00Z' }
+      versions.push(v)
+      return json(201, { created: true, version: versionOut(v) })
+    }
+    if (method === 'POST' && path.endsWith('/deploy/')) {
+      if (opts.requiresApproval) {
+        const r = newRequest(body.version)
+        if (st.pending) st.pending.status = 'superseded'
+        st.pending = r
+        st.requests.push(r)
+        return json(202, { deployed: false, flow: flowOut(), request: r })
+      }
+      st.deployed = body.version
+      return json(200, { deployed: true, flow: flowOut(), request: null })
+    }
+    if (method === 'POST' && path.endsWith('/rollback/')) {
+      const prev = versions.map((v) => v.number).filter((n) => n < (st.deployed ?? 0)).pop()
+      if (prev === undefined) return json(404, { detail: '앞선 버전이 없습니다.', code: 'version_not_found' })
+      st.deployed = prev
+      return json(200, flowOut())
+    }
+    if (method === 'GET' && path.includes('/api/tenant/deploy-requests/')) {
+      const status = new URL(path, 'http://x').searchParams.get('status')
+      return json(200, st.requests.filter((r) => !status || r.status === status))
+    }
+    m = path.match(/\/deploy-requests\/([^/]+)\/(approve|reject)\/$/)
+    if (m && method === 'POST') {
+      const r = st.requests.find((x) => x.id === m![1])
+      if (!r) return json(404, { detail: '없는 요청' })
+      if (r.status !== 'pending') return json(409, { detail: '이미 처리된 요청입니다.', code: 'request_not_pending' })
+      if (m[2] === 'approve' && r.requested_by_name === (opts.me?.name ?? '나')) return json(403, { detail: '자기가 올린 배포 요청은 승인할 수 없습니다.', code: 'self_approval' })
+      r.status = m[2] === 'approve' ? 'approved' : 'rejected'
+      r.decided_by_name = '다른 관리자'
+      if (m[2] === 'approve') st.deployed = r.version
+      if (st.pending?.id === r.id) st.pending = null
+      return json(200, r)
+    }
     if (method === 'GET' && /\/flows\/[^/]+\/$/.test(path)) {
-      return json(200, { flow: flowOut, draft: { graph: opts.graph, errors: state.errors, valid: state.errors.length === 0 }, versions: [], pending_request: null })
+      return json(200, { flow: flowOut(), draft: { graph: opts.graph, errors: state.errors, valid: state.errors.length === 0 }, versions: [...versions].reverse().map(versionOut), pending_request: st.pending })
     }
     if (method === 'PATCH' && path.endsWith('/draft/')) {
       if (opts.patchStatus && opts.patchStatus !== 200) return json(opts.patchStatus, opts.patchBody ?? { detail: '실패', code: 'invalid_patch', index: 0 })

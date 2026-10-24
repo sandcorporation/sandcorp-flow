@@ -498,3 +498,37 @@ def test_seed_e2e_member_serves_tenant_requests(tmp_path) -> None:
     assert me.status_code == 200 and me.json()["role"] == "admin"
     assert Tenant.objects.filter(name="E2E 요청 조직").count() == 1
     assert not (tmp_path / "a.req").exists()
+
+
+@pytest.mark.django_db
+def test_seed_e2e_member_serves_a_second_admin_for_each_tenant(tmp_path) -> None:
+    """E2E 대역(#31): 배포 승인은 요청자와 다른 Admin 이 해야 하므로, 같은 조직의 두 번째 Admin 토큰(<id>.admin2.token)도 쓴다."""
+    from django.core.management import call_command
+
+    (tmp_path / "b.req").write_text("E2E 둘째 Admin 조직")
+    call_command(
+        "seed_e2e_member", "--token-file", "/dev/null", "--serve-tenants-from", str(tmp_path), "--wait-seconds", "1"
+    )
+
+    first = Client().get("/api/tenant/members/me", **_hdr((tmp_path / "b.token").read_text())).json()
+    second = Client().get("/api/tenant/members/me", **_hdr((tmp_path / "b.admin2.token").read_text())).json()
+    assert second["role"] == "admin" and second["tenant_id"] == first["tenant_id"]
+    assert second["id"] != first["id"]
+
+
+@pytest.mark.django_db
+def test_seed_e2e_member_can_give_the_tenant_a_default_flow(tmp_path) -> None:
+    """E2E 대역(#31): 요청 둘째 줄에 default-flow 가 있으면 온보딩처럼 공개·배포 중 기본 흐름을 둔다. 없으면 흐름이 없다."""
+    from django.core.management import call_command
+
+    from apps.flows.models import Flow
+
+    (tmp_path / "c.req").write_text("E2E 기본 흐름 조직\ndefault-flow")
+    (tmp_path / "d.req").write_text("E2E 빈 조직")
+    call_command(
+        "seed_e2e_member", "--token-file", "/dev/null", "--serve-tenants-from", str(tmp_path), "--wait-seconds", "1"
+    )
+
+    with_flow = Flow.objects.filter(tenant__name="E2E 기본 흐름 조직")
+    assert with_flow.count() == 1 and with_flow.get().is_public and with_flow.get().deployed_version is not None
+    assert not Flow.objects.filter(tenant__name="E2E 빈 조직").exists()

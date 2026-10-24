@@ -7,7 +7,7 @@
 `--issue-tickets-to`를 주면 멤버십 없는 새 사용자를 만들어 콜백이 심는 `member_ticket` 표를 그 파일에 쓰고,
 스펙이 파일을 가져가면(지우면) 또 새 사용자의 표를 쓴다(#41 온보딩 — 매 실행이 새 사람이라 생성 상한에 안 걸린다).
 
-`--serve-tenants-from DIR`을 주면 DIR에 떨어지는 `<id>.req`(내용: 조직 이름)마다 그 이름의 새 조직과 그 조직 Admin
+`--serve-tenants-from DIR`을 주면 DIR에 떨어지는 `<id>.req`(내용: 조직 이름, 둘째 줄에 `default-flow`가 있으면 기본 흐름도)마다 그 이름의 새 조직과 그 조직 Admin
 사용자를 만들고 세션 토큰을 `<id>.token`에 쓴다(#65 — 스펙마다 자기 조직이 필요하다. 운영자 API로 만든 조직은 멤버가 없다).
 
 운영에서 쓰지 않는다(시험용 긴 수명 토큰).
@@ -83,18 +83,29 @@ class Command(BaseCommand):
         deadline = time.monotonic() + wait_seconds
         while time.monotonic() < deadline:
             for req in sorted(directory.glob("*.req")):
-                name = req.read_text().strip()
+                lines = req.read_text().strip().splitlines()
                 req.unlink(missing_ok=True)
+                name = lines[0].strip() if lines else ""
                 if not name:
                     continue
+                with_flow = "default-flow" in [x.strip() for x in lines[1:]]  # 온보딩처럼 공개·배포 중 기본 흐름을 둔다(#31)
                 sub = f"m_E2E{uuid.uuid4().hex[:22].upper()}"
                 identity = IdentityClaims(sub=sub, name=f"{name} 관리자", email=f"{sub.lower()}@example.com")
                 user = member_user(settings.AUTH_ISSUER, sub, identity)
                 tenant = Tenant.objects.create_with_key(name=name, raw_key=secrets.token_urlsafe(32))
                 membership = Membership.objects.create(user=user, tenant=tenant, role=Membership.ROLE_ADMIN)
-                tmp = directory / f"{req.stem}.token.tmp"
-                tmp.write_text(create_member_access_token(membership))
-                tmp.rename(directory / f"{req.stem}.token")
+                if with_flow:
+                    from apps.flows.defaults import ensure_default_flow
+
+                    ensure_default_flow(tenant.id)
+                # 배포 승인(#31)은 요청자와 다른 Admin 이 해야 하므로 같은 조직의 두 번째 Admin 도 만든다.
+                sub2 = f"m_E2E{uuid.uuid4().hex[:22].upper()}"
+                user2 = member_user(settings.AUTH_ISSUER, sub2, IdentityClaims(sub=sub2, name=f"{name} 둘째 관리자", email=f"{sub2.lower()}@example.com"))
+                membership2 = Membership.objects.create(user=user2, tenant=tenant, role=Membership.ROLE_ADMIN)
+                for suffix, m in (("admin2.token", membership2), ("token", membership)):  # 첫 Admin 토큰이 마지막 — 이것이 보이면 둘 다 준비된 것
+                    tmp = directory / f"{req.stem}.{suffix}.tmp"
+                    tmp.write_text(create_member_access_token(m))
+                    tmp.rename(directory / f"{req.stem}.{suffix}")
             time.sleep(0.3)
 
     def _serve_tickets(self, ticket_file: Path, wait_seconds: int) -> None:
