@@ -3,6 +3,7 @@ import json
 import os
 import socket
 import threading
+import warnings
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
@@ -10,6 +11,21 @@ from django.test import Client
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.dev")
 os.environ.setdefault("TASKIQ_INMEMORY", "1")  # taskiq chat 태스크를 인라인 실행(issue 190)
+
+# langgraph-checkpoint(serde/jsonplus.py)가 import 시점에 `Reviver()`를 인자 없이 만들어 langchain-core가
+# `allowed_objects` 기본값 변경 예고(LangChainPendingDeprecationWarning)를 낸다(#190). 우리 코드가 넘길 인자가
+# 없고 현재 기본값은 "core"라 동작은 같다. pytest.ini filterwarnings 는 langchain·langchain-core 가 import 때
+# `surface_langchain_deprecation_warnings()` 로 "default" 필터를 앞에 끼워 넣어 먹히지 않으므로,
+# 그 필터가 깔린 뒤 이 한 번의 import 만 좁게 거른다. langgraph-checkpoint 올림 때 이 블록이 필요한지 다시 본다.
+import langchain  # noqa: E402,F401  (langchain·langchain_core 가 import 때 까는 "default" 필터를 먼저 깐다)
+
+with warnings.catch_warnings():
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*default value of `allowed_objects` will change",
+        category=PendingDeprecationWarning,
+    )
+    import langgraph.checkpoint.serde.jsonplus  # noqa: E402,F401
 
 
 # ── Celery eager execution ────────────────────────────────────────────────────
