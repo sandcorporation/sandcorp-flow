@@ -47,7 +47,7 @@ export default function TryFlowPage({ view = false }: { view?: boolean }) {
     </>
   ) : (
     <>
-      {left !== null && <span className="hmi-label flex items-center gap-1.5" role="status"><span className={`lamp ${left > 0 ? 'lamp-ok' : 'lamp-alarm'}`} />남은 대화 {left}턴</span>}
+      {left !== null && <span className="hmi-label flex items-center gap-1.5 !text-head-foreground" role="status"><span className={`lamp ${left > 0 ? 'lamp-ok' : 'lamp-alarm'}`} />남은 대화 {left}턴</span>}
       <SignupSlot />
     </>
   )

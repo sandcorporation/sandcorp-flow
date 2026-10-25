@@ -158,7 +158,7 @@ export default function FlowEditorPage() {
           {readOnly ? (
             <ul className="space-y-1 text-sm">
               {shownGraph.nodes.map((n) => (
-                <li key={n.id}><button type="button" className="w-full truncate text-left hover:underline" onClick={() => setSelectedId(n.id)}><span className="hmi-code text-muted-foreground">{n.code}</span> {n.name || kindLabel(n.kind)}</button></li>
+                <li key={n.id}><button type="button" className="w-full break-words text-left hover:underline" onClick={() => setSelectedId(n.id)}><span className="hmi-code text-muted-foreground">{n.code}</span> {n.name || kindLabel(n.kind)}</button></li>
               ))}
             </ul>
           ) : (

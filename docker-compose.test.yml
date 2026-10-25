@@ -118,6 +118,8 @@ services:
       OPEN_ROUTER_API_KEY: fake
       OPEN_ROUTER_DEFAULT_MODEL: fake-llm
       OLLAMA_BASE_URL: http://ollama-test:11434
+      # Vite 프록시(changeOrigin)가 Host 를 api-e2e:8000 으로 바꾸므로 브라우저 Origin(admin-e2e)을 허용해야 /api/try 쓰기가 통한다(#37). 운영 검사는 그대로.
+      TRY_ALLOWED_ORIGINS: http://admin-e2e:5174,http://localhost:5174
     volumes:
       - media-e2e:/app/media
       - e2e-shared:/e2e-shared  # seed_e2e_operator·seed_e2e_member가 세션 토큰을 쓴다(#21·#56)
