@@ -259,6 +259,28 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
        하루 비용 누적은 `try_spend_days` 표(정리에 지워지지 않음), IP 하루 세션 수는 `try_ip_days`(이틀 지난 행은 정리 때 삭제).
     4. **확인 기록**: 2026-10-25 build 52·53(3e8bff5·c3cf15f) — 0012·0013 적용, seed_try_library 문서 9건·도서관 숨김 확인, prune 수동 1회 0건, 공개 API templates 200·Origin 없음 403 try_bad_origin·세션 201+Set-Cookie(HttpOnly·Secure·SameSite=Strict·Path=/api/try/)·deploy 403 try_restricted·시험 대화 SSE 정상·turns 20→19.
 
+13. [ ] **Sandcorp 공개 위젯·공개 흐름 보기(#39)** — 10번 `PLATFORM_OPENAI_API_KEY`가 들어간 뒤, 이번 배포 직후 한 번.
+    1. **env**(값 없이 이름만, 10번 표와 같은 키를 재사용): `PLATFORM_OPENAI_API_KEY`(필수), `PLATFORM_LLM_MODEL`·`PLATFORM_EMBED_MODEL`(기본값이면 생략 —
+       임베딩은 `text-embedding-3-small`·`text-embedding-3-large`·`text-embedding-ada-002` 중 하나, 그 밖이면 시드가 멈춘다),
+       레이트리밋 `CHAT_RATE_LIMIT_PER_VISITOR`(20)·`CHAT_RATE_LIMIT_PER_TENANT`(300)·`PUBLIC_FLOW_RATE_LIMIT_PER_MINUTE`(60, IP당 분당).
+    2. **시드**: `docker compose -f docker-compose.prod.oracle.yml exec api python manage.py seed_sandcorp`.
+       「Sandcorp」 테넌트의 LLM·임베딩·OCR Provider를 플랫폼 키로 맞추고(암호화 저장, 돌릴 때마다 env 값으로 다시 맞춘다 — 관리 화면에서 바꾼 Provider도 덮는다),
+       「공개 흐름 보기」를 켠다. 임베딩 설정이 바뀌면 이미 적재된 지식을 그 자리에서 다시 임베딩한다. 흐름은 건드리지 않는다(`--update-flow`일 때만).
+       키가 비면 Provider는 그대로 두고 경고만 낸다(플랫폼 체험 한도로만 돈다). 출력에 키 값은 나오지 않는다.
+    3. **확인**: `curl -s https://flow.sandcorp.co.kr/api/public/flows/sandcorp/`가 200 JSON(`template`=`sandcorp_home`, `Cache-Control: public, max-age=60`),
+       `curl -s -o /dev/null -w '%{http_code}' https://flow.sandcorp.co.kr/api/public/flows/없는-slug/`가 404.
+       관리 화면 설정에서 Provider 3종이 `openai`, 「공개 흐름 보기」가 켜짐. sandcorp.co.kr 위젯에서 한 마디 → 답이 오고 「체험 중 — 남은 대화」가 줄지 않는다(자기 Provider).
+
+### portfolio(sandcorp.co.kr)가 쓰는 Flow 주소(#39)
+
+| 쓰임 | 주소 |
+|---|---|
+| 공개 위젯 slug | `sandcorp` |
+| 위젯 embed 코드 | `<iframe src="https://flow.sandcorp.co.kr/chatbot/sandcorp/" width="400" height="600" style="border:none" allow="microphone"></iframe>` (공개 slug URL, ADR-0011 — 토큰 없음) |
+| 공개 챗봇 페이지 | `https://flow.sandcorp.co.kr/chatbot/sandcorp/` |
+| 공개 흐름 보기(읽기 전용) | `https://flow.sandcorp.co.kr/admin-ui/flows/sandcorp` (API `GET /api/public/flows/sandcorp/`) |
+| 체험 진입(이 흐름 고쳐 보기) | `https://flow.sandcorp.co.kr/admin-ui/try?template=home` |
+
 - [ ] **nginx 재적재(#142)**: 이번 배포가 `backend/nginx/nginx.oracle.conf`에 `location = /favicon.ico`를 더했다. nginx는 싱글톤이라 rollout 대상이 아니다 — 배포 후 nginx 컨테이너를 재시작(또는 `nginx -s reload`)해야 반영된다. 확인: `curl -sI https://flow.sandcorp.co.kr/favicon.ico`가 200.
 
 ## 관련 문서

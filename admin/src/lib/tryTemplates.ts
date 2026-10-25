@@ -5,6 +5,8 @@ import { HttpError } from '../mutator'
 /** `?template=home` 같은 짧은 이름 → 템플릿 id. id 를 그대로 주어도 된다. */
 const SHORT: Record<string, string> = { home: 'sandcorp_home', shop: 'shop_support', academy: 'academy_reservation' }
 export const templateId = (q: string | null): string | null => (q ? (SHORT[q] ?? q) : null)
+/** 템플릿 id → `?template=` 에 쓸 짧은 이름(없으면 id 그대로). */
+export const shortTemplate = (id: string): string => Object.keys(SHORT).find((k) => SHORT[k] === id) ?? id
 
 /** 카드에 곁들이는 한 줄 설명(서버 목록엔 이름·문서만 있다). */
 export const BLURB: Record<string, string> = {

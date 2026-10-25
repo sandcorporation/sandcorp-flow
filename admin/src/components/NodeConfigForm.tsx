@@ -5,6 +5,7 @@ import { fieldsOf, withValue, type FieldSpec } from '@/lib/nodeForm'
 import { FIELD_TEXT, GUARDRAIL_WARNING, HTTP_LIVE_NOTICE, KIND_NOTE, WHEN_KEYS, headerNeedsSecretRef } from '@/lib/nodeFormLabels'
 import { hostAllowed, isDemoApiUrl, secretNamesUsed, urlHost } from '@/lib/httpToolWarn'
 import { listAllowedDomains, listSecrets } from '../api'
+import { useFlowEditorBackend } from '@/lib/flowEditorBackend'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -22,7 +23,8 @@ export default function NodeConfigForm({ kind, schema, config, readOnly, errors,
   kind: string; schema: object; config: JsonObject; readOnly: boolean; errors: Map<string, string[]>; onChange: (next: JsonObject) => void
 }) {
   const fields = fieldsOf(schema)
-  const lookups = useHttpLookups(kind === 'http_tool')
+  const { tenantLookups } = useFlowEditorBackend()
+  const lookups = useHttpLookups(kind === 'http_tool' && tenantLookups)
   const ctx: Ctx = { readOnly, kind, errors, after: kind === 'http_tool' ? { url: <HostWarning url={typeof config.url === 'string' ? config.url : ''} domains={lookups.domains} /> } : undefined }
   return (
     <div className="space-y-3">

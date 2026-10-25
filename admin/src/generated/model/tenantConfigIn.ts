@@ -25,6 +25,7 @@ import type { TenantConfigInOcrApiKey } from './tenantConfigInOcrApiKey';
 import type { TenantConfigInOcrBaseUrl } from './tenantConfigInOcrBaseUrl';
 import type { TenantConfigInOcrModel } from './tenantConfigInOcrModel';
 import type { TenantConfigInOcrProviderType } from './tenantConfigInOcrProviderType';
+import type { TenantConfigInPublicFlowView } from './tenantConfigInPublicFlowView';
 import type { TenantConfigInRequireIdentityVerification } from './tenantConfigInRequireIdentityVerification';
 import type { TenantConfigInScopeDescription } from './tenantConfigInScopeDescription';
 import type { TenantConfigInScopeRefusalMessage } from './tenantConfigInScopeRefusalMessage';
@@ -56,6 +57,7 @@ export interface TenantConfigIn {
   ocr_base_url?: TenantConfigInOcrBaseUrl;
   ocr_model?: TenantConfigInOcrModel;
   ocr_provider_type?: TenantConfigInOcrProviderType;
+  public_flow_view?: TenantConfigInPublicFlowView;
   require_identity_verification?: TenantConfigInRequireIdentityVerification;
   scope_description?: TenantConfigInScopeDescription;
   scope_refusal_message?: TenantConfigInScopeRefusalMessage;

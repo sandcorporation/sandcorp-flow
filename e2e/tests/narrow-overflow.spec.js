@@ -31,6 +31,8 @@ const VERSIONS = [
 
 const TRY_SESSION = { flow_id: 'f-long-0001', template: 'shop_support', turns_remaining: 12, expires_at: '2026-12-01T00:00:00Z' }
 const FIXTURES = [
+  // 공개 흐름 보기 /flows/:slug (#39) — 긴 브랜드·흐름 이름으로 머리줄·안내 줄이 넘치지 않는지 본다.
+  [/\/api\/public\/flows\/[^/]+\/$/, { slug: 'f-long-0001', brand_name: LONG, flow_name: LONG, version: 2, template: 'sandcorp_home', graph: { nodes: FLOW_NODES, edges: [{ from: 'start', to: 'ai_1' }] } }],
   // 공개 체험 /try (#37) — 긴 이름·긴 문서명으로 카드와 머리줄이 넘치지 않는지 본다.
   [/\/api\/try\/templates\/$/, ['sandcorp_home', 'shop_support', 'academy_reservation'].map((id) => ({ id, name: LONG, documents: [LONG, 'https://example.com/' + 'a'.repeat(80)] }))],
   [/\/api\/try\/templates\/[^/]+\/$/, { id: 'shop_support', name: LONG, documents: [LONG], graph: { nodes: FLOW_NODES, edges: [{ from: 'start', to: 'ai_1' }] } }],
@@ -88,7 +90,7 @@ const FIXTURES = [
 ]
 
 async function mockApi(page) {
-  await page.route(/\/api\/(operator|tenant|try)\//, (route) => {
+  await page.route(/\/api\/(operator|tenant|try|public)\//, (route) => {
     const req = route.request()
     if (req.method() !== 'GET') return route.fallback()
     const { pathname } = new URL(req.url())

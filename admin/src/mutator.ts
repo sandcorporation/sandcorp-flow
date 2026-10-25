@@ -16,6 +16,8 @@ export class HttpError extends Error {
 
 /** 공개 체험 API(/api/try, #37): 로그인 없이 `sf_try` 쿠키만 쓴다 — Bearer·refresh 를 타지 않는다. */
 const isTry = (url: string) => url.startsWith('/api/try/')
+/** 익명 공개 API(/api/try·/api/public, #39): 로그인한 사람이 열어도 Bearer 를 싣지 않는다. */
+const isAnonymous = (url: string) => isTry(url) || url.startsWith('/api/public/')
 /** 체험 세션 쿠키가 없거나 만료됐다(401 try_no_session). 체험 화면이 템플릿 고르기로 돌려보낸다. */
 export const TRY_SESSION_LOST = 'flow:try-session-lost'
 export const notifyTrySessionLost = () => window.dispatchEvent(new Event(TRY_SESSION_LOST))
@@ -43,14 +45,14 @@ export async function customInstance<T>(url: string, init: RequestInit = {}): Pr
 
   const send = (): Promise<Response> => {
     const headers = new Headers(init.headers)
-    const access = isTry(url) ? null : getAccess(kind)
+    const access = isAnonymous(url) ? null : getAccess(kind)
     if (access) headers.set('Authorization', `Bearer ${access}`)
     if (isForm) headers.delete('Content-Type') // multipart boundary는 브라우저가 설정
     return fetch(fullUrl, { ...init, credentials: 'include', headers }) // refresh 쿠키 동봉
   }
 
   let res = await send()
-  if (res.status === 401 && !isTry(url) && (await refresh(kind))) {
+  if (res.status === 401 && !isAnonymous(url) && (await refresh(kind))) {
     res = await send() // 새 access로 1회 재시도
   }
   const data = await parseBody(res)

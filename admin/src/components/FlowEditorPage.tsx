@@ -198,11 +198,15 @@ export default function FlowEditorPage() {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Link to={backend.back.to} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-ink"><ArrowLeft className="h-4 w-4" />{backend.back.label}</Link>
         <h1 className="font-cond text-lg font-semibold tracking-wide text-ink">{name}</h1>
-        <span className="hmi-label flex items-center gap-1.5" role="status">
-          <span className={`lamp ${save.state === 'saving' ? 'lamp-run' : save.state === 'failed' ? 'lamp-alarm' : 'lamp-ok'}`} />
-          {save.state === 'saving' ? '저장 중' : save.state === 'failed' ? '저장 실패' : '초안 저장됨'}
-        </span>
-        <span className="hmi-label">{errors.length === 0 ? '검증 통과' : `검증 오류 ${errors.length}건`}</span>
+        {backend.draftStatus && (
+          <>
+            <span className="hmi-label flex items-center gap-1.5" role="status">
+              <span className={`lamp ${save.state === 'saving' ? 'lamp-run' : save.state === 'failed' ? 'lamp-alarm' : 'lamp-ok'}`} />
+              {save.state === 'saving' ? '저장 중' : save.state === 'failed' ? '저장 실패' : '초안 저장됨'}
+            </span>
+            <span className="hmi-label">{errors.length === 0 ? '검증 통과' : `검증 오류 ${errors.length}건`}</span>
+          </>
+        )}
         {!isAdmin && <span className="hmi-label border border-line-soft px-1.5 py-0.5">{backend.readOnlyNotice}</span>}
         {deployedVersion !== null && <span className="hmi-label flex items-center gap-1.5"><span className="lamp lamp-ok" />v{deployedVersion} 배포 중</span>}
       </div>

@@ -78,6 +78,7 @@ class TenantConfigOut(Schema):
     hitl_holidays: list
     require_identity_verification: bool
     deploy_requires_approval: bool = False
+    public_flow_view: bool = False
     topic_scope_enabled: bool
     scope_description: str
     scope_refusal_message: str
@@ -116,6 +117,7 @@ class TenantConfigIn(Schema):
     hitl_holidays: list | None = None
     require_identity_verification: bool | None = None
     deploy_requires_approval: bool | None = None
+    public_flow_view: bool | None = None
     topic_scope_enabled: bool | None = None
     scope_description: str | None = None
     scope_refusal_message: str | None = None
@@ -656,6 +658,7 @@ def _config_out(config):
         "hitl_holidays": config.hitl_holidays,
         "require_identity_verification": config.require_identity_verification,
         "deploy_requires_approval": config.deploy_requires_approval,
+        "public_flow_view": config.public_flow_view,
         "topic_scope_enabled": config.topic_scope_enabled,
         "scope_description": config.scope_description,
         "scope_refusal_message": config.scope_refusal_message,
@@ -745,6 +748,10 @@ def update_config(request, body: TenantConfigIn):
         from apps.tenants.permissions import FLOW_APPROVE
         require_permission(request.auth, FLOW_APPROVE)
     config = request.auth.tenant.config
+    # 흐름을 익명에게 보이는 일이라 바꾸는 건 Admin만(#39). 관리 화면은 설정 전체를 되돌려 보내므로 같은 값은 통과시킨다.
+    if body.public_flow_view is not None and body.public_flow_view != config.public_flow_view:
+        from apps.tenants.permissions import FLOW_PUBLIC_VIEW
+        require_permission(request.auth, FLOW_PUBLIC_VIEW)
     _old_embed = _embed_signature(config)
 
     # provider 연결 필드가 바뀌었으면 저장 전에 검증 — 실패하면 broken provider를 거부한다.
@@ -781,7 +788,7 @@ def update_config(request, body: TenantConfigIn):
     if eff_scope_enabled and not (eff_scope_desc or "").strip():
         return 400, {"detail": "주제범위 제어를 켜려면 응대 범위 설명을 입력해야 합니다."}
 
-    for field in ("model_id", "system_prompt", "agent_display_name", "webhook_url", "webhook_type", "welcome_message", "brand_name", "hitl_enabled", "hitl_timezone", "hitl_schedule", "hitl_holidays", "require_identity_verification", "deploy_requires_approval", "topic_scope_enabled", "scope_description", "scope_refusal_message", "llm_provider_type", "llm_base_url", "extraction_model", "embed_provider_type", "embed_base_url", "embed_model", "embed_dim", "ocr_provider_type", "ocr_base_url", "ocr_model"):
+    for field in ("model_id", "system_prompt", "agent_display_name", "webhook_url", "webhook_type", "welcome_message", "brand_name", "hitl_enabled", "hitl_timezone", "hitl_schedule", "hitl_holidays", "require_identity_verification", "deploy_requires_approval", "public_flow_view", "topic_scope_enabled", "scope_description", "scope_refusal_message", "llm_provider_type", "llm_base_url", "extraction_model", "embed_provider_type", "embed_base_url", "embed_model", "embed_dim", "ocr_provider_type", "ocr_base_url", "ocr_model"):
         value = getattr(body, field)
         if value is not None:
             setattr(config, field, value)

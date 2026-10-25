@@ -582,6 +582,18 @@ export default function ConfigTab() {
               </div>
             )}
           </div>
+          <div className="space-y-1.5">
+            <label className={`flex items-center gap-2 text-sm ${isAdmin ? 'cursor-pointer' : 'opacity-60'}`}>
+              <input type="checkbox" className="h-4 w-4 rounded border-input" aria-label="공개 흐름 보기" disabled={!isAdmin}
+                checked={!!config.public_flow_view}
+                onChange={e => setConfig(c => ({ ...c, public_flow_view: e.target.checked }))} />
+              공개 흐름 보기
+            </label>
+            <p className={hint}>켜면 로그인 없이 누구나 공개 흐름(위젯이 쓰는 흐름)의 배포 버전을 읽기 전용으로 볼 수 있어요. 비밀·내부 주소·HTTP 헤더·본문·금지어는 보이지 않습니다.{!isAdmin && ' 이 설정은 관리자만 바꿀 수 있습니다.'}</p>
+            {config.public_flow_view && slug && (
+              <code className="block truncate rounded bg-muted px-2 py-1 text-xs">{`${window.location.origin}/admin-ui/flows/${slug}`}</code>
+            )}
+          </div>
           <div>
             <label className="flex cursor-pointer items-center gap-2 text-sm">
               <input type="checkbox" className="h-4 w-4 rounded border-input" aria-label="visitor_id 신원검증 요구"

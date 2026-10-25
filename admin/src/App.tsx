@@ -6,6 +6,7 @@ import OperatorTenants from './pages/OperatorTenants'
 import TenantLogin from './pages/TenantLogin'
 import TryPage from './pages/TryPage'
 import TryFlowPage from './pages/TryFlowPage'
+import PublicFlowPage from './pages/PublicFlowPage'
 import TrialBanner from './components/TrialBanner'
 import DashboardLayout, { NavItem } from './components/DashboardLayout'
 import DocumentsTab from './components/DocumentsTab'
@@ -131,6 +132,8 @@ export default function App() {
       <Route path="/try" element={<TryPage />} />
       <Route path="/try/flow/:id" element={<TryFlowPage />} />
       <Route path="/try/view/:id" element={<TryFlowPage view />} />
+      {/* 공개 흐름 보기(#39): 테넌트가 켠 공개 흐름의 배포 버전, 읽기 전용(:id = 테넌트 slug) */}
+      <Route path="/flows/:id" element={<PublicFlowPage />} />
 
       <Route path="/operator" element={operatorEl}>
         <Route index element={<Navigate to="tenants" replace />} />
