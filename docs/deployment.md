@@ -259,6 +259,8 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
        하루 비용 누적은 `try_spend_days` 표(정리에 지워지지 않음), IP 하루 세션 수는 `try_ip_days`(이틀 지난 행은 정리 때 삭제).
     4. **확인 기록**: 2026-10-25 build 52·53(3e8bff5·c3cf15f) — 0012·0013 적용, seed_try_library 문서 9건·도서관 숨김 확인, prune 수동 1회 0건, 공개 API templates 200·Origin 없음 403 try_bad_origin·세션 201+Set-Cookie(HttpOnly·Secure·SameSite=Strict·Path=/api/try/)·deploy 403 try_restricted·시험 대화 SSE 정상·turns 20→19.
 
+- [ ] **nginx 재적재(#142)**: 이번 배포가 `backend/nginx/nginx.oracle.conf`에 `location = /favicon.ico`를 더했다. nginx는 싱글톤이라 rollout 대상이 아니다 — 배포 후 nginx 컨테이너를 재시작(또는 `nginx -s reload`)해야 반영된다. 확인: `curl -sI https://flow.sandcorp.co.kr/favicon.ico`가 200.
+
 ## 관련 문서
 - [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md) — 무중단 롤링 설계·기각안
 - [ADR-0012](./adr/0012-per-tenant-llm-embedding-providers.md) — per-Tenant Provider(플랫폼 기본 off)
