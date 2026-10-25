@@ -6,3 +6,16 @@ map "${METRICS_SNIPPET_URL}" $flow_metrics_head {
     default "";
     "~^https?://" '<script defer src="${METRICS_SNIPPET_URL}" data-site="${METRICS_SITE_KEY}"></script>';
 }
+
+# iframe 허용 출처(#179) — CSP frame-ancestors 만 낸다(X-Frame-Options 는 앱이 내지 않는다. 운영 XFO 는 NPMplus 프록시 몫).
+# TRY_EMBED_ORIGINS(공백 구분 출처 목록)는 /admin-ui/try 문서에만 'self' 뒤에 붙고, 비면 'self' 만이다.
+# $request_uri 로 판정한다: SPA 폴백(try_files)이 $uri 를 /admin-ui/index.html 로 바꿔 버리기 때문.
+# 정확히 /admin-ui/try, /admin-ui/try/…, /admin-ui/try?… 만 — /admin-ui/tryX 는 해당 없음.
+map "${TRY_EMBED_ORIGINS}" $flow_try_ancestors {
+    default "'self' ${TRY_EMBED_ORIGINS}";
+    "" "'self'";
+}
+map $request_uri $flow_frame_ancestors {
+    default "'self'";
+    "~^/admin-ui/try(/|\\?|$)" $flow_try_ancestors;
+}
