@@ -3,7 +3,7 @@ import FlowMark from './FlowMark'
 import ThemeToggle from './ThemeToggle'
 
 // 랜딩: 흐름 챗봇 소개 + /try 체험 + 로그인. 경로는 같은 호스트의 admin 앱(basename /admin-ui).
-const TRY = '/admin-ui/try'
+const TRY = '/try' // 짧은 주소(#165) — 운영 nginx 가 /admin-ui/try 로 301 (쿼리 보존)
 const INQUIRY = 'https://sandcorp.co.kr/#home-inquiry'
 
 // 실제로 있는 기능만(CONTEXT.md Flow 절). 새 기능을 쓰려면 먼저 구현돼 있어야 한다.

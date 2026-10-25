@@ -522,7 +522,7 @@ describe('ConfigTab — 공개 흐름 보기(#39)', () => {
     mockConfig({ public_flow_view: true, slug: 'sandcorp' })
     renderConfig('security')
     expect(await screen.findByLabelText('공개 흐름 보기')).toBeChecked()
-    expect(await screen.findByText(/\/admin-ui\/flows\/sandcorp/)).toBeInTheDocument()
+    expect(await screen.findByText(/^https?:\/\/[^/]+\/flows\/sandcorp$/)).toBeInTheDocument() // 짧은 주소(#165)
   })
 
   it('Admin 이 아니면 끄고 이유를 보인다', async () => {
