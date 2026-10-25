@@ -14,6 +14,11 @@ function arriveAt(path: string) {
 }
 
 describe('OperatorLogin — sandcorp-auth 로그인 (#21)', () => {
+  it('로그인 카드에 Flow 아이콘이 보인다 (#142)', () => {
+    const { container } = render(<MemoryRouter initialEntries={['/operator']}><OperatorLogin /></MemoryRouter>)
+    expect(container.querySelector('img[src$="flow/icon.svg"]')).not.toBeNull()
+  })
+
   it('비밀번호 폼 없이 sandcorp 로그인 버튼만 보이고, 누르면 로그인을 시작한다', async () => {
     arriveAt('/operator')
 

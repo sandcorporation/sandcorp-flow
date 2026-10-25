@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom'
 import { startOperatorLogin } from '../api'
 import { s } from '../styles'
+import FlowMark from '../components/FlowMark'
 
 // 백엔드 콜백(/api/auth/callback)이 거절하면 ?login_error=<사유>로 돌려보낸다(#21).
 const REJECTION: Record<string, string> = {
@@ -23,6 +24,7 @@ export default function OperatorLogin() {
     <div style={s.center}>
       {/* 카드가 흰 배경 고정이라 다크 테마에서도 글자색을 카드 쪽에 묶는다(HMI 테마 #27 전까지). */}
       <div style={{ ...s.card, color: 'hsl(var(--flow-text))', wordBreak: 'keep-all' }}>
+        <FlowMark className="mb-4 h-10 w-10" />
         {reason ? (
           <>
             <h2 style={s.title}>로그인할 수 없습니다</h2>

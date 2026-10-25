@@ -27,6 +27,11 @@ function renderAt(initial: string) {
 }
 
 describe('DashboardLayout — 셸 + 중첩 라우트', () => {
+  it('머리에 Flow 아이콘(마크)이 보인다 — 옛 그라데이션 네모가 아니다 (#142)', () => {
+    const { container } = renderAt('/tenant/config')
+    expect(container.querySelector('aside img[src$="flow/icon.svg"]')).not.toBeNull()
+  })
+
   it('딥링크가 해당 섹션을 Outlet에 렌더한다', () => {
     renderAt('/tenant/config')
     expect(screen.getByText('CONFIG_SECTION')).toBeInTheDocument()

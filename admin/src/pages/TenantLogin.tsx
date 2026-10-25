@@ -3,6 +3,7 @@ import { memberLoginUrl, memberTenants, selectTenant } from '../api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import TenantOnboarding from './TenantOnboarding'
+import FlowMark from '../components/FlowMark'
 
 // 고객(팀원) 로그인(#56). 비밀번호 폼 없이 sandcorp-auth로 보낸다. 콜백이 돌려보낸 쿼리로 다음 걸음을 정한다:
 // ?select_tenant=1 → 조직 선택, ?onboarding=1 → 조직 없음, ?login_error=<사유> → 사유별 문구.
@@ -56,6 +57,7 @@ export default function TenantLogin({ onLogin }: { onLogin: (name: string) => vo
     <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
       <Card className="w-full max-w-sm">
         <CardHeader>
+          <FlowMark className="mb-2 h-10 w-10" />
           <CardTitle className="text-xl">{title}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 break-keep">

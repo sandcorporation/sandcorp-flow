@@ -74,6 +74,8 @@ html, body { margin: 0; background: var(--color-canvas); }
 /* 머리 */
 .site-head, .doc-header { border-bottom: 1px solid var(--color-line); }
 .head-inner, .doc-head-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; }
+.brand, .doc-home, .footer-logo { display: inline-flex; align-items: center; gap: 8px; }
+.flow-mark { flex: none; border-radius: 2px; }
 .brand, .doc-home { font-weight: 700; color: var(--color-ink) !important; letter-spacing: -.2px; }
 .head-nav { display: flex; align-items: center; gap: 20px; font-size: 14px; }
 .theme-btn {

@@ -5,6 +5,19 @@ import Privacy from './Privacy'
 import Terms from './Terms'
 
 describe('SiteFooter (사업자 정보 + 링크)', () => {
+  it('푸터 로고에 Flow 아이콘이 붙는다 (#142)', () => {
+    const { container } = render(<SiteFooter />)
+    expect(container.querySelector('.footer-logo img[src$="flow/icon.svg"]')).not.toBeNull()
+  })
+
+  it('약관·처리방침 머리 홈 링크에도 아이콘이 붙는다 (#142)', () => {
+    for (const Page of [Terms, Privacy]) {
+      const { container, unmount } = render(<Page />)
+      expect(container.querySelector('a.doc-home img[src$="flow/icon.svg"]')).not.toBeNull()
+      unmount()
+    }
+  })
+
   it('정보통신망법 사업자 정보를 표시한다', () => {
     render(<SiteFooter />)
     expect(screen.getByText('샌드코프')).toBeInTheDocument()

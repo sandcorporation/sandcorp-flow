@@ -1,4 +1,5 @@
 import SiteFooter from './SiteFooter'
+import FlowMark from './FlowMark'
 import ThemeToggle from './ThemeToggle'
 import { BUSINESS } from './business'
 
@@ -7,7 +8,7 @@ export default function Terms() {
   return (
     <div className="landing">
       <header className="doc-header">
-        <div className="container doc-head-inner"><a href="/" className="doc-home">← Sandcorp Flow</a><ThemeToggle /></div>
+        <div className="container doc-head-inner"><a href="/" className="doc-home">← <FlowMark />Sandcorp Flow</a><ThemeToggle /></div>
       </header>
       <main className="container doc">
         <h1>이용약관</h1>
