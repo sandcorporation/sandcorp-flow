@@ -61,6 +61,7 @@ def extract_graph(label: str, text: str, provider=None) -> GraphExtraction:
 def ingest_to_graph(text: str, tenant_id: str, document_id: str, label: str) -> None:
     """추출된 Entity/관계 + Text Unit(임베딩)을 GraphStore에 기여한다.
     문서 레이블도 대표 Entity로 시드한다."""
+    from django.db import transaction
     from apps.rag.ingesters import chunk_text, get_embeddings
     from apps.tenants.models import TenantConfig
     from apps.agent.providers import extraction_provider, embedding_provider
@@ -91,35 +92,45 @@ def ingest_to_graph(text: str, tenant_id: str, document_id: str, label: str) -> 
     )
     embed_by_name = {s[0]: emb for s, emb in zip(specs, embeddings)}
 
-    # 레이블 대표 Mention 시드
-    gs.upsert_mention(
-        f"{document_id}:{label}", label, "document", f"Source document: {label}",
-        source_document_id=document_id, embedding=embed_by_name.get(label),  # pyright: ignore[reportArgumentType]
-    )
-    for e in valid_entities:
-        gs.upsert_mention(
-            f"{document_id}:{e.name}", e.name, e.type, e.description,
-            source_document_id=document_id, embedding=embed_by_name.get(e.name),  # pyright: ignore[reportArgumentType]
-        )
-        # 문서(레이블) Mention을 그 문서에서 추출된 Mention과 연결한다(고립 방지).
-        if e.name != label:
-            gs.upsert_mention_relation(
-                f"{document_id}:{label}", f"{document_id}:{e.name}", "mentions", document_id
-            )
-    for r in extraction.relations:
-        if not (r.source and r.target):
-            continue
-        gs.upsert_mention_relation(
-            f"{document_id}:{r.source}", f"{document_id}:{r.target}", r.description, document_id
-        )
-
-    # Text Unit + 임베딩 (Local Search 근거 문맥 / 벡터 검색)
+    # Text Unit 임베딩도 쓰기 전에 모두 계산한다 — 외부 호출(추출·임베딩)이 하나라도 실패하면 아래의
+    # 「지우기 + 쓰기」에 닿지 않아 옛 그래프가 그대로 남는다.
     # citation은 원문에 충실해야 하므로, 추출(OCR 포함) 후에도 남은 깨진 청크는 저장하지 않는다.
     chunks = [c for c in chunk_text(text) if not is_garbled(c)]
+    chunk_embeddings = []
     if chunks:
         gs.ensure_vector_index(dimensions=edim)
-        embeddings = get_embeddings(chunks, provider=ep)
-        for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
+        chunk_embeddings = get_embeddings(chunks, provider=ep)
+
+    # 재인제스션(#144): 같은 문서의 옛 산출물(Mention·관계·SAME_AS·Text Unit)을 지우고 새로 쓴다.
+    # upsert만 하면 새 내용에 없는 옛 행이 남아 지운 문구로 답한다. 한 트랜잭션이라 중간 실패 시
+    # 지우기도 되돌려진다(빈 문서 방지). 다른 문서의 Mention은 id 가 문서별이라 건드리지 않는다.
+    with transaction.atomic():
+        gs.delete_document(document_id)
+
+        # 레이블 대표 Mention 시드
+        gs.upsert_mention(
+            f"{document_id}:{label}", label, "document", f"Source document: {label}",
+            source_document_id=document_id, embedding=embed_by_name.get(label),  # pyright: ignore[reportArgumentType]
+        )
+        for e in valid_entities:
+            gs.upsert_mention(
+                f"{document_id}:{e.name}", e.name, e.type, e.description,
+                source_document_id=document_id, embedding=embed_by_name.get(e.name),  # pyright: ignore[reportArgumentType]
+            )
+            # 문서(레이블) Mention을 그 문서에서 추출된 Mention과 연결한다(고립 방지).
+            if e.name != label:
+                gs.upsert_mention_relation(
+                    f"{document_id}:{label}", f"{document_id}:{e.name}", "mentions", document_id
+                )
+        for r in extraction.relations:
+            if not (r.source and r.target):
+                continue
+            gs.upsert_mention_relation(
+                f"{document_id}:{r.source}", f"{document_id}:{r.target}", r.description, document_id
+            )
+
+        # Text Unit + 임베딩 (Local Search 근거 문맥 / 벡터 검색)
+        for i, (chunk, emb) in enumerate(zip(chunks, chunk_embeddings)):
             gs.upsert_text_unit(
                 f"{document_id}:{i}", chunk, list(emb),
                 source_document_id=document_id, chunk_index=i,
