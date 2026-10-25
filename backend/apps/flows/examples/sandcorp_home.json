@@ -1,15 +1,16 @@
 {
   "nodes": [
     {"id": "start", "kind": "start", "code": "N-01", "name": "시작", "position": {"x": 0, "y": 0}, "config": {}},
-    {"id": "classify", "kind": "ai_classify", "code": "N-02", "name": "의도 분류", "position": {"x": 240, "y": 0}, "config": {"instructions": "방문자 의도를 분류하고, 프로젝트 요구사항(목적·규모·기한)이 다 모였는지 함께 판단한다.", "labels": ["project_inquiry", "human_request", "other"], "fields": [{"name": "requirements_complete", "type": "boolean", "description": "목적·규모·기한이 모두 나왔으면 true"}]}},
-    {"id": "route", "kind": "condition", "code": "N-03", "name": "의도에 따라", "position": {"x": 480, "y": 0}, "config": {"branches": [{"name": "inquiry", "when": "label == 'project_inquiry'"}, {"name": "human", "when": "label == 'human_request' or confidence < 0.5"}]}},
+    {"id": "classify", "kind": "ai_classify", "code": "N-02", "name": "의도 분류", "position": {"x": 240, "y": 0}, "config": {"instructions": "방문자 의도를 분류한다. contact_request: 문의 방법·연락 방법·견적 요청 방법을 묻는 말(요구사항 설명 없이 어떻게 문의하는지만 묻는다). project_inquiry: 만들고 싶은 것(목적·규모·기한)을 설명하며 상담을 원함. human_request: 사람·대표·담당자와 직접 이야기하길 원함. other: 회사·서비스·사례·진행 방식 같은 일반 질문과 그 밖의 모든 말. 프로젝트 요구사항(목적·규모·기한)이 다 모였는지도 함께 판단한다.", "labels": ["project_inquiry", "contact_request", "human_request", "other"], "fields": [{"name": "requirements_complete", "type": "boolean", "description": "목적·규모·기한이 모두 나왔으면 true"}]}},
+    {"id": "route", "kind": "condition", "code": "N-03", "name": "의도에 따라", "position": {"x": 480, "y": 0}, "config": {"branches": [{"name": "inquiry", "when": "label == 'project_inquiry'"}, {"name": "contact", "when": "label == 'contact_request'"}, {"name": "human", "when": "label == 'human_request' or confidence < 0.5"}]}},
     {"id": "enough", "kind": "condition", "code": "N-04", "name": "요구사항이 다 모였나", "position": {"x": 720, "y": -120}, "config": {"branches": [{"name": "complete", "when": "fields.requirements_complete == true"}]}},
     {"id": "ask", "kind": "ai_answer", "code": "N-05", "name": "요구사항 되묻기", "position": {"x": 960, "y": -240}, "config": {"instructions": "빠진 요구사항(목적·규모·기한) 중 하나만 짧게 되묻는다.", "await_reply": true}},
     {"id": "cases", "kind": "knowledge_search", "code": "N-06", "name": "사례 찾기", "position": {"x": 960, "y": -120}, "config": {"top_k": 5}},
     {"id": "draft", "kind": "ai_answer", "code": "N-07", "name": "범위·기간 초안", "position": {"x": 1200, "y": -120}, "config": {"instructions": "찾은 사례를 근거로 범위와 기간의 초안을 제시한다. 가격은 확정하지 않는다."}},
     {"id": "guard", "kind": "guardrail", "code": "N-08", "name": "가드레일", "position": {"x": 1440, "y": -120}, "config": {"rules": ["price_promise", "pii"], "action": "rewrite"}},
     {"id": "handoff", "kind": "handoff", "code": "N-10", "name": "사람 넘김", "position": {"x": 720, "y": 120}, "config": {"reason": "방문자가 사람을 원하거나 의도가 불확실함"}},
-    {"id": "general", "kind": "ai_answer", "code": "N-11", "name": "일반 답변", "position": {"x": 720, "y": 0}, "config": {"instructions": "회사 소개 범위에서 짧게 답한다."}},
+    {"id": "general", "kind": "ai_answer", "code": "N-11", "name": "일반 답변", "position": {"x": 960, "y": 0}, "config": {"instructions": "찾은 지식으로만 짧게 답한다. 지식에 없는 내용은 지어내지 말고 모른다고 말한 뒤, 홈페이지 문의 폼에 남기거나 대표에게 넘겨 달라고 말씀하시도록 권한다."}},
+    {"id": "kb", "kind": "knowledge_search", "code": "N-12", "name": "회사 지식 찾기", "position": {"x": 720, "y": 0}, "config": {"top_k": 5}},
     {"id": "contact", "kind": "ai_answer", "code": "N-09", "name": "문의 폼 안내", "position": {"x": 1680, "y": -120}, "config": {"instructions": "이 대화로는 문의를 접수하지 않는다고 밝히고, 「문의는 여기서 남겨 주세요」라는 말과 함께 마크다운 링크 [문의 남기기](https://sandcorp.co.kr/#home-inquiry) 를 그대로 한 줄로 안내한다. 이메일 주소는 적지 않는다."}}
   ],
   "edges": [
@@ -17,7 +18,9 @@
     {"from": "classify", "to": "route"},
     {"from": "route", "to": "enough", "handle": "inquiry"},
     {"from": "route", "to": "handoff", "handle": "human"},
-    {"from": "route", "to": "general", "handle": "else"},
+    {"from": "route", "to": "contact", "handle": "contact"},
+    {"from": "route", "to": "kb", "handle": "else"},
+    {"from": "kb", "to": "general"},
     {"from": "enough", "to": "cases", "handle": "complete"},
     {"from": "enough", "to": "ask", "handle": "else"},
     {"from": "ask", "to": "classify"},

@@ -196,8 +196,11 @@ async def test_example_flow_runs_one_turn_up_to_the_contact_guide(tenant_with_ke
 
     # 마지막 안내 노드만 빼고 같은 분기를 돈다 — 가격 약속 판정은 걸리지 않게 둔다
     dropped = {"contact"}
-    trimmed = {"nodes": [n for n in graph["nodes"] if n["id"] not in dropped],
-               "edges": [e for e in graph["edges"] if not dropped & {e["from"], e["to"]}]}
+    nodes = [n for n in graph["nodes"] if n["id"] not in dropped]
+    for n in nodes:  # 안내 노드로 가는 갈래도 함께 뺀다
+        if n["id"] == "route":
+            n["config"]["branches"] = [b for b in n["config"]["branches"] if b["name"] != "contact"]
+    trimmed = {"nodes": nodes, "edges": [e for e in graph["edges"] if not dropped & {e["from"], e["to"]}]}
     fake_chat_llm.by_schema["GuardrailVerdict"] = lambda m, schema: schema(violates=False)
     _classifier(fake_chat_llm, label="project_inquiry", confidence=0.9,
                 fields={"requirements_complete": True})

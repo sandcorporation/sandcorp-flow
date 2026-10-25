@@ -193,6 +193,79 @@ async def test_sandcorp_project_inquiry_ends_with_the_home_form_guide(tenant_wit
     _no_network(net)
 
 
+_HOME_FORM = "https://sandcorp.co.kr/#home-inquiry"
+_SANDCORP_FIELDS = {"requirements_complete": False}
+
+
+def _node(example_id: str, node_id: str) -> dict:
+    return next(n for n in _graph(example_id)["nodes"] if n["id"] == node_id)
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_sandcorp_company_question_searches_knowledge_before_answering(tenant_with_key, fake_chat_llm, net):
+    """#140: 「어떤 회사인가요?」(other)는 지식 검색을 거쳐 답한다 — 검색 없이 일반론을 지어내지 않는다."""
+    from asgiref.sync import sync_to_async
+
+    from apps.flows.example_seed import seed_example_knowledge
+
+    tenant, _ = tenant_with_key
+    await sync_to_async(seed_example_knowledge)(tenant.id, "sandcorp_home")
+    _classify(fake_chat_llm, label="other", confidence=0.7, fields=_SANDCORP_FIELDS)
+
+    result, _ = await _turn(tenant, _graph("sandcorp_home"), "샌드코프는 어떤 회사인가요?")
+
+    assert _path(result) == ["start", "classify", "route", "kb", "general"]
+    assert result["trace"][3]["kind"] == "knowledge_search"
+    assert result["trace"][3]["record"]["output"]["chunks"] >= 1  # 판단 기록에 검색 단계와 찾은 건수가 남는다
+    answer_prompt = "\n".join(str(m) for m in fake_chat_llm.captured[-1][1])
+    assert "### Knowledge Base" in answer_prompt and "회사 소개" in answer_prompt  # 찾은 지식이 답 노드 프롬프트에 들어갔다
+    general = _node("sandcorp_home", "general")["config"]["instructions"]
+    assert "찾은 지식" in general and "모른다" in general
+    _no_network(net)
+
+
+def test_sandcorp_classify_labels_separate_contact_request_from_project_inquiry():
+    classify = _node("sandcorp_home", "classify")["config"]
+    assert "contact_request" in classify["labels"]
+    for label in classify["labels"]:  # 라벨 경계는 지침에 설명으로 적는다
+        assert label in classify["instructions"]
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_sandcorp_contact_request_goes_straight_to_the_form_guide(tenant_with_key, fake_chat_llm, net):
+    """#140: 「문의는 어떻게 하나요?」는 요구사항을 되묻지 않고 바로 문의 폼 안내."""
+    tenant, _ = tenant_with_key
+    _classify(fake_chat_llm, label="contact_request", confidence=0.9, fields=_SANDCORP_FIELDS)
+
+    result, _ = await _turn(tenant, _graph("sandcorp_home"), "프로젝트 문의를 하고 싶은데 어떻게 하면 되나요?")
+
+    assert _path(result) == ["start", "classify", "route", "contact"]
+    assert _HOME_FORM in _node("sandcorp_home", "contact")["config"]["instructions"]
+    _no_network(net)
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_sandcorp_incomplete_requirements_still_ask_first(tenant_with_key, fake_chat_llm, net):
+    tenant, _ = tenant_with_key
+    _classify(fake_chat_llm, label="project_inquiry", confidence=0.9, fields=_SANDCORP_FIELDS)
+
+    result, _ = await _turn(tenant, _graph("sandcorp_home"), "쇼핑몰을 만들고 싶어요")
+
+    assert _path(result) == ["start", "classify", "route", "enough", "ask"]
+    _no_network(net)
+
+
+def test_sandcorp_knowledge_makes_no_chat_intake_email_or_reply_deadline_promise():
+    from apps.flows.example_catalog import EXAMPLES
+
+    docs = {d.name: d.text for d in EXAMPLES["sandcorp_home"].docs}
+    for name, text in docs.items():
+        for banned in ("상담창에서 남기면", "접수되고", "회신", "@", "이내"):
+            assert banned not in text, f"{name}: {banned!r}"
+    assert _HOME_FORM in docs["진행 방식과 문의"]
+    assert "이 상담창에서는 문의를 접수하지 않습니다" in docs["진행 방식과 문의"]
+
+
 # ── 지식 묶음 시드 ───────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
@@ -303,10 +376,14 @@ def test_seed_sandcorp_update_flow_replaces_an_old_graph_with_inquiry_node():
     call_command("seed_sandcorp", "--skip-knowledge")
     tenant, flow = _sandcorp_flow()
     old = _graph("sandcorp_home")
-    old["nodes"] = [n for n in old["nodes"] if n["id"] != "contact"] + [
+    for n in old["nodes"]:  # 옛 그래프는 contact_request 갈래·회사 지식 노드가 없다
+        if n["id"] == "route":
+            n["config"]["branches"] = [br for br in n["config"]["branches"] if br["name"] != "contact"]
+    old["nodes"] = [n for n in old["nodes"] if n["id"] not in ("contact", "kb")] + [
         {"id": "submit", "kind": "http_tool", "code": "N-09", "name": "문의 접수", "position": {"x": 0, "y": 0},
          "config": {"method": "POST", "url": "https://demo-api.flow.sandcorp.co.kr/inquiries"}}]
-    old["edges"] = [e for e in old["edges"] if "contact" not in (e["from"], e["to"])] + [{"from": "guard", "to": "submit"}]
+    old["edges"] = [e for e in old["edges"] if not {"contact", "kb"} & {e["from"], e["to"]}] + [
+        {"from": "guard", "to": "submit"}, {"from": "route", "to": "general", "handle": "else"}]
     services.save_draft(tenant.id, flow.id, old)
     version = services.save_version(tenant.id, flow.id, note="옛 그래프").version
     services.deploy_version(tenant.id, flow.id, version.number)
@@ -319,3 +396,26 @@ def test_seed_sandcorp_update_flow_replaces_an_old_graph_with_inquiry_node():
     assert flow.is_public and FlowVersion.objects.filter(flow=flow).count() == 3
     assert flow.deployed_version.graph["nodes"] == _graph("sandcorp_home")["nodes"]
     assert flow.draft.graph == flow.deployed_version.graph
+
+
+@pytest.mark.django_db
+def test_seed_sandcorp_update_flow_reingests_changed_knowledge():
+    """#140: 지식 문서 내용이 바뀌면 --update-flow가 이미 ready인 문서도 다시 적재한다(기본은 그대로)."""
+    import os
+
+    from django.conf import settings
+
+    from apps.flows.example_catalog import EXAMPLES
+    from apps.flows.example_seed import example_doc_ids
+
+    call_command("seed_sandcorp")
+    tenant, _ = _sandcorp_flow()
+    doc_id = example_doc_ids(tenant.id, "sandcorp_home")[0]
+    path = os.path.join(settings.MEDIA_ROOT, "documents", str(doc_id))
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("옛 내용")
+
+    call_command("seed_sandcorp")  # 기본은 ready 문서를 건드리지 않는다
+    assert open(path, encoding="utf-8").read() == "옛 내용"
+    call_command("seed_sandcorp", "--update-flow")
+    assert open(path, encoding="utf-8").read() == EXAMPLES["sandcorp_home"].docs[0].text
