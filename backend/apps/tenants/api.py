@@ -747,10 +747,11 @@ def update_config(request, body: TenantConfigIn):
     if body.deploy_requires_approval is not None:  # 배포 승인 규칙을 바꾸는 건 승인 권한자만(#28)
         from apps.tenants.permissions import FLOW_APPROVE
         require_permission(request.auth, FLOW_APPROVE)
-    if body.public_flow_view is not None:  # 흐름을 익명에게 보이는 일이라 Admin만(#39)
+    config = request.auth.tenant.config
+    # 흐름을 익명에게 보이는 일이라 바꾸는 건 Admin만(#39). 관리 화면은 설정 전체를 되돌려 보내므로 같은 값은 통과시킨다.
+    if body.public_flow_view is not None and body.public_flow_view != config.public_flow_view:
         from apps.tenants.permissions import FLOW_PUBLIC_VIEW
         require_permission(request.auth, FLOW_PUBLIC_VIEW)
-    config = request.auth.tenant.config
     _old_embed = _embed_signature(config)
 
     # provider 연결 필드가 바뀌었으면 저장 전에 검증 — 실패하면 broken provider를 거부한다.

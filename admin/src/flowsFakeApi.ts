@@ -33,6 +33,8 @@ export function fakeFlowsApi(opts: {
   me?: { name: string; email: string }
   /** GET /sessions/{id}/decision-traces/ 가 돌려줄 값(세션 id → 응답). 없는 세션은 404. */
   traces?: Record<string, object>
+  /** 공개 흐름 보기 API(GET /api/public/flows/{slug}/, #39) — slug → 응답 머리(그래프는 opts.graph). 없는 slug 는 404. */
+  public?: Record<string, { brand_name: string; flow_name: string; version: number; template: string | null }>
   /** 공개 체험 API(/api/try/…) 대역 — 주면 템플릿·세션 응답도 흉내 낸다(#37). */
   try?: {
     templates?: { id: string; name: string; documents: string[] }[]
@@ -66,6 +68,11 @@ export function fakeFlowsApi(opts: {
     const method = (init?.method ?? 'GET').toUpperCase()
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
     calls.push({ method, path, body, init })
+    const pub = path.match(/\/api\/public\/flows\/([^/]+)\/$/)
+    if (pub) {
+      const head = opts.public?.[decodeURIComponent(pub[1])]
+      return head && method === 'GET' ? json(200, { slug: pub[1], ...head, graph: opts.graph }) : json(404, { detail: 'Not Found' })
+    }
     if (path.includes('/api/try/')) {
       const t = opts.try ?? {}
       const sess = typeof t.session === 'function' ? t.session() : t.session

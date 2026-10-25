@@ -505,3 +505,29 @@ describe('ConfigTab — 배포 승인 옵션', () => {
     expect(screen.getByText(/관리자만 바꿀 수 있습니다/)).toBeInTheDocument()
   })
 })
+
+describe('ConfigTab — 공개 흐름 보기(#39)', () => {
+  it('Admin 이 켜고 저장하면 설정에 실린다', async () => {
+    mockConfig({ slug: 'sandcorp' })
+    renderConfig('security')
+    const box = await screen.findByLabelText('공개 흐름 보기')
+    expect(box).not.toBeChecked()
+    await userEvent.click(box)
+    await save()
+    await waitFor(() => expect(api.updateTenantConfig).toHaveBeenCalled())
+    expect(vi.mocked(api.updateTenantConfig).mock.calls[0][0]).toMatchObject({ public_flow_view: true })
+  })
+
+  it('켜져 있으면 공개 보기 주소를 보인다', async () => {
+    mockConfig({ public_flow_view: true, slug: 'sandcorp' })
+    renderConfig('security')
+    expect(await screen.findByLabelText('공개 흐름 보기')).toBeChecked()
+    expect(await screen.findByText(/\/admin-ui\/flows\/sandcorp/)).toBeInTheDocument()
+  })
+
+  it('Admin 이 아니면 끄고 이유를 보인다', async () => {
+    vi.mocked(api.currentAgentRole).mockReturnValue('member')
+    renderConfig('security')
+    expect(await screen.findByLabelText('공개 흐름 보기')).toBeDisabled()
+  })
+})

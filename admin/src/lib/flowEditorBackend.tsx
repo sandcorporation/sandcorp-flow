@@ -5,6 +5,7 @@ import { createContext, useContext } from 'react'
 import { appsFlowsApiFlowsGet, appsFlowsApiFlowsGetVersion, appsFlowsApiFlowsNodeSchema, appsFlowsApiFlowsPatchDraft } from '../generated/endpoints/flows/flows'
 import { appsTenantsApiGetConfig } from '../generated/endpoints/tenant/tenant'
 import { appsTenantsApiMemberMe } from '../generated/endpoints/tenant-members/tenant-members'
+import type { PublicFlowOut } from '../generated/model'
 import { appsTenantsTryApiTryFlowGet, appsTenantsTryApiTryNodeSchema, appsTenantsTryApiTryPatchDraft, appsTenantsTryApiTryTemplateDetail } from '../generated/endpoints/try/try'
 import type { DraftPatchIn, FlowDetailOut } from '../generated/model'
 import type { FlowError, FlowGraph } from './flowGraph'
@@ -40,6 +41,8 @@ export interface FlowEditorBackend {
   back: { to: string; label: string }
   /** 편집 권한이 없을 때 머리줄에 붙일 설명. */
   readOnlyNotice: string
+  /** HTTP 도구 노드에서 테넌트 비밀·허용 도메인 목록을 읽는가 — 익명 공개 보기엔 테넌트 API 가 없다. */
+  tenantLookups: boolean
 }
 
 const tenantBackend: FlowEditorBackend = {
@@ -65,6 +68,7 @@ const tenantBackend: FlowEditorBackend = {
   askTrial: true,
   back: { to: '/tenant/flows', label: '흐름 목록' },
   readOnlyNotice: '읽기 전용 — 흐름 편집 권한이 없습니다',
+  tenantLookups: true,
 }
 
 /** 체험(/try): 쿠키 세션, 같은 모양의 응답. 버전·배포는 없고 판단 기록은 SSE trace 로만 그린다. */
@@ -84,6 +88,7 @@ export const tryBackend: FlowEditorBackend = {
   askTrial: false,
   back: { to: '/try', label: '템플릿 고르기' },
   readOnlyNotice: '읽기 전용',
+  tenantLookups: true,
 }
 
 /** 「흐름 보기」: 세션 없이 템플릿의 그래프만 읽는다. 편집·시험 대화 없음. */
@@ -104,6 +109,24 @@ export const tryViewBackend: FlowEditorBackend = {
   versionsNote: '템플릿 원본을 읽기만 합니다. 「고쳐 보기」로 내 사본을 만들면 고칠 수 있어요.',
   testChat: false,
   readOnlyNotice: '읽기 전용 — 템플릿 원본입니다',
+}
+
+/** 공개 흐름 보기(#39): 이미 읽은 공개 응답(허용 목록 투영)을 그대로 보인다. 편집·시험 대화·판단 기록·버전 없음. */
+export function publicViewBackend(pub: PublicFlowOut): FlowEditorBackend {
+  const graph = pub.graph as unknown as FlowGraph
+  return {
+    ...tryViewBackend,
+    loadFlow: async () => ({
+      flow: { id: pub.slug, name: pub.flow_name, is_public: true, deployed_version: pub.version, updated_at: '', has_pending_request: false },
+      draft: { graph, errors: [], valid: true },
+      versions: [],
+      pending_request: null,
+    } as unknown as FlowDetailOut),
+    versionsNote: `${pub.brand_name ? `${pub.brand_name} · ` : ''}배포 중인 v${pub.version}을 읽기만 합니다. 비밀·내부 주소·헤더·본문 값은 공개되지 않아요.`,
+    readOnlyNotice: '읽기 전용 — 비밀·내부 주소·헤더·본문은 숨김',
+    back: { to: '/try', label: '체험 템플릿' },
+    tenantLookups: false,
+  }
 }
 
 const Ctx = createContext<FlowEditorBackend>(tenantBackend)

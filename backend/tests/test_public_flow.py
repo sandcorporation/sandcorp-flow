@@ -274,6 +274,7 @@ def test_only_admin_can_turn_public_view_on(client, tenant_admin_token, tenant_m
                             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}")
 
     assert patch(tenant_member_token, True).status_code == 403
+    assert patch(tenant_member_token, False).status_code == 200  # 화면이 설정 전체를 되돌려 보내는 같은 값은 통과
     res = patch(tenant_admin_token, True)
     assert res.status_code == 200 and res.json()["public_flow_view"] is True
     got = client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {tenant_member_token}").json()
