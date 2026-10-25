@@ -43,6 +43,8 @@ export interface FlowEditorBackend {
   readOnlyNotice: string
   /** HTTP 도구 노드에서 테넌트 비밀·허용 도메인 목록을 읽는가 — 익명 공개 보기엔 테넌트 API 가 없다. */
   tenantLookups: boolean
+  /** 머리줄에 초안 저장·검증 상태를 보이는가 — 초안이 없는 보기(템플릿 원본·공개 배포 버전)는 끈다. */
+  draftStatus: boolean
 }
 
 const tenantBackend: FlowEditorBackend = {
@@ -69,6 +71,7 @@ const tenantBackend: FlowEditorBackend = {
   back: { to: '/tenant/flows', label: '흐름 목록' },
   readOnlyNotice: '읽기 전용 — 흐름 편집 권한이 없습니다',
   tenantLookups: true,
+  draftStatus: true,
 }
 
 /** 체험(/try): 쿠키 세션, 같은 모양의 응답. 버전·배포는 없고 판단 기록은 SSE trace 로만 그린다. */
@@ -89,6 +92,7 @@ export const tryBackend: FlowEditorBackend = {
   back: { to: '/try', label: '템플릿 고르기' },
   readOnlyNotice: '읽기 전용',
   tenantLookups: true,
+  draftStatus: true,
 }
 
 /** 「흐름 보기」: 세션 없이 템플릿의 그래프만 읽는다. 편집·시험 대화 없음. */
@@ -109,6 +113,7 @@ export const tryViewBackend: FlowEditorBackend = {
   versionsNote: '템플릿 원본을 읽기만 합니다. 「고쳐 보기」로 내 사본을 만들면 고칠 수 있어요.',
   testChat: false,
   readOnlyNotice: '읽기 전용 — 템플릿 원본입니다',
+  draftStatus: false,
 }
 
 /** 공개 흐름 보기(#39): 이미 읽은 공개 응답(허용 목록 투영)을 그대로 보인다. 편집·시험 대화·판단 기록·버전 없음. */

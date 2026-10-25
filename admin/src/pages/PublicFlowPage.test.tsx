@@ -52,6 +52,7 @@ describe('PublicFlowPage — 공개 흐름 보기', () => {
     expect(tabs).not.toContain('판단 기록')
     expect(screen.queryByRole('button', { name: /저장|배포/ })).toBeNull()
     expect(screen.getByText(/비밀·내부 주소·헤더·본문은 숨김/)).toBeInTheDocument()
+    expect(screen.queryByText('초안 저장됨')).toBeNull() // 초안이 없는 보기
   })
 
   it('예제 그대로인 흐름이면 「고쳐 보기」가 /try?template=home 으로 간다', async () => {
