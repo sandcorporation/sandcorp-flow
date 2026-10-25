@@ -50,6 +50,37 @@ start "" ""
 for p in / /terms /privacy /admin-ui/ /admin-ui/try /embed/ /chatbot/sandcorp/; do check off "$p" none; done
 curl -s "http://127.0.0.1:$PORT/terms" | grep -q 'src=""' && { echo "FAIL 빈 src"; FAILS=$((FAILS+1)); } || echo "ok   빈 src 없음"
 
+echo "== 짧은 주소(#165): 301 + 쿼리 보존, 이웃 location 과 겹치지 않음 =="
+start "$URL" ""
+loc() { # $1=경로 → "상태 Location"
+  curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "http://127.0.0.1:$PORT$1" | sed "s#http://127.0.0.1:$PORT##"
+}
+expect_loc() { # $1=경로 $2=기대 "상태 Location"
+  local got; got=$(loc "$1")
+  if [ "$got" = "$2" ]; then echo "ok   $1 -> $got"; else echo "FAIL $1: 기대 '$2', 실제 '$got'"; FAILS=$((FAILS+1)); fi
+}
+expect_loc /try "301 /admin-ui/try"
+expect_loc "/try?template=home" "301 /admin-ui/try?template=home"
+expect_loc "/try?template=shop&x=1" "301 /admin-ui/try?template=shop&x=1"
+expect_loc "/try/?template=academy" "301 /admin-ui/try?template=academy"
+expect_loc /flows/sandcorp "301 /admin-ui/flows/sandcorp"
+expect_loc "/flows/sandcorp?a=b" "301 /admin-ui/flows/sandcorp?a=b"
+expect_loc "/flows/%ED%95%9C%EA%B8%80" "301 /admin-ui/flows/%ED%95%9C%EA%B8%80"
+# 겹침 없음: /tryX·/flowsX 는 짧은 주소가 아니다(404), 기존 location 은 그대로.
+for p in /tryout /try-it /flowsX /flows; do
+  code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT$p")
+  [ "$code" = 404 ] && echo "ok   $p 404(짧은 주소 아님)" || { echo "FAIL $p: 404 기대, 실제 $code"; FAILS=$((FAILS+1)); }
+done
+for p in / /terms /privacy /admin-ui/ /admin-ui/try /embed/ /chatbot/sandcorp/; do
+  code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT$p")
+  [ "$code" = 200 ] && echo "ok   $p 200 유지" || { echo "FAIL $p: 200 기대, 실제 $code"; FAILS=$((FAILS+1)); }
+done
+# 리다이렉트 응답엔 스니펫이 없고(HTML 본문이 아님), 도착한 admin 페이지에는 한 번만 붙는다.
+n=$(curl -sL "http://127.0.0.1:$PORT/try?template=home" | grep -o '<script defer src=' | wc -l)
+[ "$n" = 1 ] && echo "ok   /try 를 따라가 도착한 페이지에 스니펫 1개" || { echo "FAIL 짧은 주소 스니펫 수: $n"; FAILS=$((FAILS+1)); }
+n=$(curl -sL "http://127.0.0.1:$PORT/flows/sandcorp" | grep -o '<script defer src=' | wc -l)
+[ "$n" = 1 ] && echo "ok   /flows/sandcorp 를 따라가 스니펫 1개" || { echo "FAIL 흐름 보기 스니펫 수: $n"; FAILS=$((FAILS+1)); }
+
 echo "== webmanifest =="
 ct=$(curl -sI "http://127.0.0.1:$PORT/embed/flow/site.webmanifest" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print $2}')
 [ "$ct" = "application/manifest+json" ] && echo "ok   content-type $ct" || { echo "FAIL webmanifest content-type: '$ct'"; FAILS=$((FAILS+1)); }

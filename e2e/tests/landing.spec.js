@@ -20,7 +20,7 @@ test('랜딩: 체험 CTA·템플릿 링크·로그인 링크·문의 링크', as
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('흐름으로 만드는 상담 챗봇')
   await shot(page, 'landing-light-1280')
 
-  await expect(page.getByRole('link', { name: '체험해 보기' })).toHaveAttribute('href', '/admin-ui/try')
+  await expect(page.getByRole('link', { name: '체험해 보기' })).toHaveAttribute('href', '/try')
   await expect(page.getByRole('link', { name: /^운영자 로그인/ })).toHaveAttribute('href', '/admin-ui/')
   await expect(page.getByRole('link', { name: /^테넌트 로그인/ })).toHaveAttribute('href', '/admin-ui/tenant')
   await expect(page.getByRole('link', { name: /도입이 궁금하면 문의/ })).toHaveAttribute('href', 'https://sandcorp.co.kr/#home-inquiry')
@@ -35,9 +35,10 @@ test('랜딩: 체험 CTA·템플릿 링크·로그인 링크·문의 링크', as
 test('랜딩의 템플릿 링크가 실제 /try 화면에서 그 카드를 고른다', async ({ page }) => {
   await page.goto(LANDING)
   const href = await page.getByRole('link', { name: /^쇼핑몰 고객 지원/ }).getAttribute('href')
-  expect(href).toBe('/admin-ui/try?template=shop')
-  // 운영에서는 같은 호스트라 그대로 열린다. e2e 는 호스트가 달라 admin 주소를 붙여 연다.
-  await page.goto(`${ADMIN_URL}${href}`)
+  expect(href).toBe('/try?template=shop')
+  // 운영에서는 같은 호스트의 nginx 가 /try → /admin-ui/try 로 301 한다(계약: scripts/test-nginx-metrics.sh).
+  // e2e 는 nginx 없이 Vite 라 같은 규칙(/admin-ui 접두)을 직접 붙여 연다.
+  await page.goto(`${ADMIN_URL}/admin-ui${href}`)
   await expect(page.locator('[data-template="shop_support"]')).toHaveAttribute('data-selected', 'true')
 })
 

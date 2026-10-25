@@ -20,9 +20,9 @@ describe('Landing (흐름 챗봇 소개)', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('흐름으로 만드는 상담 챗봇')
   })
 
-  it('체험 CTA가 /admin-ui/try 를 가리킨다', () => {
+  it('체험 CTA가 짧은 주소 /try 를 가리킨다', () => {
     render(<Landing />)
-    expect(screen.getByRole('link', { name: '체험해 보기' })).toHaveAttribute('href', '/admin-ui/try')
+    expect(screen.getByRole('link', { name: '체험해 보기' })).toHaveAttribute('href', '/try')
   })
 
   it('템플릿별 체험 링크가 ?template= 짧은 이름을 건다', () => {
@@ -30,9 +30,9 @@ describe('Landing (흐름 챗봇 소개)', () => {
     const sec = screen.getByRole('region', { name: '템플릿으로 바로 체험' })
     const hrefs = within(sec).getAllByRole('link').map(a => a.getAttribute('href'))
     expect(hrefs).toEqual([
-      '/admin-ui/try?template=home',
-      '/admin-ui/try?template=shop',
-      '/admin-ui/try?template=academy',
+      '/try?template=home',
+      '/try?template=shop',
+      '/try?template=academy',
     ])
   })
 
