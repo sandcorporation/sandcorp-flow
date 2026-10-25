@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>개인정보처리방침 — Sandcorp Flow</title>
     <meta name="color-scheme" content="light dark" />
-    <!-- 아이콘·favicon 자리: #142 에서 채운다. -->
+    <!-- 아이콘·favicon: sandcorp-design v0.4.0. 위젯 base(/embed/)가 앞에 붙어 /embed/flow/... 로 나간다(루트 / 서빙에서도 같다). -->
+    <link rel="icon" href="/flow/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/flow/favicon.ico" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/flow/apple-touch-icon.png" />
+    <link rel="manifest" href="/flow/site.webmanifest" />
     <script>
       // 저장된 수동 테마를 첫 그림 전에 적용(깜박임 방지). 키·값은 ThemeToggle 과 같다.
       try { var t = localStorage.getItem('admin_theme'); if (t) document.documentElement.classList.add(t === 'dark' ? 'dark' : 'light') } catch (e) {}
