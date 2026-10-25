@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import PricingSection from './PricingSection'
 import SecretsSection from './SecretsSection'
+import EmbedGuideCard from './EmbedGuideCard'
 import { useIsAdmin } from '../lib/useAgentRole'
 
 type DaySchedule = { enabled?: boolean; start?: string; end?: string }
@@ -59,7 +60,6 @@ export default function ConfigTab() {
   const [resetConfirm, setResetConfirm] = useState(false)
   const [slug, setSlug] = useState('')
   const [slugSaved, setSlugSaved] = useState(false)
-  const [copied, setCopied] = useState<'' | 'url' | 'iframe'>('')
   const [llmModels, setLlmModels] = useState<string[]>([])
   const [embedModels, setEmbedModels] = useState<string[]>([])
   const [ocrModels, setOcrModels] = useState<string[]>([])
@@ -123,17 +123,6 @@ export default function ConfigTab() {
       setSlugSaved(true)
       setTimeout(() => setSlugSaved(false), 2000)
     } catch (e) { alert(e instanceof Error ? e.message : String(e)) }
-  }
-
-  // 공개 챗봇 URL·임베드 코드(현재 slug 기준). 복사 버튼용.
-  const publicUrl = slug ? `${window.location.origin}/chatbot/${slug}/` : ''
-  const iframeCode = `<iframe src="${publicUrl}" width="400" height="600" style="border:none;"></iframe>`
-  const copyToClipboard = async (text: string, which: 'url' | 'iframe') => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(which)
-      setTimeout(() => setCopied(''), 2000)
-    } catch { /* clipboard 거부 시 무시 */ }
   }
 
   useEffect(() => {
@@ -571,20 +560,7 @@ export default function ConfigTab() {
             ) : (
               <p className={hint}>Slug 변경은 Admin만 할 수 있습니다.</p>
             )}
-            {slug && (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-xs">{publicUrl}</code>
-                  <Button size="sm" variant="outline" type="button" onClick={() => copyToClipboard(publicUrl, 'url')}>
-                    {copied === 'url' ? '✓ 복사됨' : 'URL 복사'}
-                  </Button>
-                  <Button size="sm" variant="outline" type="button" onClick={() => copyToClipboard(iframeCode, 'iframe')}>
-                    {copied === 'iframe' ? '✓ 복사됨' : '임베드 코드 복사'}
-                  </Button>
-                </div>
-                <p className={hint}>저장된 slug 기준입니다. 변경 후엔 먼저 Slug를 저장하세요.</p>
-              </div>
-            )}
+            <EmbedGuideCard origin={window.location.origin} slug={slug} isAdmin={isAdmin} />
           </div>
           <div className="space-y-1.5">
             <label className={`flex items-center gap-2 text-sm ${isAdmin ? 'cursor-pointer' : 'opacity-60'}`}>
