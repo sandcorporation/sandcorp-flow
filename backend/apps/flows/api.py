@@ -44,6 +44,8 @@ _STATUS_BY_CODE = {
     "self_approval": 403,
     "try_restricted": 403,
     "try_no_session": 401,
+    "try_login_required": 401,
+    "try_claim_forbidden": 403,
     "try_bad_origin": 403,
     "try_ip_limit": 429,
     "unknown_template": 404,

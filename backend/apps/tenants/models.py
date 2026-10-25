@@ -360,6 +360,9 @@ class TrySession(models.Model):
     flow_id = models.UUIDField()
     created_at = models.DateTimeField(auto_now_add=True)
 
+    if TYPE_CHECKING:
+        tenant_id: uuid.UUID
+
     class Meta:
         db_table = "try_sessions"
 

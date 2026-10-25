@@ -54,6 +54,8 @@ OPERATOR_SCOPE = "admin"
 OPERATOR_REQUESTED_SCOPE = "openid profile email login admin"
 MEMBER_REQUESTED_SCOPE = "openid profile email login"
 LoginEntry = Literal["operator", "member"]
+LoginThen = Literal["try_claim"]
+"""고객 로그인 뒤 이어서 할 일 — ``try_claim``: 체험 사본 옮기기(#42). 콜백이 표(ticket)를 주고 옮기기 화면으로 보낸다."""
 REQUESTED_SCOPE: dict[LoginEntry, str] = {
     "operator": OPERATOR_REQUESTED_SCOPE,
     "member": MEMBER_REQUESTED_SCOPE,
@@ -82,6 +84,8 @@ class LoginAttempt:
     invite: str | None = None
     # 어느 화면에서 시작했나 — 요청 스코프와 콜백이 받을 계정 종류가 여기서 정해진다.
     entry: LoginEntry = "operator"
+    # 고객 로그인 뒤 이어서 할 일(#42). 모르는 값은 버린다.
+    then: LoginThen | None = None
 
     def dumps(self) -> str:
         payload: dict[str, str] = {
@@ -89,6 +93,8 @@ class LoginAttempt:
         }
         if self.invite:
             payload["i"] = self.invite
+        if self.then:
+            payload["t"] = self.then
         return signing.dumps(payload, salt=_ATTEMPT_SALT)
 
     @classmethod
@@ -106,8 +112,10 @@ class LoginAttempt:
             return None
         invite = payload.get("i")
         entry: LoginEntry = "member" if payload.get("e") == "member" else "operator"
+        then = payload.get("t")
         return cls(
             entry=entry,
+            then="try_claim" if then == "try_claim" else None,
             state=state,
             code_verifier=verifier,
             nonce=nonce,
@@ -225,6 +233,7 @@ def start_login(
     config: ClientConfig | None = None,
     invite: str | None = None,
     entry: LoginEntry = "operator",
+    then: str | None = None,
 ) -> tuple[str, LoginAttempt]:
     """`entry="operator"`는 관리 화면 대표 로그인, `"member"`는 고객 로그인(초대 링크 포함)."""
     if invite:
@@ -238,6 +247,7 @@ def start_login(
         nonce=secrets.token_urlsafe(32),
         invite=invite or None,
         entry=entry,
+        then="try_claim" if entry == "member" and then == "try_claim" else None,
     )
     query = urllib.parse.urlencode(
         {
@@ -268,6 +278,7 @@ class MemberLogin:
 
     user: User
     invite: str | None
+    then: LoginThen | None = None
 
 
 def complete_login(
@@ -317,7 +328,7 @@ def complete_login(
         from apps.tenants.members import member_user
 
         return MemberLogin(
-            user=member_user(validator.issuer, access.sub, identity), invite=attempt.invite
+            user=member_user(validator.issuer, access.sub, identity), invite=attempt.invite, then=attempt.then
         )
     if access.acct == "member":
         raise LoginRejected("member")  # 고객은 관리 화면(Operator)으로 들어오지 않는다

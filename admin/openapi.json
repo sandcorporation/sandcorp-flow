@@ -2409,6 +2409,29 @@
         "title": "TrialOut",
         "type": "object"
       },
+      "TryClaimOut": {
+        "properties": {
+          "flow_id": {
+            "title": "Flow Id",
+            "type": "string"
+          },
+          "flow_name": {
+            "title": "Flow Name",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "flow_id",
+          "flow_name"
+        ],
+        "title": "TryClaimOut",
+        "type": "object"
+      },
       "TrySessionOut": {
         "properties": {
           "expires_at": {
@@ -6465,6 +6488,29 @@
         "summary": "List Visitor Sessions",
         "tags": [
           "memory"
+        ]
+      }
+    },
+    "/api/try/claim/": {
+      "post": {
+        "description": "체험 사본을 Bearer(고객 멤버 세션)의 테넌트에 새 초안 흐름으로 옮기고 체험 테넌트·세션을 지운다.\n거부: ``try_login_required``(401) · ``try_no_session``(401, 없음·만료·이미 옮김) · ``try_claim_forbidden``(403, Admin 아님).",
+        "operationId": "apps_tenants_try_api_try_claim_flow",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TryClaimOut"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "summary": "Try Claim Flow",
+        "tags": [
+          "try"
         ]
       }
     },

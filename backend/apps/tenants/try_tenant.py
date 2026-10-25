@@ -32,7 +32,7 @@ from apps.tenants.models import Tenant
 
 __all__ = [
     "KIND_STANDARD", "KIND_TRY", "KIND_TRY_LIBRARY", "RESTRICTED", "TryRestricted", "UnknownExample",
-    "TryTenantCreated", "KnowledgeScope", "create_try_tenant", "prune_expired", "ensure_library", "seed_library",
+    "TryTenantCreated", "KnowledgeScope", "create_try_tenant", "prune_expired", "delete_try_tenant", "ensure_library", "seed_library",
     "kind_of", "is_try", "is_hidden", "forces_platform_key", "http_allowed", "ensure_allowed",
     "blocks_human_handoff", "knowledge_scope",
 ]
@@ -142,24 +142,35 @@ def prune_expired(*, now: dt.datetime | None = None) -> int:
     (대화 세션 → 메시지·판단 기록·Escalation 연쇄, 방문자 메모리, 토큰 사용량, 문서)는 여기서 먼저 지운다 —
     세션은 흐름 버전을 PROTECT로 잡고 있어 먼저 지워야 흐름이 지워진다. 감사용 event_store는 지우지 않는다.
     """
+    now = now or timezone.now()
+    ids = list(Tenant.objects.filter(kind=KIND_TRY, try_expires_at__lte=now).values_list("id", flat=True))
+    for tenant_id in ids:
+        delete_try_tenant(tenant_id)
+    from apps.tenants.try_session import prune_ip_days
+
+    prune_ip_days(now=now)  # 하루 비용 누적(TrySpendDay)은 지우지 않는다(#135)
+    return len(ids)
+
+
+def delete_try_tenant(tenant_id: uuid.UUID) -> None:
+    """체험 테넌트 하나를 테넌트째 지운다(정리·옮기기(#42)가 같이 쓴다). 체험 테넌트가 아니면 아무것도 지우지 않는다.
+
+    Tenant FK로 걸린 것(설정·비밀·허용 도메인·흐름·버전·초안·TrySession)은 연쇄로, ``tenant_id`` 칸만 가진 표는
+    여기서 먼저 지운다 — 대화 세션이 흐름 버전을 PROTECT로 잡고 있다. 바깥 트랜잭션이 있으면 그 안에서 돈다.
+    """
     from apps.chat.models import ChatSession
     from apps.memory.models import VisitorMemory
     from apps.rag.models import Document
     from apps.usage.models import TokenUsage
 
-    now = now or timezone.now()
-    ids = list(Tenant.objects.filter(kind=KIND_TRY, try_expires_at__lte=now).values_list("id", flat=True))
-    for tenant_id in ids:
-        with transaction.atomic():
-            ChatSession.objects.filter(tenant_id=tenant_id).delete()
-            VisitorMemory.objects.filter(tenant_id=tenant_id).delete()
-            TokenUsage.objects.filter(tenant_id=tenant_id).delete()
-            Document.objects.filter(tenant_id=tenant_id).delete()
-            Tenant.objects.filter(pk=tenant_id, kind=KIND_TRY).delete()  # TrySession(쿠키 해시)도 연쇄로
-    from apps.tenants.try_session import prune_ip_days
-
-    prune_ip_days(now=now)  # 하루 비용 누적(TrySpendDay)은 지우지 않는다(#135)
-    return len(ids)
+    with transaction.atomic():
+        if not Tenant.objects.filter(pk=tenant_id, kind=KIND_TRY).exists():
+            return
+        ChatSession.objects.filter(tenant_id=tenant_id).delete()
+        VisitorMemory.objects.filter(tenant_id=tenant_id).delete()
+        TokenUsage.objects.filter(tenant_id=tenant_id).delete()
+        Document.objects.filter(tenant_id=tenant_id).delete()
+        Tenant.objects.filter(pk=tenant_id, kind=KIND_TRY).delete()
 
 
 # ── 체험 도서관 ──────────────────────────────────────────────────────────────
