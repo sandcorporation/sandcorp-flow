@@ -4,6 +4,7 @@ import {
   useReactFlow, useUpdateNodeInternals, type Connection, type Edge, type Node, type NodeChange, type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { useAppTheme } from '../hooks/useAppTheme'
 import {
   DEFAULT_HANDLE, edgeKey, errorsByNode, fitViewport, panIntoView, kindLabel, nodeStyle, nodeSummary, outHandles, pathTo,
   type FlowError, type FlowGraph, type FlowNodeJson,
@@ -87,6 +88,7 @@ export type FlowCanvasProps = {
 function Inner(p: FlowCanvasProps) {
   const { graph, errors, selectedId, readOnly } = p
   const rf = useReactFlow()
+  const theme = useAppTheme()
   const wrap = useRef<HTMLDivElement>(null)
   const fitOnMount = useRef(graph.nodes.length > 0) // 빈 흐름에 첫 노드를 더할 때 화면이 튀지 않게, 처음부터 노드가 있을 때만 맞춘다
   const nodesRef = useRef(graph.nodes)
@@ -232,7 +234,7 @@ function Inner(p: FlowCanvasProps) {
         deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
         onInit={() => { if (fitOnMount.current) setTimeout(fit, 50) }}
         minZoom={0.1}
-        colorMode="system"
+        colorMode={theme}
       >
         <Background variant={BackgroundVariant.Lines} gap={24} color="hsl(var(--flow-grid))" />
         <Controls showInteractive={false} />
