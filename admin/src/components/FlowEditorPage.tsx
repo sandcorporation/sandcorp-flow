@@ -16,6 +16,7 @@ import NodeConfigForm from './NodeConfigForm'
 import ClaimedNotice from './ClaimedNotice'
 import { DecisionLog, TestChat, useTestSession } from './TestPanel'
 import { useIsNarrow } from '@/lib/useIsNarrow'
+import { useEmbed } from '@/lib/embed'
 import { turnPath, type TestTurn } from '@/lib/testTrace'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -45,6 +46,7 @@ export default function FlowEditorPage() {
   const [loadError, setLoadError] = useState('')
   const [schemas, setSchemas] = useState<Record<string, { config: object }>>({})
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const embed = useEmbed() // 임베드(#180): 뷰포트 비례 높이를 쓰지 않는다(iframe 높이 ↔ 높이 전달 순환 방지)
   const narrow = useIsNarrow() // 폰: 캔버스는 읽기만, 노드 설정·시험 대화는 하단 시트(#38)
   const [rightTab, setRightTab] = useState<'test' | 'log' | 'config'>('config')
   const [sheet, setSheet] = useState<'config' | 'test' | 'log' | 'versions' | null>(null)
@@ -226,7 +228,7 @@ export default function FlowEditorPage() {
       {narrow ? (
         <>
           {/* 15rem = 머리줄·여백·제목줄(상태 표시가 붙어 두 줄로 접힐 수 있다)·아래 탭 자리. 13rem 이던 때 27px 넘쳐 문서가 끌렸다(#160) */}
-          <div className="relative h-[calc(100dvh-15rem)] min-h-[300px] min-w-0 overflow-hidden border border-line-soft bg-background" data-testid="flow-canvas">
+          <div className={`relative ${embed ? 'h-[480px]' : 'h-[calc(100dvh-15rem)] min-h-[300px]'} min-w-0 overflow-hidden border border-line-soft bg-background`} data-testid="flow-canvas">
             {viewingBar}
             {canvas}
           </div>
@@ -252,7 +254,7 @@ export default function FlowEditorPage() {
           </nav>
         </>
       ) : (
-      <div className="grid gap-3 lg:min-h-[480px] lg:flex-1 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
+      <div data-embed-grid={embed || undefined} className={`grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)_300px] ${embed ? 'lg:h-[640px]' : 'lg:min-h-[480px] lg:flex-1'}`}>
         <aside className="min-w-0 space-y-4 border border-line-soft bg-surface p-3 lg:flex lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-3 lg:overflow-hidden">
           <section aria-label="노드 목록" className="space-y-2 lg:max-h-[38%] lg:shrink-0 lg:overflow-y-auto">
           <h2 className="hmi-label">노드 목록</h2>

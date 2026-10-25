@@ -4,6 +4,7 @@ import { appsTenantsTryApiTrySessionGet } from '../generated/endpoints/try/try'
 import { FlowEditorBackendProvider, tryBackend, tryViewBackend } from '@/lib/flowEditorBackend'
 import { startTry } from '@/lib/tryTemplates'
 import { claimLoginUrl } from '../api'
+import { outboundProps, useEmbed } from '@/lib/embed'
 import { TRY_SESSION_LOST } from '../mutator'
 import { TRIAL_CHANGED } from '../components/TrialBanner'
 import FlowEditorPage from '../components/FlowEditorPage'
@@ -12,7 +13,8 @@ import { Button } from '../components/ui/button'
 
 /** 「이 흐름으로 가입」(#42): 고객 로그인(sandcorp-auth) 뒤 옮기기 화면(/try/claim)으로 돌아와 사본을 내 테넌트로 옮긴다. */
 function SignupLink() {
-  return <Button asChild variant="head" size="sm"><a href={claimLoginUrl()} className="whitespace-nowrap">이 흐름으로 가입</a></Button>
+  const embed = useEmbed() // 임베드(#180)에서는 iframe 을 떠나지 않고 새 탭으로
+  return <Button asChild variant="head" size="sm"><a href={claimLoginUrl()} className="whitespace-nowrap" {...outboundProps(embed)}>이 흐름으로 가입</a></Button>
 }
 
 /** /try/flow/:id(고쳐 보기: 편집기 + 시험 대화) · /try/view/:id(흐름 보기: 템플릿 원본, 읽기 전용). */
