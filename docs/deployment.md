@@ -289,6 +289,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
 | 체험 진입(이 흐름 고쳐 보기) | `https://flow.sandcorp.co.kr/admin-ui/try?template=home` |
 
 - [ ] **nginx 재적재(#142)**: 이번 배포가 `backend/nginx/nginx.oracle.conf`에 `location = /favicon.ico`를 더했다. nginx는 싱글톤이라 rollout 대상이 아니다 — 배포 후 nginx 컨테이너를 재시작(또는 `nginx -s reload`)해야 반영된다. 확인: `curl -sI https://flow.sandcorp.co.kr/favicon.ico`가 200.
+- [ ] **방문 지표 스니펫(#154)**: 운영 `.env`에 `METRICS_SNIPPET_URL=https://metrics.sandcorp.co.kr/m.js`(필요하면 `METRICS_SITE_KEY`, 기본 `flow`)를 넣는다. 방식: nginx 컨테이너가 시작할 때 `backend/nginx/flow-metrics.conf.template`을 envsubst해 `sub_filter`가 랜딩·약관·처리방침·admin `index.html`의 `</head>` 앞에 `<script defer src=… data-site=…>`를 넣는다(위젯 `/embed/`·`/chatbot/`은 제외, URL이 비면 태그 없음). 정적 HTML은 CI에서 빌드돼 env를 굽지 않는다. **반영**: nginx는 싱글톤·rollout 대상이 아니고 env는 컨테이너 시작 때만 읽으므로, `.env`를 바꾼 뒤 `docker compose -f docker-compose.prod.oracle.yml up -d --no-deps --force-recreate nginx`(이번 배포는 nginx.oracle.conf가 바뀌어 deploy.sh가 자동 재생성하므로, `.env`를 **배포 전에** 채워 두면 추가 작업이 없다). 확인: `curl -s https://flow.sandcorp.co.kr/ | grep -o '<script defer src="https://metrics[^>]*>'`가 한 줄, `curl -s https://flow.sandcorp.co.kr/embed/ | grep -c metrics`가 0. 며칠 뒤 metrics(대장의 sandcorp-metrics)에서 key `flow`의 방문 집계와 포트폴리오 Flow 카드·홈 합계를 확인. SPA 경로 전환(pushState)은 m.js가 스스로 잡는다. 시험: `bash scripts/test-nginx-metrics.sh`.
 
 ## 관련 문서
 - [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md) — 무중단 롤링 설계·기각안
