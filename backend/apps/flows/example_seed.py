@@ -51,7 +51,7 @@ def seed_example_knowledge(tenant_id: uuid.UUID, example_id: str, *, force: bool
         raise UnknownExample(example_id)
     media = os.path.join(settings.MEDIA_ROOT, "documents")
     os.makedirs(media, exist_ok=True)
-    docs, failed = [], []
+    docs, failed, ingested = [], [], False
     for item in EXAMPLES[example_id].docs:
         doc_id = _doc_id(tenant_id, example_id, item.name)
         doc, _ = Document.objects.get_or_create(
@@ -60,12 +60,19 @@ def seed_example_knowledge(tenant_id: uuid.UUID, example_id: str, *, force: bool
         if doc.status != Document.STATUS_READY or force:
             with open(os.path.join(media, str(doc_id)), "w", encoding="utf-8") as f:
                 f.write(item.text)
+            ingested = True
             try:
                 ingest_document.apply(args=(str(doc_id), str(tenant_id), "text/plain"), throw=True)
             except Exception:  # 태스크가 Document를 failed로 표시했다 — 나머지 문서를 계속 적재한다
                 failed.append(item.name)
             doc.refresh_from_db()
         docs.append(doc)
+    if ingested:
+        # 적재 직후 그래프는 stale(엔티티 해소 대기)이다. 관리 화면의 「재구축」 버튼을 누를 사람이 없는
+        # 시드 경로에서는 여기서 SAME_AS를 다시 맺고 fresh로 돌린다(#144).
+        from apps.rag.community_builder import rebuild_communities
+
+        rebuild_communities(str(tenant_id))
     if failed:
         raise KnowledgeSeedError(f"{example_id}: {', '.join(failed)} 적재 실패 — 테넌트 Provider 설정을 확인하고 다시 돌리세요.")
     return docs
