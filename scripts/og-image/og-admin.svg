@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Sandcorp Flow">
+  <!-- 링크 공유 카드 원본(1200x630, #186). 마크는 sandcorp-design v0.4.0 assets/flow/icon.svg 그대로, 색은 랜딩과 같은 잉크 #0b0d12·강조 네이비 #1e3a8a. -->
+  <!-- 다시 만들기: scripts/og-image/build.sh (글꼴 Pretendard 필요 — 스크립트 머리 참고). -->
+  <rect width="1200" height="630" fill="#ffffff"/>
+  <defs><clipPath id="m"><rect width="32" height="32" rx="2"/></clipPath></defs>
+  <g transform="translate(96 96) scale(10)" clip-path="url(#m)">
+    <rect width="32" height="32" fill="#1b1d24"/>
+    <path d="M0 21c5-8 10-9 15-5s10 3 17-4v20H0z" fill="#8a6214"/>
+    <path d="M0 26c6-6 11-6 16-2s10 2 16-3v11H0z" fill="#d9ad4c"/>
+    <path d="M6.5 11H12C15 11 15 6.5 18 6.5H25" fill="none" stroke="#f1eee6" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="6.5" cy="11" r="2.8" fill="#f1eee6"/>
+    <circle cx="25.5" cy="6.5" r="2.8" fill="#f1eee6"/>
+  </g>
+  <text x="456" y="232" font-family="Pretendard" font-size="104" font-weight="700" letter-spacing="-3" fill="#0b0d12">Sandcorp</text>
+  <text x="456" y="340" font-family="Pretendard" font-size="104" font-weight="700" letter-spacing="-3" fill="#1e3a8a">Flow</text>
+  <text x="96" y="506" font-family="Pretendard" font-size="46" font-weight="600" fill="#1f2430">가입 없이 상담 챗봇 고쳐 보기</text>
+  <text x="96" y="564" font-family="Pretendard" font-size="28" font-weight="600" letter-spacing="1" fill="#5b6472">flow.sandcorp.co.kr</text>
+  <rect y="606" width="1200" height="24" fill="#1e3a8a"/>
+</svg>
