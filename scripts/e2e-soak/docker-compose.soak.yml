@@ -1,0 +1,9 @@
+# e2e 부하 재현(#177) 겹침 파일 — scripts/e2e-soak/soak.sh 가 docker-compose.test.yml 위에 겹친다.
+# api-e2e 를 계측 래퍼(timing_asgi.py)로 띄운다. 워커 수는 E2E_API_WORKERS(기본 2)로 바꿔 볼 수 있다.
+services:
+  api-e2e:
+    environment:
+      E2E_ASGI_APP: soak_timing:app
+      E2E_API_WORKERS: ${E2E_API_WORKERS:-2}
+    volumes:
+      - ./scripts/e2e-soak/timing_asgi.py:/app/soak_timing.py:ro

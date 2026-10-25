@@ -128,7 +128,7 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
 |---|---|---|---|
 | db (pgvector) | 512M | 21M | shared_buffers 128MB + `max_connections=60`(앱 프로세스 합 ~15). 베타 규모 |
 | redis | 256M | 4M | `maxmemory 192mb` + `noeviction` — 브로커·스트림이라 evict 금지, 차면 쓰기 오류로 드러남 |
-| api | 512M | 161M | uvicorn 2 프로세스(async라 프로세스당 동시 SSE 다수). 1로 줄이면 롤아웃·이벤트루프 막힘 시 단일 장애점이라 2 유지 |
+| api | 512M | 161M → 약 300M(#177) | uvicorn 2 프로세스(async라 프로세스당 동시 SSE 다수). 1로 줄이면 롤아웃·이벤트루프 막힘 시 단일 장애점이라 2 유지. #177부터 워커가 시작 때 async 경로의 지연 import(langgraph·langchain_openai/anthropic·openai·taskiq)를 미리 불러 프로세스당 약 +70M — 시험 턴·메시지 enqueue를 처음 할 때 어차피 오르던 몫을 앞당긴 것(실측: setup 뒤 67M → warm_up 뒤 165M, 그중 URLconf ~28M은 원래 첫 요청에 오름) |
 | worker (Celery 배치) | 768M | 143M | `--concurrency=2`로 고정(기본은 코어 수=4 자식 상주). 인입은 문서 몇 건씩이라 2로 충분, 피크는 PDF·그래프 빌드 |
 | worker-chat (taskiq) | 512M | 151M | 프로세스 2 × 동시 25 유지 — LLM 대기 I/O 위주라 메모리가 아니라 동시성 한도 |
 | relay | 128M | 67M | outbox → Streams 중계, 1프로세스 |
