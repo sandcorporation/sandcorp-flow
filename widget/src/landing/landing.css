@@ -63,6 +63,7 @@ html, body { margin: 0; background: var(--color-canvas); }
   font-family: var(--flow-font-sans);
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
+  word-break: keep-all;      /* 한글을 낱글자 중간에서 끊지 않는다 */
   overflow-wrap: anywhere;
 }
 .landing a { color: var(--color-accent); text-decoration: none; }
