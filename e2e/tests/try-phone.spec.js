@@ -33,6 +33,17 @@ const noScrollDrag = (page) => page.evaluate(() => {
 })
 /** 폰 편집기는 한 화면에 들어간다 — 문서가 뷰포트보다 길면 아무 스크롤(Playwright 의 클릭 보정 포함)이 window 를 끌고 간다(#160). */
 const noVerticalOverflow = (page) => page.evaluate(() => document.scrollingElement.scrollHeight - document.scrollingElement.clientHeight)
+/** 화면 맞춤 버튼을 누르고 뷰포트가 멈출 때까지 기다린다 — 앞 단계의 끌기(팬)가 그래프를 화면 밖으로 밀었어도 노드를 누를 수 있게(#167). */
+const refit = async (page) => {
+  await page.getByRole('button', { name: 'fit view' }).click()
+  let last = ''
+  await expect.poll(async () => {
+    const now = await viewportOf(page)
+    const same = now === last
+    last = now
+    return same
+  }, { intervals: [100, 100, 200, 300] }).toBe(true)
+}
 const viewportOf = (page) => page.locator('.react-flow__viewport').evaluate((el) => getComputedStyle(el).transform)
 
 test.describe('폰 모드 — 실제 스택', () => {
@@ -75,7 +86,8 @@ test.describe('폰 모드 — 실제 스택', () => {
     expect(await nodes.count()).toBe(nodeCount)
     expect(await noScrollDrag(page)).toEqual([])
 
-    // 노드를 누르면 설정 시트
+    // 노드를 누르면 설정 시트 — 읽기 전용 캔버스에서 손잡이를 끌면 팬이 될 수 있으니(트레이스에서 그래프가 화면 밖으로 밀린 것을 봄) 먼저 화면에 맞춘다
+    await refit(page)
     await page.locator('[data-node-id="general"]').click()
     const sheet = page.getByRole('dialog', { name: '노드 설정' })
     await expect(sheet).toBeVisible()

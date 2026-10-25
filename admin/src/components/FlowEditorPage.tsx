@@ -57,8 +57,9 @@ export default function FlowEditorPage() {
   const sheetRef = useRef<HTMLElement>(null) // 폰 하단 시트 — 캔버스가 고른 노드를 시트 위로 옮길 때 높이를 잰다(#150)
   const spotRef = useRef<(() => { x: number; y: number }) | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (stale?: () => boolean) => {
     const d = await backend.loadFlow(id)
+    if (stale?.()) return // 더 새 불러오기가 있다 — 늦은 응답이 그 사이 편집을 덮지 않게 버린다(#167)
     setName(d.flow.name)
     const raw = d.draft.graph as unknown as Partial<FlowGraph>
     setGraph({ nodes: raw.nodes ?? [], edges: raw.edges ?? [] })
@@ -95,7 +96,10 @@ export default function FlowEditorPage() {
   }, [backend])
 
   useEffect(() => {
-    load().then(() => setLoaded(true)).catch(() => setLoadError('흐름을 불러오지 못했습니다.'))
+    // StrictMode(개발 서버)는 이 효과를 두 번 돌린다 — 앞 응답만 먼저 와서 화면이 열린 뒤 뒤 응답이 편집을 지우던 경합(#167).
+    let cancelled = false
+    load(() => cancelled).then(() => { if (!cancelled) setLoaded(true) }).catch(() => { if (!cancelled) setLoadError('흐름을 불러오지 못했습니다.') })
+    return () => { cancelled = true }
   }, [load])
 
   /** 화면에 먼저 반영하고, 연산을 순서대로 하나씩 보낸다. 거절되면 서버 초안으로 다시 맞춘다. */
