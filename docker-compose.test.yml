@@ -118,8 +118,9 @@ services:
       OPEN_ROUTER_API_KEY: fake
       OPEN_ROUTER_DEFAULT_MODEL: fake-llm
       OLLAMA_BASE_URL: http://ollama-test:11434
+      # flow.flowtest.test 는 임베드 e2e(#181)의 flow 호스트 별칭.
       # Vite 프록시(changeOrigin)가 Host 를 api-e2e:8000 으로 바꾸므로 브라우저 Origin(admin-e2e)을 허용해야 /api/try 쓰기가 통한다(#37). 운영 검사는 그대로.
-      TRY_ALLOWED_ORIGINS: http://admin-e2e:5174,http://localhost:5174
+      TRY_ALLOWED_ORIGINS: http://admin-e2e:5174,http://localhost:5174,http://flow.flowtest.test:5174
       # e2e는 브라우저가 모두 같은 IP다 — /try 고쳐 보기 스펙(try-flow·try-phone·try-claim ×3)이 하루 3세션 한도를 넘는다(#42). 한도 자체는 백엔드 시험 몫.
       TRY_SESSIONS_PER_IP_PER_DAY: "50"
     volumes:
