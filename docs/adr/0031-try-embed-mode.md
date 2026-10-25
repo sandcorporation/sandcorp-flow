@@ -15,7 +15,7 @@ portfolio(sandcorp.co.kr)가 홈 화면 안에서 「고쳐 보기」 체험을 
 - **임베드 판정은 `?embed=1` 쿼리 → 메모리 + sessionStorage.** SPA 이동·새로고침에도 유지되고, `noopener`로 여는 새 탭엔 따라가지 않아 새 탭은 일반 화면이다.
 - **높이는 hello 규약.** 부모가 `{type:'sandcorp-flow:hello'}`를 보내면 iframe이 `event.source === window.parent`일 때만 `event.origin`으로 `{type:'sandcorp-flow:height', height}`를 보낸다.
   허용 출처 목록을 SPA에 내려보내지 않으려는 선택이다(목록은 nginx `frame-ancestors`에만 있다). iframe이 떴다는 것은 브라우저가 조상 전부를 허용했다는 뜻이고, 보내는 것은 높이 숫자뿐이다. `'*'`는 쓰지 않는다. 임베드에선 뷰포트 단위를 쓰지 않아(폰 캔버스 480px·넓은 폭 격자 640px 고정) 호스트가 iframe을 키워도 순환하지 않는다.
-- **바깥 링크·「이 흐름으로 가입」은 새 탭**(`target=_blank rel=noopener`). 가입은 sandcorp-auth 최상위 이동이 필요하고(iframe 안에선 로그인 화면이 프레임 거부), 새 탭은 같은 사이트라 같은 체험 쿠키로 같은 세션을 옮긴다.
+- **바깥 링크·「이 흐름으로 가입」은 새 탭**(`target=_blank rel=noopener`). 가입은 sandcorp-auth 최상위 이동이 필요하고(로그인 화면을 iframe 안에서 열지 않는다), 새 탭은 같은 사이트라 같은 체험 쿠키로 같은 세션을 옮긴다.
 - **자동 세션 생성 금지.** `template=home`이어도 홈 카드가 골라진 첫 화면에서 「고쳐 보기 시작」을 한 번 눌러야 세션이 생긴다. 방문마다 세션을 만들면 봇·새로고침이 IP 하루 3세션과 전체 하루 $5 한도를 쓴다(대장 결정).
 
 ## Consequences
