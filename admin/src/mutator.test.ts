@@ -76,3 +76,32 @@ describe('customInstance — 비-2xx throw', () => {
       .rejects.toMatchObject({ status: 500 })
   })
 })
+
+describe('customInstance — 공개 체험 API(/api/try, #37)', () => {
+  it('Authorization 을 싣지 않고 쿠키(credentials)만 쓴다 — 로그인 중이어도', async () => {
+    setAccess('agent', 'ag-tok')
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, status: 200, headers: new Headers(), text: async () => '{}' })
+    globalThis.fetch = fetchMock
+
+    await customInstance('/api/try/session/', { method: 'GET' })
+
+    const init = fetchMock.mock.calls[0][1]
+    expect(new Headers(init.headers).get('Authorization')).toBeNull()
+    expect(init.credentials).toBe('include')
+  })
+
+  it('401 은 refresh 를 시도하지 않고 try_no_session 이면 세션 끊김을 알린다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false, status: 401, headers: new Headers(), text: async () => JSON.stringify({ detail: '없음', code: 'try_no_session' }),
+    })
+    globalThis.fetch = fetchMock
+    const lost = vi.fn()
+    window.addEventListener('flow:try-session-lost', lost)
+
+    await expect(customInstance('/api/try/flows/f1/', { method: 'GET' })).rejects.toMatchObject({ status: 401 })
+
+    window.removeEventListener('flow:try-session-lost', lost)
+    expect(fetchMock).toHaveBeenCalledTimes(1) // /auth/refresh 호출 없음, 재시도 없음
+    expect(lost).toHaveBeenCalledTimes(1)
+  })
+})

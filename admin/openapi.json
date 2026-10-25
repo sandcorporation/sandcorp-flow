@@ -2370,6 +2370,36 @@
         "title": "TryStartIn",
         "type": "object"
       },
+      "TryTemplateDetailOut": {
+        "properties": {
+          "documents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/JSON"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "documents",
+          "graph"
+        ],
+        "title": "TryTemplateDetailOut",
+        "type": "object"
+      },
       "TryTemplateOut": {
         "properties": {
           "documents": {
@@ -6597,6 +6627,39 @@
           }
         },
         "summary": "Try Templates",
+        "tags": [
+          "try"
+        ]
+      }
+    },
+    "/api/try/templates/{template_id}/": {
+      "get": {
+        "description": "「흐름 보기」 — 세션을 만들지 않고 예제의 흐름 그래프를 읽기 전용으로 준다(IP 한도를 쓰지 않는다).",
+        "operationId": "apps_tenants_try_api_try_template_detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TryTemplateDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Try Template Detail",
         "tags": [
           "try"
         ]

@@ -3,7 +3,8 @@ import { appsMemoryApiGetSessionDecisionTraces } from '../generated/endpoints/se
 import { appsTenantsApiGetTrial } from '../generated/endpoints/tenant/tenant'
 import { HttpError } from '../mutator'
 import type { FlowError, FlowGraph } from '@/lib/flowGraph'
-import { streamTestTurn } from '@/lib/testStream'
+import { useFlowEditorBackend } from '@/lib/flowEditorBackend'
+import { tryRefusal, type TryRefusal } from '@/lib/tryRefusal'
 import {
   entryLabel, formatCost, formatTokens, notRunMessage, restoredTurns, sessionTotals, turnTotals,
   type SseEvent, type TestTurn, type Totals, type TraceEntry,
@@ -22,12 +23,15 @@ const remember = (flowId: string, id: string | null) => {
 
 /** 시험 대화 상태: 같은 session_id 로 턴을 이어 가고(재개 지점), 「새 대화」로 비운다. */
 export function useTestSession(flowId: string, beforeSend: () => Promise<void>) {
+  const backend = useFlowEditorBackend()
+  const [refusal, setRefusal] = useState<TryRefusal | null>(null) // 체험 한도 사유(done.code) — 마지막 턴 기준
   const [turns, setTurns] = useState<TestTurn[]>([])
   const [busy, setBusy] = useState(false)
   const sessionRef = useRef<string | null>(null)
   const nextN = useRef(1)
 
   useEffect(() => {
+    if (!backend.restoreTraces) return // 체험엔 저장된 판단 기록 API 가 없다 — SSE trace 로만 그린다
     let id: string | null = null
     try { id = window.localStorage.getItem(sessionKey(flowId)) } catch { /* 저장소 불가 */ }
     if (!id) return
@@ -43,7 +47,7 @@ export function useTestSession(flowId: string, beforeSend: () => Promise<void>) 
       })
       .catch(() => { if (alive) remember(flowId, null) }) // 세션이 없어졌다 — 기억을 지운다
     return () => { alive = false }
-  }, [flowId])
+  }, [flowId, backend])
 
   const patchLast = (f: (t: TestTurn) => TestTurn) => setTurns((ts) => ts.map((t, i) => (i === ts.length - 1 ? f(t) : t)))
 
@@ -51,25 +55,28 @@ export function useTestSession(flowId: string, beforeSend: () => Promise<void>) 
     setBusy(true)
     const n = nextN.current++
     setTurns((ts) => [...ts, blank(n, message)])
-    let done: { ran: boolean; note: string; errors: FlowError[] } | null = null
+    let done: { ran: boolean; note: string; errors: FlowError[]; code: string | null } | null = null
     const onEvent = ({ event, data }: SseEvent) => {
       if (event === 'trace') patchLast((t) => ({ ...t, entries: [...t.entries, data as TraceEntry] }))
       else if (event === 'reply') patchLast((t) => ({ ...t, reply: String(data.text ?? '') }))
       else if (event === 'done') {
-        if (data.session_id) { sessionRef.current = String(data.session_id); remember(flowId, sessionRef.current) }
-        done = { ran: !!data.ran, note: String(data.note ?? ''), errors: (data.errors ?? []) as FlowError[] }
+        if (data.session_id) { sessionRef.current = String(data.session_id); if (backend.restoreTraces) remember(flowId, sessionRef.current) }
+        done = { ran: !!data.ran, note: String(data.note ?? ''), errors: (data.errors ?? []) as FlowError[], code: data.code ? String(data.code) : null }
         patchLast((t) => ({ ...t, ran: done!.ran, handoff: !!data.handoff, note: done!.note, errors: done!.errors }))
       }
     }
     try {
       await beforeSend() // 편집 중인 초안 저장이 끝난 뒤에 시험한다
-      await streamTestTurn(flowId, message, sessionRef.current, onEvent)
+      setRefusal(null)
+      await backend.streamTest(flowId, message, sessionRef.current, onEvent)
       if (done) notifyTrialChanged() // 턴이 끝났으니 상단 체험 배너의 남은 턴을 다시 읽게 한다(#103)
       if (done && !(done as { ran: boolean }).ran) {
-        const d = done as { note: string; errors: FlowError[] }
+        const d = done as { note: string; errors: FlowError[]; code: string | null }
+        const why = tryRefusal(d.code, d.note)
+        if (why) setRefusal(why)
         let trial: string | null = null
-        if (d.errors.length === 0) trial = await appsTenantsApiGetTrial().then((r) => (r.data as { state?: string }).state ?? null).catch(() => null)
-        patchLast((t) => ({ ...t, failure: notRunMessage(d.errors, d.note, trial) }))
+        if (!why && backend.askTrial && d.errors.length === 0) trial = await appsTenantsApiGetTrial().then((r) => (r.data as { state?: string }).state ?? null).catch(() => null)
+        patchLast((t) => ({ ...t, failure: why ? '' : notRunMessage(d.errors, d.note, trial) }))
       }
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 0
@@ -80,19 +87,20 @@ export function useTestSession(flowId: string, beforeSend: () => Promise<void>) 
       patchLast((t) => ({ ...t, pending: false }))
       setBusy(false)
     }
-  }, [flowId, beforeSend])
+  }, [flowId, beforeSend, backend])
 
-  const reset = useCallback(() => { sessionRef.current = null; remember(flowId, null); nextN.current = 1; setTurns([]) }, [flowId])
-  return { turns, busy, send, reset }
+  const reset = useCallback(() => { sessionRef.current = null; if (backend.restoreTraces) remember(flowId, null); nextN.current = 1; setTurns([]); setRefusal(null) }, [flowId, backend])
+  return { turns, busy, send, reset, refusal }
 }
 
-export function TestChat({ turns, busy, send, reset, readOnly }: {
-  turns: TestTurn[]; busy: boolean; send: (m: string) => void; reset: () => void; readOnly: boolean
+export function TestChat({ turns, busy, send, reset, readOnly, refusal }: {
+  turns: TestTurn[]; busy: boolean; send: (m: string) => void; reset: () => void; readOnly: boolean; refusal?: TryRefusal | null
 }) {
+  const closed = refusal?.closed === true // 세션 턴을 다 쓴 뒤엔 더 보내지 않는다
   const [text, setText] = useState('')
   const submit = () => {
     const m = text.trim()
-    if (!m || busy || readOnly) return
+    if (!m || busy || readOnly || closed) return
     setText('')
     send(m)
   }
@@ -103,6 +111,12 @@ export function TestChat({ turns, busy, send, reset, readOnly }: {
         <Button type="button" variant="outline" size="sm" onClick={reset} disabled={busy || turns.length === 0}>새 대화</Button>
       </div>
       {readOnly && <p className="border-l-2 border-line-soft pl-2 text-sm text-muted-foreground">관리자만 시험 대화를 돌릴 수 있습니다. 판단 기록은 볼 수 있습니다.</p>}
+      {refusal && (
+        <p role="alert" data-code={refusal.code} className="space-y-0.5 border-l-2 border-alarm pl-2 text-sm">
+          <strong className="block text-ink">{refusal.title}</strong>
+          <span className="block text-muted-foreground">{refusal.text}</span>
+        </p>
+      )}
       <ol className="space-y-2" aria-live="polite">
         {turns.map((t) => (
           <li key={t.n} className="space-y-1.5 text-sm">
@@ -117,11 +131,11 @@ export function TestChat({ turns, busy, send, reset, readOnly }: {
       </ol>
       <div className="flex items-end gap-2">
         <Textarea
-          aria-label="시험 메시지" rows={2} value={text} disabled={readOnly} placeholder="방문자처럼 말해 보세요"
+          aria-label="시험 메시지" rows={2} value={text} disabled={readOnly || closed} placeholder="방문자처럼 말해 보세요"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit() } }}
         />
-        <Button type="button" onClick={submit} disabled={readOnly || busy || !text.trim()}>보내기</Button>
+        <Button type="button" onClick={submit} disabled={readOnly || closed || busy || !text.trim()}>보내기</Button>
       </div>
     </section>
   )

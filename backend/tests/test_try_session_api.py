@@ -94,6 +94,29 @@ def test_templates_are_public_and_list_every_example(client):
 
 
 @pytest.mark.django_db
+def test_template_detail_is_public_and_gives_the_graph_without_a_session(client):
+    """「흐름 보기」(읽기 전용)는 세션·쿠키 없이 예제의 흐름 그래프를 읽는다(#37). 세션 한도를 쓰지 않는다."""
+    from apps.tenants.models import TrySession
+
+    r = client.get(f"{BASE}/templates/shop_support/")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["id"] == "shop_support" and body["name"]
+    assert body["graph"]["nodes"] and "edges" in body["graph"]
+    assert isinstance(body["documents"], list)
+    assert TrySession.objects.count() == 0 and "sf_try" not in r.cookies
+
+
+@pytest.mark.django_db
+def test_template_detail_unknown_is_404_with_code(client):
+    r = client.get(f"{BASE}/templates/nope/")
+
+    assert r.status_code == 404
+    assert r.json()["code"] == "unknown_template"
+
+
+@pytest.mark.django_db
 def test_start_sets_an_httponly_strict_cookie_and_stores_only_its_hash(client):
     from apps.tenants.models import Tenant, TrySession
 

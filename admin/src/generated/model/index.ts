@@ -187,6 +187,7 @@ export * from './trialOut';
 export * from './trialOutState';
 export * from './trySessionOut';
 export * from './tryStartIn';
+export * from './tryTemplateDetailOut';
 export * from './tryTemplateOut';
 export * from './upsertNode';
 export * from './upsertNodeCode';

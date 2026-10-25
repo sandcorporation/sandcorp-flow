@@ -24,7 +24,7 @@ from pydantic import Field
 
 from apps.flows import services
 from apps.flows.api import DraftOut, DraftPatchIn, DraftPutIn, FlowDetailOut, TestTurnIn, _draft_out, flow_detail_body, stream_test_turn
-from apps.flows.example_catalog import EXAMPLES
+from apps.flows.example_catalog import EXAMPLES, example_graph
 from apps.flows.schema import JSON, NODE_CONFIG_MODELS
 from apps.tenants import trial, try_session, try_tenant
 from apps.tenants.models import Tenant, TenantConfig, TrySession
@@ -38,6 +38,13 @@ class TryTemplateOut(Schema):
     id: str
     name: str
     documents: list[str]
+
+
+class TryTemplateDetailOut(Schema):
+    id: str
+    name: str
+    documents: list[str]
+    graph: JSON
 
 
 class TryStartIn(Schema):
@@ -82,6 +89,15 @@ def _session_out(session: TrySession) -> dict[str, object]:
 def try_templates(request):
     """`/try?template=…` 진입용 예제 목록(인증 없음)."""
     return [{"id": ex.id, "name": ex.name, "documents": [d.name for d in ex.docs]} for ex in EXAMPLES.values()]
+
+
+@try_router.get("/templates/{template_id}/", response=TryTemplateDetailOut)
+def try_template_detail(request, template_id: str):
+    """「흐름 보기」 — 세션을 만들지 않고 예제의 흐름 그래프를 읽기 전용으로 준다(IP 한도를 쓰지 않는다)."""
+    ex = EXAMPLES.get(template_id)
+    if ex is None:
+        raise TryRefused("알 수 없는 예제입니다.", code=try_session.UNKNOWN_TEMPLATE)
+    return {"id": ex.id, "name": ex.name, "documents": [d.name for d in ex.docs], "graph": example_graph(ex.id)}
 
 
 @try_router.get("/node-schema/", response=dict[str, dict[str, JSON]])

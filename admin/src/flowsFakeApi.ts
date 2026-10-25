@@ -6,7 +6,7 @@ import nodeSchema from './lib/__fixtures__/nodeSchema.json'
 export type FakeVersion = { number: number; note: string; created_by_name: string | null; created_at: string; deployed?: boolean; hash?: string }
 export type FakeRequest = { id: string; flow_id: string; flow_name: string; version: number; status: string; requested_by_name: string | null; decided_by_name: string | null; decided_at: string | null; decision_note: string; created_at: string }
 
-export type Call = { method: string; path: string; body: any }
+export type Call = { method: string; path: string; body: any; init?: RequestInit }
 
 export function fakeFlowsApi(opts: {
   graph: FlowGraph
@@ -33,6 +33,14 @@ export function fakeFlowsApi(opts: {
   me?: { name: string; email: string }
   /** GET /sessions/{id}/decision-traces/ 가 돌려줄 값(세션 id → 응답). 없는 세션은 404. */
   traces?: Record<string, object>
+  /** 공개 체험 API(/api/try/…) 대역 — 주면 템플릿·세션 응답도 흉내 낸다(#37). */
+  try?: {
+    templates?: { id: string; name: string; documents: string[] }[]
+    /** GET session/ 이 돌려줄 값. null 이면 401 try_no_session. */
+    session?: { flow_id: string; template: string; turns_remaining: number } | null | (() => { flow_id: string; template: string; turns_remaining: number } | null)
+    /** POST sessions/ 의 상태(기본 201, 본문은 session). 429 면 {detail, code:'try_ip_limit'}. */
+    startStatus?: number
+  }
 }) {
   const calls: Call[] = []
   const state = { errors: opts.errors ?? [] }
@@ -57,7 +65,25 @@ export function fakeFlowsApi(opts: {
     const path = String(input)
     const method = (init?.method ?? 'GET').toUpperCase()
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
-    calls.push({ method, path, body })
+    calls.push({ method, path, body, init })
+    if (path.includes('/api/try/')) {
+      const t = opts.try ?? {}
+      const sess = typeof t.session === 'function' ? t.session() : t.session
+      if (method === 'GET' && path.endsWith('/api/try/templates/')) return json(200, t.templates ?? [])
+      const td = path.match(/\/api\/try\/templates\/([^/]+)\/$/)
+      if (method === 'GET' && td) {
+        const found = (t.templates ?? []).find((x) => x.id === td[1])
+        return found ? json(200, { ...found, graph: opts.graph }) : json(404, { detail: '알 수 없는 예제입니다.', code: 'unknown_template' })
+      }
+      if (method === 'GET' && path.endsWith('/api/try/session/')) return sess ? json(200, { expires_at: '2026-10-26T09:00:00Z', ...sess }) : json(401, { detail: '체험 세션이 없습니다.', code: 'try_no_session' })
+      if (method === 'POST' && path.endsWith('/api/try/sessions/')) {
+        if (t.startStatus && t.startStatus !== 201) return json(t.startStatus, { detail: '오늘 이 네트워크에서 만들 수 있는 체험을 모두 만들었어요. 내일 다시 찾아 주세요.', code: 'try_ip_limit' })
+        return json(201, { expires_at: '2026-10-26T09:00:00Z', ...(sess ?? { flow_id: 'f1', template: body.template, turns_remaining: 20 }) })
+      }
+      if (method === 'GET' && path.endsWith('/api/try/node-schema/')) return json(200, { kinds: nodeSchema })
+      if (!sess && !path.endsWith('/api/try/node-schema/')) return json(401, { detail: '체험 세션이 없습니다.', code: 'try_no_session' })
+      if (method === 'POST' && path.endsWith('/deploy/')) return json(403, { detail: '체험 흐름은 배포할 수 없습니다.', code: 'try_restricted' })
+    }
     if (method === 'GET' && path.endsWith('/api/tenant/flows/')) return json(200, flowList())
     const archived = method === 'DELETE' ? path.match(/\/api\/tenant\/flows\/([^/]+)\/$/) : null
     if (archived) {

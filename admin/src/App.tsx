@@ -4,6 +4,8 @@ import { FileText, Network, Users, Settings, UserCog, Headphones, Building2, Bar
 import OperatorLogin from './pages/OperatorLogin'
 import OperatorTenants from './pages/OperatorTenants'
 import TenantLogin from './pages/TenantLogin'
+import TryPage from './pages/TryPage'
+import TryFlowPage from './pages/TryFlowPage'
 import TrialBanner from './components/TrialBanner'
 import DashboardLayout, { NavItem } from './components/DashboardLayout'
 import DocumentsTab from './components/DocumentsTab'
@@ -124,6 +126,11 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/operator" replace />} />
+
+      {/* 로그인 없는 체험(#37): 인증 게이트·대시보드 셸 밖이다 */}
+      <Route path="/try" element={<TryPage />} />
+      <Route path="/try/flow/:id" element={<TryFlowPage />} />
+      <Route path="/try/view/:id" element={<TryFlowPage view />} />
 
       <Route path="/operator" element={operatorEl}>
         <Route index element={<Navigate to="tenants" replace />} />
