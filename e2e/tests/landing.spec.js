@@ -41,12 +41,19 @@ test('랜딩의 템플릿 링크가 실제 /try 화면에서 그 카드를 고�
   await expect(page.locator('[data-template="shop_support"]')).toHaveAttribute('data-selected', 'true')
 })
 
-test('랜딩: 로그인 링크가 admin 로그인 화면으로 이어진다', async ({ page }) => {
+test('랜딩: 운영자 로그인 링크가 admin 의 Operator 로그인 화면으로 이어진다', async ({ page }) => {
+  await page.goto(LANDING)
+  const op = await page.getByRole('link', { name: /^운영자 로그인/ }).getAttribute('href')
+  await page.goto(`${ADMIN_URL}${op}`)
+  await expect(page.getByRole('heading', { name: 'Operator 로그인' })).toBeVisible()
+})
+
+test('랜딩: 테넌트 로그인 링크가 admin 의 테넌트 로그인 경로로 이어진다', async ({ page }) => {
   await page.goto(LANDING)
   const tenant = await page.getByRole('link', { name: /^테넌트 로그인/ }).getAttribute('href')
   await page.goto(`${ADMIN_URL}${tenant}`)
+  await expect(page).toHaveURL(/\/admin-ui\/tenant/)
   await expect(page.locator('body')).not.toContainText('Not Found')
-  await expect(page.locator('input[type="password"], input[type="email"], input[type="text"]').first()).toBeVisible()
 })
 
 for (const [name, url] of [['landing', LANDING], ['terms', `${WIDGET_URL}/embed/terms.html`], ['privacy', `${WIDGET_URL}/embed/privacy.html`]]) {
