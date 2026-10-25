@@ -140,14 +140,13 @@ HTTP 도구 보안은 [ADR-0029](adr/0029-http-tool-node-security.md). 용어는
 |---|---|---|---|
 | `GET /orders/{번호}` | 경로의 주문 번호(숫자 4~12자리) | `{"found": true, "order_no": "10021", "status": "shipping", "status_label": "배송 중", "item": "…", "carrier": "샌드택배", "tracking_no": "SC0000010021"}` · 없으면 `{"found": false, "order_no": "10020"\|null, "status": "not_found", "status_label": "주문을 찾을 수 없음"}` | — |
 | `POST /reservations` | 본문 `{"date": "YYYY-MM-DD", "level": "beginner\|intermediate\|advanced\|초급\|중급\|고급", "name"?: 글}` | `{"reserved": true, "reservation_no": "LT-20261103-1A2B", "date": "2026-11-03", "time": "15:00", "level": "beginner", "level_label": "초급"}` (시각: 초급 15:00·중급 17:00·고급 19:00) | 400 `{"reserved": false, "error": "invalid_json\|invalid_date\|invalid_level"}` |
-| `POST /inquiries` | 본문 `{"message": 비지 않은 글, "name"?: 글, "contact"?: 글}` | `{"received": true, "inquiry_no": "Q-1A2B3C", "status": "received", "reply_within": "영업일 기준 1일 이내"}` | 400 `{"received": false, "error": "invalid_json\|missing_message"}` |
 
 - **주문 번호 규칙**: 끝자리 `1`~`3` → `shipping`(배송 중), `4`~`6` → `delivered`(배송 완료), `7`~`9` → `preparing`(상품 준비 중), `0`이나 숫자 4~12자리가
   아니면 → `found: false`·`not_found`(200 — 조건 노드로 가른다).
 - **실패 흉내**(error 갈래 시연): 주문 번호 `9500` → HTTP 500(`http_error`), `9408` → `timeout`. 어느 경로든 쿼리 `?simulate=error` → 500,
   `?simulate=timeout` → `timeout`. 지연은 실제로 기다리지 않는다(흉내 지연 30초가 5초 한도를 넘어 바로 `timeout`).
 - 모르는 경로 → 404 `{"error": "not_found"}`, 메서드가 틀리면 405 — 둘 다 `http_error`.
-- 번호(`reservation_no`·`inquiry_no`)는 입력의 해시 앞자리라 같은 입력이면 같다.
+- 번호(`reservation_no`)는 입력의 해시 앞자리라 같은 입력이면 같다.
 
 ### 비밀은 참조만
 

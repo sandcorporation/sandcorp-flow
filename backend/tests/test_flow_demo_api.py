@@ -114,20 +114,19 @@ async def test_bad_reservation_takes_the_error_branch_as_http_400(tenant_with_ke
 
 
 @pytest.mark.django_db(transaction=True)
-async def test_inquiry_is_received_with_a_number(tenant_with_key, net):
+async def test_removed_inquiries_path_is_not_found(tenant_with_key, net):
+    """#164: POST /inquiries는 지웠다 — 모르는 경로와 같이 404 http_error(쿼리·본문이 달라도)."""
     tenant, _ = tenant_with_key
-    flow = _flow({
-        "method": "POST", "url": f"{BASE}/inquiries",
-        "body_template": '{"name": "김샌드", "contact": "010-0000-0000", "message": "{{state.user_message}}"}',
-        "save": {"received": "$.received", "no": "$.inquiry_no", "status": "$.status"},
-    })
 
-    result, _ = await _turn(tenant, flow, "챗봇 도입 견적이 궁금해요")
+    plain, _ = await _turn(tenant, _flow({"method": "POST", "url": f"{BASE}/inquiries",
+                                          "body_template": '{"message": "견적이 궁금해요"}'}))
+    simulated, _ = await _turn(tenant, _flow({"method": "POST", "url": f"{BASE}/inquiries?simulate=error",
+                                              "body_template": '{"message": "x"}'}))
 
-    assert _path(result) == ["s", "h", "ok"]
-    assert result["fields"]["received"] is True and result["fields"]["status"] == "received"
-    no = result["fields"]["no"]
-    assert no.startswith("Q-") and len(no) == len("Q-ABCDEF")
+    for result in (plain, simulated):
+        record = _http_entry(result)["record"]
+        assert _path(result) == ["s", "h", "failed"]
+        assert (record["error"], record["status"]) == ("http_error", 404)
     _no_network(net)
 
 
@@ -151,11 +150,11 @@ async def test_unknown_path_and_wrong_method_are_http_errors(tenant_with_key, ne
     (f"{BASE}/orders/{{{{state.user_message}}}}", "9408", "timeout", None),
     (f"{BASE}/orders/10021?simulate=error", "", "http_error", 500),
     (f"{BASE}/orders/10021?simulate=timeout", "", "timeout", None),
-    (f"{BASE}/inquiries?simulate=error", "", "http_error", 500),
+    (f"{BASE}/reservations?simulate=error", "", "http_error", 500),
 ])
 async def test_failure_simulation_takes_the_error_branch(tenant_with_key, net, url, message, code, status):
     tenant, _ = tenant_with_key
-    method = "POST" if "inquiries" in url else "GET"
+    method = "POST" if "reservations" in url else "GET"
     flow = _flow({"method": method, "url": url, "body_template": '{"message": "x"}' if method == "POST" else None,
                   "save": {"status": "$.status"}})
 
@@ -197,10 +196,10 @@ async def test_secrets_sent_to_the_fake_api_never_come_back(tenant_with_key, net
     key = "sk-" + pysecrets.token_hex(12)
     await adb(_setup)(tenant.id, domains=(), secrets={"demo_key": key})
     graph = _flow({
-        "method": "POST", "url": f"{BASE}/inquiries",
+        "method": "POST", "url": f"{BASE}/reservations",
         "headers": {"Authorization": "Bearer {{secret.demo_key}}", "X-Api-Key": "{{secret.demo_key}}"},
         "body_template": '{"name": "{{secret.demo_key}}", "message": "{{secret.demo_key}}"}',
-        "save": {"no": "$.inquiry_no", "all": "$"},
+        "save": {"no": "$.reservation_no", "all": "$"},
     })
     flow = await adb(services.create_flow)(tenant.id, "demo", graph)
 
