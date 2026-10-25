@@ -17,7 +17,7 @@ const shot = async (page, name) => {
 /** 응답 상태가 4xx 인 것을 모은다(콘솔 401 오류의 근원). /api/try/session/ 401 은 「아직 체험 세션 없음」을 묻는 의도된 질의라 뺀다(TryPage). */
 function watch4xx(page) {
   const bad = []
-  page.on('response', (r) => { if (r.status() >= 400 && r.status() < 500 && !r.url().endsWith('/api/try/session/')) bad.push(`${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`) })
+  page.on('response', (r) => { if (r.status() >= 400 && r.status() < 500) bad.push(`${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`) })
   return bad
 }
 
