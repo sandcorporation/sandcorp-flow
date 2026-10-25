@@ -75,3 +75,14 @@ export function installEmbedBridge(): () => void {
   window.addEventListener('message', onMessage)
   return () => { window.removeEventListener('message', onMessage); observer?.disconnect() }
 }
+
+/**
+ * 임베드에는 테마 토글이 없다(머리줄 숨김). 대신 호스트 쪽 설정을 따른다: `?theme=dark|light` 가 있으면 그것, 없으면 OS 의 다크 여부.
+ * localStorage 에는 쓰지 않는다 — 일반 방문의 테마 선택을 건드리지 않는다. 임베드가 아니면 아무것도 하지 않는다.
+ */
+export function applyEmbedTheme(search: string = location.search): void {
+  if (!detectEmbed(search)) return
+  const q = new URLSearchParams(search).get('theme')
+  const dark = q === 'dark' || (q !== 'light' && typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches)
+  document.documentElement.classList.toggle('dark', dark)
+}

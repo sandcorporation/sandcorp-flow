@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { detectEmbed, installEmbedBridge, resetEmbedForTest } from './embed'
+import { applyEmbedTheme, detectEmbed, installEmbedBridge, resetEmbedForTest } from './embed'
 
 beforeEach(() => resetEmbedForTest())
 
@@ -74,5 +74,22 @@ describe('높이 전달 규약 — hello → height(#180)', () => {
     stop(); resetEmbedForTest(); stop = installEmbedBridge()
     hello({})
     expect(post).not.toHaveBeenCalled()
+  })
+})
+
+describe('임베드 테마(#180)', () => {
+  const dark = () => document.documentElement.classList.contains('dark')
+  afterEach(() => { document.documentElement.classList.remove('dark'); vi.unstubAllGlobals() })
+  const os = (isDark: boolean) => vi.stubGlobal('matchMedia', (q: string) => ({ matches: isDark && q.includes('dark'), media: q }))
+  it('?theme=dark 이면 다크, OS 가 다크여도 ?theme=light 면 라이트', () => {
+    os(false); applyEmbedTheme('?embed=1&theme=dark'); expect(dark()).toBe(true)
+    os(true); applyEmbedTheme('?embed=1&theme=light'); expect(dark()).toBe(false)
+  })
+  it('theme 이 없으면 OS 를 따르고 localStorage 는 건드리지 않는다', () => {
+    os(true); applyEmbedTheme('?embed=1'); expect(dark()).toBe(true)
+    expect(localStorage.getItem('admin_theme')).toBeNull()
+  })
+  it('임베드가 아니면 아무것도 하지 않는다', () => {
+    os(true); applyEmbedTheme(''); expect(dark()).toBe(false)
   })
 })
