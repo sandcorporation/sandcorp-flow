@@ -3,15 +3,16 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { appsTenantsTryApiTrySessionGet } from '../generated/endpoints/try/try'
 import { FlowEditorBackendProvider, tryBackend, tryViewBackend } from '@/lib/flowEditorBackend'
 import { startTry } from '@/lib/tryTemplates'
+import { claimLoginUrl } from '../api'
 import { TRY_SESSION_LOST } from '../mutator'
 import { TRIAL_CHANGED } from '../components/TrialBanner'
 import FlowEditorPage from '../components/FlowEditorPage'
 import TryShell from '../components/TryShell'
 import { Button } from '../components/ui/button'
 
-/** 가입 이식(#42)은 아직 — 자리만 둔다. */
-function SignupSlot() {
-  return <Button variant="head" size="sm" disabled title="곧 열립니다">이 흐름으로 가입</Button>
+/** 「이 흐름으로 가입」(#42): 고객 로그인(sandcorp-auth) 뒤 옮기기 화면(/try/claim)으로 돌아와 사본을 내 테넌트로 옮긴다. */
+function SignupLink() {
+  return <Button asChild variant="head" size="sm"><a href={claimLoginUrl()} className="whitespace-nowrap">이 흐름으로 가입</a></Button>
 }
 
 /** /try/flow/:id(고쳐 보기: 편집기 + 시험 대화) · /try/view/:id(흐름 보기: 템플릿 원본, 읽기 전용). */
@@ -43,12 +44,11 @@ export default function TryFlowPage({ view = false }: { view?: boolean }) {
   const right = view ? (
     <>
       <Button variant="head" size="sm" onClick={edit} disabled={starting}>고쳐 보기</Button>
-      <SignupSlot />
     </>
   ) : (
     <>
       {left !== null && <span className="hmi-label flex items-center gap-1.5 !text-head-foreground" role="status"><span className={`lamp ${left > 0 ? 'lamp-ok' : 'lamp-alarm'}`} />남은 대화 {left}턴</span>}
-      <SignupSlot />
+      <SignupLink />
     </>
   )
 

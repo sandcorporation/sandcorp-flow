@@ -139,3 +139,42 @@ describe('FlowEditorPage — 캔버스·노드 목록·초안 저장', () => {
     expect(fake.patches()).toHaveLength(0)
   })
 })
+
+describe('FlowEditorPage — 체험에서 옮긴 흐름(?claimed=1, #42)', () => {
+  const CLAIMED: FlowGraph = {
+    nodes: [
+      { id: 'start', kind: 'start', code: 'N-01', name: '시작', position: { x: 0, y: 0 }, config: {} },
+      { id: 'kb', kind: 'knowledge_search', code: 'N-02', name: '정책 찾기', position: { x: 260, y: 0 }, config: { top_k: 4 } },
+      { id: 'order', kind: 'http_tool', code: 'N-03', name: '주문 조회', position: { x: 520, y: 0 }, config: { method: 'GET', url: 'https://demo-api.flow.sandcorp.co.kr/orders/1' } },
+    ],
+    edges: [{ from: 'start', to: 'kb' }],
+  }
+  const renderAt = (path: string) => render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes><Route path="/tenant/flows/:id" element={<FlowEditorPage />} /></Routes>
+    </MemoryRouter>,
+  )
+
+  it('초안으로 들어왔다고 알리고 지식 문서 올리기·가짜 API 바꾸기를 안내한다', async () => {
+    fakeFlowsApi({ graph: CLAIMED })
+    renderAt('/tenant/flows/f1?claimed=1')
+    const note = await screen.findByTestId('claimed-notice')
+    expect(note).toHaveTextContent('체험에서 옮긴 흐름이에요')
+    expect(note).toHaveTextContent('지식 문서를 올리세요')
+    expect(note).toHaveTextContent('가짜 API')
+    expect(screen.getByRole('link', { name: '지식 문서 올리기' })).toHaveAttribute('href', '/tenant/documents')
+  })
+
+  it('지식 노드·가짜 API가 없으면 그 줄은 빼고, 쿼리가 없으면 안내하지 않는다', async () => {
+    fakeFlowsApi({ graph: GRAPH })
+    const { unmount } = renderAt('/tenant/flows/f1?claimed=1')
+    const note = await screen.findByTestId('claimed-notice')
+    expect(note).not.toHaveTextContent('지식 문서를 올리세요')
+    expect(note).not.toHaveTextContent('가짜 API')
+    unmount()
+    fakeFlowsApi({ graph: CLAIMED })
+    renderAt('/tenant/flows/f1')
+    expect(await screen.findByText('N-02')).toBeInTheDocument()
+    expect(screen.queryByTestId('claimed-notice')).toBeNull()
+  })
+})

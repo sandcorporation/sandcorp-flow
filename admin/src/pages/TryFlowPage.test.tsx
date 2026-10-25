@@ -86,11 +86,11 @@ describe('TryFlowPage — 편집기 재사용(체험 모드)', () => {
     expect(screen.getByText(/배포·버전 저장은 가입한 뒤/)).toBeInTheDocument()
   })
 
-  it('남은 턴을 보이고 「이 흐름으로 가입」은 자리만(비활성)', async () => {
+  it('남은 턴을 보이고 「이 흐름으로 가입」은 옮기기 로그인으로 보낸다(#42)', async () => {
     fakeFlowsApi({ graph: GRAPH, try: { session: SESSION } })
     renderTry()
     expect(await screen.findByText(/남은 대화 18턴/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '이 흐름으로 가입' })).toBeDisabled()
+    expect(screen.getByRole('link', { name: '이 흐름으로 가입' })).toHaveAttribute('href', '/api/auth/authorize/member?then=try_claim')
   })
 
   it('시험 대화는 /api/try …/test/ 로 돌고 판단 기록을 그린다 — 저장된 판단 기록 API 는 부르지 않는다', async () => {
@@ -167,6 +167,7 @@ describe('TryFlowPage — 흐름 보기(읽기 전용)', () => {
     expect(tabs).not.toContain('시험 대화')
     expect(screen.getByText(/읽기 전용/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /보내기/ })).toBeNull()
+    expect(screen.queryByRole('link', { name: '이 흐름으로 가입' })).toBeNull() // 사본이 없다 — 「고쳐 보기」 뒤에 가입
     expect(screen.queryByTestId('where')?.textContent).toBe('/try/view/shop_support')
   })
 })

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, ReactNode, useEffect, useState } from 'react'
 import { ACCOUNT_URL, createOrganization, memberLoginUrl, memberTenants } from '../api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,7 +19,13 @@ export function suggestSlug(name: string): string {
     .slice(0, 63)
 }
 
-export default function TenantOnboarding({ onCreated }: { onCreated: (who: string) => void }) {
+/** `intro`·`submitLabel`·`loginHref`은 「이 흐름으로 가입」 옮기기 화면(#42)이 바꿔 쓴다. `onCreated`가 끝날 때까지 「만드는 중」. */
+export default function TenantOnboarding({ onCreated, intro, submitLabel = '조직 만들기', loginHref = memberLoginUrl() }: {
+  onCreated: (who: string) => void | Promise<void>
+  intro?: (who: string) => ReactNode
+  submitLabel?: string
+  loginHref?: string
+}) {
   const [who, setWho] = useState('')
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
@@ -45,7 +51,7 @@ export default function TenantOnboarding({ onCreated }: { onCreated: (who: strin
     setBusy(true)
     try {
       await createOrganization(name.trim(), slug.trim())
-      onCreated(who)
+      await onCreated(who)
     } catch (err) {
       // OnboardingError(reason='expired')는 표가 만료된 경우다.
       if ((err as { reason?: string }).reason === 'expired') setExpired(true)
@@ -59,17 +65,19 @@ export default function TenantOnboarding({ onCreated }: { onCreated: (who: strin
     return (
       <div className="space-y-3 text-sm leading-relaxed" data-testid="tenant-onboarding">
         <p role="alert" className="text-destructive">로그인이 만료되었습니다. 다시 로그인하세요.</p>
-        <Button asChild className="w-full"><a href={memberLoginUrl()}>sandcorp 계정으로 로그인</a></Button>
+        <Button asChild className="w-full"><a href={loginHref}>sandcorp 계정으로 로그인</a></Button>
       </div>
     )
   }
 
   return (
     <form className="space-y-4 text-sm leading-relaxed" data-testid="tenant-onboarding" onSubmit={submit}>
-      <p className="text-muted-foreground">
-        {who ? `${who}님, ` : ''}아직 속한 조직이 없습니다. 조직을 만들면 관리자로 바로 시작합니다.
-        이미 쓰고 있는 팀이 있다면 관리자에게 초대 링크를 받아 합류하세요.
-      </p>
+      {intro ? intro(who) : (
+        <p className="text-muted-foreground">
+          {who ? `${who}님, ` : ''}아직 속한 조직이 없습니다. 조직을 만들면 관리자로 바로 시작합니다.
+          이미 쓰고 있는 팀이 있다면 관리자에게 초대 링크를 받아 합류하세요.
+        </p>
+      )}
       <div className="space-y-2">
         <Label htmlFor="org-name">조직 이름</Label>
         <Input id="org-name" value={name} maxLength={255} required autoComplete="organization"
@@ -87,7 +95,7 @@ export default function TenantOnboarding({ onCreated }: { onCreated: (who: strin
       </div>
       {error && <p role="alert" className="text-destructive">{error}</p>}
       <Button type="submit" className="w-full" disabled={busy || !name.trim() || !slug.trim()}>
-        {busy ? '만드는 중…' : '조직 만들기'}
+        {busy ? '만드는 중…' : submitLabel}
       </Button>
       <a className="inline-block text-foreground underline decoration-primary decoration-2 underline-offset-4" href={ACCOUNT_URL} target="_blank" rel="noreferrer">
         내 계정

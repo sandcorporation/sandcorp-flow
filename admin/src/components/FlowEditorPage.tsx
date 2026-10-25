@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Trash2 } from 'lucide-react'
 import type { DeployRequestOut, VersionOut } from '../generated/model'
 import { useFlowEditorBackend } from '@/lib/flowEditorBackend'
@@ -13,6 +13,7 @@ import FlowCanvas from './FlowCanvas'
 import VersionsPanel from './VersionsPanel'
 import type { Me } from './DeployRequestCard'
 import NodeConfigForm from './NodeConfigForm'
+import ClaimedNotice from './ClaimedNotice'
 import { DecisionLog, TestChat, useTestSession } from './TestPanel'
 import { useIsNarrow } from '@/lib/useIsNarrow'
 import { turnPath, type TestTurn } from '@/lib/testTrace'
@@ -27,6 +28,7 @@ const EMPTY: FlowGraph = { nodes: [], edges: [] }
 /** 편집기: 왼쪽 노드 목록 · 가운데 캔버스 · 오른쪽 패널. 모든 편집은 패치 연산으로 곧바로 초안에 저장한다. */
 export default function FlowEditorPage() {
   const { id = '' } = useParams()
+  const [searchParams] = useSearchParams()
   const backend = useFlowEditorBackend() // 테넌트 편집기 / 체험(/try) — 경로·인증·숨길 UI 가 여기서 갈린다(#37)
   const isAdmin = backend.useCanEdit()
   const [viewing, setViewing] = useState<{ number: number; graph: FlowGraph } | null>(null)
@@ -134,6 +136,7 @@ export default function FlowEditorPage() {
   const shownErrors = viewing ? [] : errors
   const selected = shownGraph.nodes.find((n) => n.id === selectedId) ?? null
   const flowErrors = flowLevelErrors(errors)
+  const claimed = searchParams.get('claimed') === '1'
 
   const tab = narrow ? sheet : rightTab
   const versionsBody = backend.versionsPanel ? (
@@ -210,6 +213,7 @@ export default function FlowEditorPage() {
         {!isAdmin && <span className="hmi-label border border-line-soft px-1.5 py-0.5">{backend.readOnlyNotice}</span>}
         {deployedVersion !== null && <span className="hmi-label flex items-center gap-1.5"><span className="lamp lamp-ok" />v{deployedVersion} 배포 중</span>}
       </div>
+      {claimed && loaded && <ClaimedNotice graph={graph} />}
       {flowErrors.map((e, i) => <p key={i} role="alert" className="text-sm text-destructive">{e.message}</p>)}
       {save.state === 'failed' && <p role="alert" className="text-sm text-destructive">{save.message}</p>}
 

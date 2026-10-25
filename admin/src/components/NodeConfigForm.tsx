@@ -78,7 +78,7 @@ function HostWarning({ url, domains }: { url: string; domains: string[] | null }
   if (isDemoApiUrl(url)) {
     return (
       <p role="status" className="border-l-4 border-ink/30 bg-ink/5 px-2 py-1.5 text-xs text-ink">
-        예제용 <b>가짜 API</b> — 허용 도메인 없이 호출되고, 실제 네트워크로 나가지 않고 정해진 규칙대로 응답합니다.
+        예제용 <b>가짜 API</b> — 허용 도메인 없이 호출되고, 실제 네트워크로 나가지 않고 정해진 규칙대로 응답합니다. 배포 전 실제 주소로 바꾸세요.
       </p>
     )
   }

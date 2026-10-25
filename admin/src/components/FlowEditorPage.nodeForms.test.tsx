@@ -205,6 +205,7 @@ describe('노드 설정 패널 — 종류별 폼', () => {
     await waitFor(() => expect(lastConfig(fake, 'http1').url).toBe('https://demo-api.flow.sandcorp.co.kr/orders/{{state.fields.order_no}}'))
     expect(screen.queryByText(para(/허용 도메인에 없습니다/))).toBeNull()
     expect(screen.getByText(para(/가짜 API.*실제 네트워크로 나가지 않고/))).toBeInTheDocument()
+    expect(screen.getByText(para(/배포 전 실제 주소로 바꾸세요/))).toBeInTheDocument() // 체험에서 옮긴 흐름(#42)
     // 비슷한 호스트(하위 도메인)는 예약 호스트가 아니다 → 허용 목록 밖 경고
     fireEvent.change(url, { target: { value: 'https://x.demo-api.flow.sandcorp.co.kr/orders/1' } })
     fireEvent.blur(url)
