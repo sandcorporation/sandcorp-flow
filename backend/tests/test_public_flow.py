@@ -281,6 +281,57 @@ def test_only_admin_can_turn_public_view_on(client, tenant_admin_token, tenant_m
     assert got["public_flow_view"] is True  # Member는 읽기만
 
 
+# ── 설정 저장: Admin 전용 필드는 「값이 바뀔 때만」 권한 검사(#152) ──────────────────────
+
+
+def _full_body(token, client):
+    """관리 화면이 보내는 전체 본문 — GET이 돌려준 설정 그대로(Admin 전용 필드 포함)."""
+    return client.get("/api/tenant/config/", HTTP_AUTHORIZATION=f"Bearer {token}").json()
+
+
+def _patch(client, token, body):
+    return client.patch("/api/tenant/config/", data=json.dumps(body), content_type="application/json",
+                        HTTP_AUTHORIZATION=f"Bearer {token}")
+
+
+@pytest.mark.django_db
+def test_member_saves_full_config_body_within_own_permissions(client, tenant_admin_token, tenant_member_token):
+    body = _full_body(tenant_member_token, client)
+    body["welcome_message"] = "환영합니다 #152"
+    res = _patch(client, tenant_member_token, body)  # deploy_requires_approval·public_flow_view는 그대로 실림
+    assert res.status_code == 200, res.content
+    assert res.json()["welcome_message"] == "환영합니다 #152"
+
+
+@pytest.mark.django_db
+def test_member_cannot_change_admin_only_fields_even_in_full_body(client, tenant_admin_token, tenant_member_token):
+    for field in ("deploy_requires_approval", "public_flow_view"):
+        body = _full_body(tenant_member_token, client)
+        body[field] = not body[field]
+        assert _patch(client, tenant_member_token, body).status_code == 403, field
+        assert _full_body(tenant_member_token, client)[field] is not body[field]
+
+
+@pytest.mark.django_db
+def test_admin_changes_every_admin_only_field(client, tenant_admin_token):
+    body = _full_body(tenant_admin_token, client)
+    body["deploy_requires_approval"] = not body["deploy_requires_approval"]
+    body["public_flow_view"] = not body["public_flow_view"]
+    res = _patch(client, tenant_admin_token, body)
+    assert res.status_code == 200
+    assert res.json()["deploy_requires_approval"] is body["deploy_requires_approval"]
+
+
+@pytest.mark.django_db
+def test_member_unchanged_admin_only_value_is_ok_when_already_on(client, tenant_admin_token, tenant_member_token):
+    body = _full_body(tenant_admin_token, client)
+    body["deploy_requires_approval"] = True
+    body["public_flow_view"] = True
+    assert _patch(client, tenant_admin_token, body).status_code == 200
+    body["welcome_message"] = "켜진 값 그대로"
+    assert _patch(client, tenant_member_token, body).status_code == 200
+
+
 # ── 시드: env 기반 Provider ───────────────────────────────────────────────────
 
 

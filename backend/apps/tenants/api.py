@@ -19,7 +19,7 @@ from apps.tenants.members import (
     pending_invites, read_member_ticket,
 )
 from apps.tenants import withdrawal
-from apps.tenants.permissions import AGENTS_MANAGE, require_permission
+from apps.tenants.permissions import AGENTS_MANAGE, FLOW_APPROVE, FLOW_PUBLIC_VIEW, require_permission
 from apps.tenants.refresh_tokens import (
     issue_session, rotate, revoke_all, revoke_session, RefreshRejected,
 )
@@ -749,16 +749,21 @@ def _validate_changed_provider(config, body, kind):
     validate_provider(kind, new_type, new_base, eff_key, model, tenant_id=config.tenant_id)
 
 
+# 설정 필드 → 값을 바꾸는 데 필요한 권한(ADR-0025). 여기 없는 필드는 Member도 바꾼다. 새 Admin 전용 필드는 이 표에만 더한다.
+CONFIG_FIELD_PERMISSIONS: dict[str, str] = {
+    "deploy_requires_approval": FLOW_APPROVE,    # 배포 승인 규칙(#28)
+    "public_flow_view": FLOW_PUBLIC_VIEW,        # 흐름을 익명에게 보이는 일(#39)
+}
+
+
 @tenant_router.patch("/config/", response={200: TenantConfigOut, 400: dict})
 def update_config(request, body: TenantConfigIn):
-    if body.deploy_requires_approval is not None:  # 배포 승인 규칙을 바꾸는 건 승인 권한자만(#28)
-        from apps.tenants.permissions import FLOW_APPROVE
-        require_permission(request.auth, FLOW_APPROVE)
     config = request.auth.tenant.config
-    # 흐름을 익명에게 보이는 일이라 바꾸는 건 Admin만(#39). 관리 화면은 설정 전체를 되돌려 보내므로 같은 값은 통과시킨다.
-    if body.public_flow_view is not None and body.public_flow_view != config.public_flow_view:
-        from apps.tenants.permissions import FLOW_PUBLIC_VIEW
-        require_permission(request.auth, FLOW_PUBLIC_VIEW)
+    # Admin 전용 필드는 「값이 바뀔 때만」 권한을 본다 — 관리 화면·MCP는 설정 전체를 되돌려 보내므로 같은 값은 통과(#39·#152).
+    for field, perm in CONFIG_FIELD_PERMISSIONS.items():
+        value = getattr(body, field)
+        if value is not None and value != getattr(config, field):
+            require_permission(request.auth, perm)
     _old_embed = _embed_signature(config)
 
     # provider 연결 필드가 바뀌었으면 저장 전에 검증 — 실패하면 broken provider를 거부한다.
