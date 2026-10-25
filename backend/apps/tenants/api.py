@@ -367,6 +367,12 @@ def _member_landing(login: MemberLogin) -> HttpResponseRedirect:
     """일반 사용자 콜백 끝. 초대가 있으면 먼저 멤버십을 만들고, 멤버십 수에 따라
     1개 → 테넌트 세션, 여럿 → 선택(`?select_tenant=1`), 없음 → 「온보딩 필요」(`?onboarding=1`)."""
     target = settings.AUTH_MEMBER_REDIRECT
+    if login.then == "try_claim" and not login.invite:
+        # 「이 흐름으로 가입」(#42): 테넌트 수와 무관하게 표만 주고 옮기기 화면으로 — 거기서 새 테넌트를 만들거나
+        # Admin인 테넌트를 고른 뒤(기존 온보딩·선택 엔드포인트) 그 세션으로 /api/try/claim/ 을 부른다.
+        response = _redirect(settings.AUTH_TRY_CLAIM_REDIRECT)
+        _set_member_ticket(response, login.user)
+        return response
     if login.invite:
         try:
             joined = accept_invite(login.user, login.invite)
@@ -386,9 +392,9 @@ def _member_landing(login: MemberLogin) -> HttpResponseRedirect:
     return response
 
 
-def _start(entry: LoginEntry, invite: str | None = None) -> HttpResponseRedirect:
+def _start(entry: LoginEntry, invite: str | None = None, then: str | None = None) -> HttpResponseRedirect:
     try:
-        url, attempt = start_login(invite=invite, entry=entry)
+        url, attempt = start_login(invite=invite, entry=entry, then=then)
     except LoginRejected as exc:
         return _rejected_redirect(attempt_entry=entry, reason=exc.reason)
     response = HttpResponseRedirect(url)
@@ -419,9 +425,10 @@ def login_authorize(request, invite: str | None = None):
 
 
 @auth_router.get("/authorize/member", auth=None, include_in_schema=False)
-def login_authorize_member(request, invite: str | None = None):
-    """고객(member) 진입 — `admin`을 요청하지 않는다. 초대 링크도 이 주소다."""
-    return _start("member", invite)
+def login_authorize_member(request, invite: str | None = None, then: str | None = None):
+    """고객(member) 진입 — `admin`을 요청하지 않는다. 초대 링크도 이 주소다.
+    `then=try_claim`이면 콜백 뒤 체험 사본 옮기기 화면으로 간다(#42, 그 밖의 값은 무시)."""
+    return _start("member", invite, then)
 
 
 @auth_router.get("/callback", auth=None, include_in_schema=False)

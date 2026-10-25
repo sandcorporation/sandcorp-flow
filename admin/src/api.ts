@@ -51,6 +51,7 @@ import {
   appsTenantsApiMemberSelectTenant,
   appsTenantsApiMemberCreateTenant,
 } from './generated/endpoints/auth/auth'
+import { appsTenantsTryApiTryClaimFlow, appsTenantsTryApiTrySessionGet } from './generated/endpoints/try/try'
 import {
   appsUsageApiTenantUsage,
   appsUsageApiOperatorUsage,
@@ -132,6 +133,31 @@ export async function deleteTenant(id: string) {
 
 export function memberLoginUrl(): string {
   return `${import.meta.env.VITE_API_BASE || ''}/api/auth/authorize/member`
+}
+// 「이 흐름으로 가입」(#42): 고객 로그인 뒤 옮기기 화면(/try/claim)으로 돌아온다 — 콜백은 언제나 표(ticket)를 준다.
+export function claimLoginUrl(): string {
+  return `${memberLoginUrl()}?then=try_claim`
+}
+/** 옮길 체험 세션이 살아 있으면 그 템플릿 id, 없으면(만료·이미 옮김) null. */
+export async function trySessionTemplate(): Promise<string | null> {
+  try { return (await appsTenantsTryApiTrySessionGet()).data.template } catch { return null }
+}
+export class ClaimError extends Error {
+  constructor(message: string, public code?: string) {
+    super(message)
+    this.name = 'ClaimError'
+  }
+}
+/** 체험 사본을 지금 고객 세션(Bearer)의 테넌트로 옮긴다. 쿠키(sf_try)는 브라우저가 싣는다 — /api/try 는 Bearer 를
+ *  자동으로 싣지 않으므로 여기서 직접 붙인다. */
+export async function claimTryFlow() {
+  try {
+    const access = getAccess('agent')
+    return (await appsTenantsTryApiTryClaimFlow({ headers: access ? { Authorization: `Bearer ${access}` } : {} })).data
+  } catch (e) {
+    const body = (e instanceof HttpError ? e.body ?? {} : {}) as { detail?: string; code?: string }
+    throw new ClaimError(body.detail || '흐름을 옮기지 못했습니다. 다시 시도하세요.', body.code)
+  }
 }
 export async function memberTenants() {
   return (await appsTenantsApiMemberTenants()).data as {

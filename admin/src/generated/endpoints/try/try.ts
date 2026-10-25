@@ -12,6 +12,7 @@ import type {
   DraftPutIn,
   FlowDetailOut,
   TestTurnIn,
+  TryClaimOut,
   TrySessionOut,
   TryStartIn,
   TryTemplateDetailOut,
@@ -19,6 +20,43 @@ import type {
 } from '../../model';
 
 import { customInstance } from '../../../mutator';
+
+/**
+ * 체험 사본을 Bearer(고객 멤버 세션)의 테넌트에 새 초안 흐름으로 옮기고 체험 테넌트·세션을 지운다.
+거부: ``try_login_required``(401) · ``try_no_session``(401, 없음·만료·이미 옮김) · ``try_claim_forbidden``(403, Admin 아님).
+ * @summary Try Claim Flow
+ */
+export type appsTenantsTryApiTryClaimFlowResponse201 = {
+  data: TryClaimOut
+  status: 201
+}
+    
+export type appsTenantsTryApiTryClaimFlowResponseSuccess = (appsTenantsTryApiTryClaimFlowResponse201) & {
+  headers: Headers;
+};
+;
+
+export type appsTenantsTryApiTryClaimFlowResponse = (appsTenantsTryApiTryClaimFlowResponseSuccess)
+
+export const getAppsTenantsTryApiTryClaimFlowUrl = () => {
+
+
+  
+
+  return `/api/try/claim/`
+}
+
+export const appsTenantsTryApiTryClaimFlow = async ( options?: RequestInit): Promise<appsTenantsTryApiTryClaimFlowResponse> => {
+  
+  return customInstance<appsTenantsTryApiTryClaimFlowResponse>(getAppsTenantsTryApiTryClaimFlowUrl(),
+  {      
+    ...options,
+    method: 'POST'
+    
+    
+  }
+);}
+
 
 /**
  * @summary Try Flow Get

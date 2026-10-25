@@ -185,6 +185,8 @@ AUTH_TOKEN_URL = os.environ.get("AUTH_TOKEN_URL", f"{AUTH_ISSUER}/token")
 AUTH_LOGIN_REDIRECT = os.environ.get("AUTH_LOGIN_REDIRECT", "/admin-ui/operator")
 # 일반 사용자(고객) 로그인 콜백 뒤 돌아갈 화면(#40). `?select_tenant=1`·`?onboarding=1`·`?login_error=`가 붙는다.
 AUTH_MEMBER_REDIRECT = os.environ.get("AUTH_MEMBER_REDIRECT", "/admin-ui/tenant")
+# 「이 흐름으로 가입」(#42) 로그인이 돌아올 화면 — 체험 사본을 옮길 테넌트를 고른다.
+AUTH_TRY_CLAIM_REDIRECT = os.environ.get("AUTH_TRY_CLAIM_REDIRECT", "/admin-ui/try/claim")
 # 탈퇴 웹훅(/api/auth/webhook, #55) 서명 비밀. 비면 웹훅을 모두 거부(503)한다.
 AUTH_WEBHOOK_SECRET = os.environ.get("AUTH_WEBHOOK_SECRET", "")
 

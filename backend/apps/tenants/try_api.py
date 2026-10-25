@@ -8,6 +8,8 @@
 - 시험 대화: 전체 하루 비용이 상한이면 LLM·턴 없이 ``done{code: try_daily_budget}``, 턴을 다 쓰면 ``try_turns_exhausted``.
   돈 턴의 판단 기록 비용을 하루 누적에 더한다.
 - 배포는 ``try_restricted``(403).
+- 「이 흐름으로 가입」(#42): ``POST /claim/`` — 쿠키 + 고객 멤버 세션 Bearer 둘 다. 쿠키 경로(``/api/try/``) 아래라
+  같은 사이트 fetch에 실린다(SameSite=Strict — sandcorp-auth 왕복 뒤 착지한 페이지의 fetch는 같은 사이트 요청이다).
 """
 from __future__ import annotations
 
@@ -26,7 +28,8 @@ from apps.flows import services
 from apps.flows.api import DraftOut, DraftPatchIn, DraftPutIn, FlowDetailOut, TestTurnIn, _draft_out, flow_detail_body, stream_test_turn
 from apps.flows.example_catalog import EXAMPLES, example_graph
 from apps.flows.schema import JSON, NODE_CONFIG_MODELS
-from apps.tenants import trial, try_session, try_tenant
+from apps.tenants import trial, try_claim, try_session, try_tenant
+from apps.tenants.auth import active_membership_for_token
 from apps.tenants.models import Tenant, TenantConfig, TrySession
 from apps.tenants.onboarding import client_ip
 from apps.tenants.try_session import TryRefused
@@ -160,6 +163,30 @@ def try_deploy(request, flow_id: str):
     """체험은 배포하지 않는다 — 편집기의 배포 버튼이 받을 사유를 그대로 준다."""
     _session(request)
     raise TryRefused("체험 흐름은 배포할 수 없습니다. 가입한 뒤 내 테넌트에서 배포하세요.", code=try_tenant.RESTRICTED)
+
+
+# ── 「이 흐름으로 가입」 — 내 테넌트로 옮기기(#42) ─────────────────────────
+
+
+class TryClaimOut(Schema):
+    tenant_id: str
+    flow_id: str
+    flow_name: str
+
+
+def _bearer_membership(request: HttpRequest):
+    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+    return active_membership_for_token(token.strip()) if scheme.lower() == "bearer" and token.strip() else None
+
+
+@try_router.post("/claim/", response={201: TryClaimOut})
+def try_claim_flow(request, response: HttpResponse):
+    """체험 사본을 Bearer(고객 멤버 세션)의 테넌트에 새 초안 흐름으로 옮기고 체험 테넌트·세션을 지운다.
+    거부: ``try_login_required``(401) · ``try_no_session``(401, 없음·만료·이미 옮김) · ``try_claim_forbidden``(403, Admin 아님)."""
+    _check_origin(request)
+    claimed = try_claim.claim(request.COOKIES.get(try_session.COOKIE_NAME), _bearer_membership(request))
+    response.delete_cookie(try_session.COOKIE_NAME, path=try_session.COOKIE_PATH)
+    return 201, {"tenant_id": str(claimed.tenant_id), "flow_id": str(claimed.flow_id), "flow_name": claimed.flow_name}
 
 
 # ── 시험 대화(SSE) ───────────────────────────────────────────────────────────

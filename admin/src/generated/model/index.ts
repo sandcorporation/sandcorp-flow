@@ -191,6 +191,7 @@ export * from './testTurnIn';
 export * from './testTurnInSessionId';
 export * from './trialOut';
 export * from './trialOutState';
+export * from './tryClaimOut';
 export * from './trySessionOut';
 export * from './tryStartIn';
 export * from './tryTemplateDetailOut';
