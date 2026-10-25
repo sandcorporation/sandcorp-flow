@@ -131,9 +131,16 @@ def try_start(request, body: TryStartIn, response: HttpResponse):
     }
 
 
-@try_router.get("/session/", response=TrySessionOut)
+@try_router.get("/session/", response=TrySessionOut | None)
 def try_session_get(request):
-    return _session_out(_session(request))
+    """내 체험 세션. 쿠키가 없거나 위조·만료면 **200 null** — 「아직 없음」을 묻는 의도된 질의라 오류가 아니다(#163).
+    다른 엔드포인트는 같은 상황에 401 ``try_no_session``을 그대로 낸다(진짜 거부)."""
+    try:
+        return _session_out(_session(request))
+    except TryRefused as e:
+        if e.code != try_session.NO_SESSION:
+            raise
+        return None
 
 
 # ── 사본 읽기·초안 저장(편집기와 같은 모양) ─────────────────────────────────

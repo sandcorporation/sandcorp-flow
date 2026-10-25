@@ -38,7 +38,7 @@ export function fakeFlowsApi(opts: {
   /** 공개 체험 API(/api/try/…) 대역 — 주면 템플릿·세션 응답도 흉내 낸다(#37). */
   try?: {
     templates?: { id: string; name: string; documents: string[] }[]
-    /** GET session/ 이 돌려줄 값. null 이면 401 try_no_session. */
+    /** GET session/ 이 돌려줄 값. null 이면 200 null(#163). */
     session?: { flow_id: string; template: string; turns_remaining: number } | null | (() => { flow_id: string; template: string; turns_remaining: number } | null)
     /** POST sessions/ 의 상태(기본 201, 본문은 session). 429 면 {detail, code:'try_ip_limit'}. */
     startStatus?: number
@@ -82,7 +82,7 @@ export function fakeFlowsApi(opts: {
         const found = (t.templates ?? []).find((x) => x.id === td[1])
         return found ? json(200, { ...found, graph: opts.graph }) : json(404, { detail: '알 수 없는 예제입니다.', code: 'unknown_template' })
       }
-      if (method === 'GET' && path.endsWith('/api/try/session/')) return sess ? json(200, { expires_at: '2026-10-26T09:00:00Z', ...sess }) : json(401, { detail: '체험 세션이 없습니다.', code: 'try_no_session' })
+      if (method === 'GET' && path.endsWith('/api/try/session/')) return json(200, sess ? { expires_at: '2026-10-26T09:00:00Z', ...sess } : null)
       if (method === 'POST' && path.endsWith('/api/try/sessions/')) {
         if (t.startStatus && t.startStatus !== 201) return json(t.startStatus, { detail: '오늘 이 네트워크에서 만들 수 있는 체험을 모두 만들었어요. 내일 다시 찾아 주세요.', code: 'try_ip_limit' })
         return json(201, { expires_at: '2026-10-26T09:00:00Z', ...(sess ?? { flow_id: 'f1', template: body.template, turns_remaining: 20 }) })
@@ -165,5 +165,5 @@ export function fakeFlowsApi(opts: {
     return json(404, { detail: 'no' })
   })
   vi.stubGlobal('fetch', fn)
-  return { calls, patches: () => calls.filter((c) => c.method === 'PATCH' && c.path.endsWith('/draft/')).map((c) => c.body.ops) }
+  return { calls, fetch: fn, /** 지금까지 받은 응답의 {경로, 상태}. */ statuses: async () => Promise.all(fn.mock.results.map(async (r, i) => ({ path: calls[i].path, status: (await r.value as Response).status }))), patches: () => calls.filter((c) => c.method === 'PATCH' && c.path.endsWith('/draft/')).map((c) => c.body.ops) }
 }

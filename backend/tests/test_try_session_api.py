@@ -169,10 +169,12 @@ def test_missing_or_forged_cookie_is_refused():
     anon = Client()
     r = anon.get(f"{BASE}/flows/{s['flow_id']}/")
     assert r.status_code == 401 and r.json()["code"] == "try_no_session"
-    assert anon.get(f"{BASE}/session/").status_code == 401
+    assert anon.get(f"{BASE}/session/").status_code == 200  # 세션 질의는 「없음」이 정상 답이다(#163)
+    assert anon.get(f"{BASE}/session/").json() is None
 
     forged = Client()
     forged.cookies[COOKIE] = "x" * 43
+    assert forged.get(f"{BASE}/session/").json() is None  # 위조 쿠키도 「세션 없음」(200 null)
     assert forged.get(f"{BASE}/flows/{s['flow_id']}/").status_code == 401
     r = forged.put(
         f"{BASE}/flows/{s['flow_id']}/draft/", json.dumps({"graph": {}}), content_type="application/json",
@@ -206,6 +208,19 @@ def test_expired_session_is_gone_after_prune():
 
     r = c.get(f"{BASE}/flows/{s['flow_id']}/")
     assert r.status_code == 401 and r.json()["code"] == "try_no_session"
+    assert c.get(f"{BASE}/session/").json() is None  # 질의는 200 null(#163), 쓰기·읽기는 401 그대로
+
+
+@pytest.mark.django_db
+def test_expired_but_unpruned_session_reads_as_null_while_flow_stays_401():
+    from apps.tenants.models import Tenant
+
+    c, s = _session()
+    Tenant.objects.filter(try_expires_at__isnull=False).update(try_expires_at=timezone.now() - dt.timedelta(minutes=1))
+
+    me = c.get(f"{BASE}/session/")
+    assert me.status_code == 200 and me.json() is None
+    assert c.get(f"{BASE}/flows/{s['flow_id']}/").status_code == 401
 
 
 # ── 초안 저장·배포 거부·Origin ───────────────────────────────────────────────

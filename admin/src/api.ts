@@ -140,7 +140,7 @@ export function claimLoginUrl(): string {
 }
 /** 옮길 체험 세션이 살아 있으면 그 템플릿 id, 없으면(만료·이미 옮김) null. */
 export async function trySessionTemplate(): Promise<string | null> {
-  try { return (await appsTenantsTryApiTrySessionGet()).data.template } catch { return null }
+  try { return (await appsTenantsTryApiTrySessionGet()).data?.template ?? null } catch { return null }
 }
 export class ClaimError extends Error {
   constructor(message: string, public code?: string) {
