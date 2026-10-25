@@ -1,4 +1,5 @@
 import SiteFooter from './SiteFooter'
+import ThemeToggle from './ThemeToggle'
 import { BUSINESS } from './business'
 
 // 개인정보처리방침 — 표준 템플릿(개인정보보호법 기준)에 플랫폼 특성을 반영. 시행 전 법률 검토 권장.
@@ -6,7 +7,7 @@ export default function Privacy() {
   return (
     <div className="landing">
       <header className="doc-header">
-        <div className="container"><a href="/" className="doc-home">← Sandcorp Flow</a></div>
+        <div className="container doc-head-inner"><a href="/" className="doc-home">← Sandcorp Flow</a><ThemeToggle /></div>
       </header>
       <main className="container doc">
         <h1>개인정보처리방침</h1>

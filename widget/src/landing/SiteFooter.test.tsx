@@ -20,6 +20,14 @@ describe('SiteFooter (사업자 정보 + 링크)', () => {
   })
 })
 
+describe('푸터 소개 문구', () => {
+  it('옛 「지식그래프 기반」 문구 대신 흐름 챗봇 문구를 쓴다', () => {
+    render(<SiteFooter />)
+    expect(screen.getByText('흐름으로 만드는 상담 챗봇')).toBeInTheDocument()
+    expect(screen.queryByText(/지식그래프 기반/)).toBeNull()
+  })
+})
+
 describe('약관·처리방침 페이지', () => {
   it('Privacy가 개인정보처리방침 제목과 보호책임자를 렌더한다', () => {
     render(<Privacy />)
