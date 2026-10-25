@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Trash2 } from 'lucide-react'
-import { appsFlowsApiFlowsGet, appsFlowsApiFlowsGetVersion, appsFlowsApiFlowsNodeSchema, appsFlowsApiFlowsPatchDraft } from '../generated/endpoints/flows/flows'
-import { appsTenantsApiGetConfig } from '../generated/endpoints/tenant/tenant'
-import { appsTenantsApiMemberMe } from '../generated/endpoints/tenant-members/tenant-members'
-import type { DeployRequestOut, DraftPatchIn, FlowDetailOut, VersionOut } from '../generated/model'
+import type { DeployRequestOut, VersionOut } from '../generated/model'
+import { useFlowEditorBackend } from '@/lib/flowEditorBackend'
 import { HttpError } from '../mutator'
 import {
   KINDS, applyOps, flowLevelErrors, kindLabel, newNode,
@@ -21,7 +19,6 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
-import { useIsAdmin } from '../lib/useAgentRole'
 
 type SaveState = 'saved' | 'saving' | 'failed'
 const EMPTY: FlowGraph = { nodes: [], edges: [] }
@@ -29,7 +26,8 @@ const EMPTY: FlowGraph = { nodes: [], edges: [] }
 /** 편집기: 왼쪽 노드 목록 · 가운데 캔버스 · 오른쪽 패널. 모든 편집은 패치 연산으로 곧바로 초안에 저장한다. */
 export default function FlowEditorPage() {
   const { id = '' } = useParams()
-  const isAdmin = useIsAdmin() // flow.edit·deploy·approve 는 Admin 전용(백엔드 permissions.py 와 같은 판정)
+  const backend = useFlowEditorBackend() // 테넌트 편집기 / 체험(/try) — 경로·인증·숨길 UI 가 여기서 갈린다(#37)
+  const isAdmin = backend.useCanEdit()
   const [viewing, setViewing] = useState<{ number: number; graph: FlowGraph } | null>(null)
   const readOnly = !isAdmin || viewing !== null // 버전을 보는 동안은 초안을 고치지 못한다
   const [versions, setVersions] = useState<VersionOut[]>([])
@@ -54,8 +52,7 @@ export default function FlowEditorPage() {
   const spotRef = useRef<(() => { x: number; y: number }) | null>(null)
 
   const load = useCallback(async () => {
-    const r = await appsFlowsApiFlowsGet(id)
-    const d = r.data as unknown as FlowDetailOut
+    const d = await backend.loadFlow(id)
     setName(d.flow.name)
     const raw = d.draft.graph as unknown as Partial<FlowGraph>
     setGraph({ nodes: raw.nodes ?? [], edges: raw.edges ?? [] })
@@ -63,33 +60,33 @@ export default function FlowEditorPage() {
     setVersions(d.versions)
     setDeployedVersion(d.flow.deployed_version ?? null)
     setPendingRequest(d.pending_request ?? null)
-  }, [id])
+  }, [id, backend])
 
   /** 버전·배포 상태만 다시 받는다(초안 그래프는 건드리지 않는다 — 줄 선 저장과 부딪히지 않게). */
   const reloadMeta = useCallback(async () => {
-    const d = (await appsFlowsApiFlowsGet(id)).data as unknown as FlowDetailOut
+    const d = await backend.loadFlow(id)
     setVersions(d.versions)
     setDeployedVersion(d.flow.deployed_version ?? null)
     setPendingRequest(d.pending_request ?? null)
-  }, [id])
+  }, [id, backend])
 
   const viewVersion = async (n: number) => {
     try {
-      const v = (await appsFlowsApiFlowsGetVersion(id, n)).data as unknown as { graph: Partial<FlowGraph> }
+      const v = await backend.loadVersion!(id, n)
       setViewing({ number: n, graph: { nodes: v.graph.nodes ?? [], edges: v.graph.edges ?? [] } })
       setSelectedId(null)
     } catch { setSave({ state: 'failed', message: `v${n}을(를) 불러오지 못했습니다.` }) }
   }
 
-  useEffect(() => {
-    appsTenantsApiMemberMe().then((r) => { const m = r.data as unknown as { name: string; email: string }; setMe({ name: m.name ?? '', email: m.email ?? '' }) }).catch(() => {})
-    appsTenantsApiGetConfig().then((r) => setRequiresApproval(!!(r.data as unknown as { deploy_requires_approval?: boolean }).deploy_requires_approval)).catch(() => {})
-  }, [])
+  const loadAccount = useCallback(() => {
+    backend.loadAccount?.().then((a) => { setMe(a.me); setRequiresApproval(a.requiresApproval) }).catch(() => {})
+  }, [backend])
+  useEffect(loadAccount, [loadAccount])
 
   useEffect(() => {
     // 폼 틀(종류별 JSON 스키마). 못 받아도 「고급」 JSON 탭으로 편집할 수 있다.
-    appsFlowsApiFlowsNodeSchema().then((r) => setSchemas((r.data as unknown as { kinds?: Record<string, { config: object }> }).kinds ?? {})).catch(() => {})
-  }, [])
+    backend.nodeSchemas().then(setSchemas).catch(() => {})
+  }, [backend])
 
   useEffect(() => {
     load().then(() => setLoaded(true)).catch(() => setLoadError('흐름을 불러오지 못했습니다.'))
@@ -103,8 +100,8 @@ export default function FlowEditorPage() {
     setSave({ state: 'saving', message: '' })
     queue.current = queue.current.then(async () => {
       try {
-        const r = await appsFlowsApiFlowsPatchDraft(id, { ops } as unknown as DraftPatchIn)
-        setErrors(r.data.errors as FlowError[])
+        const r = await backend.patchDraft(id, ops)
+        setErrors(r.errors)
         pending.current -= 1
         if (pending.current === 0) setSave((cur) => (cur.state === 'failed' ? cur : { state: 'saved', message: '' }))
       } catch (err) {
@@ -114,7 +111,7 @@ export default function FlowEditorPage() {
         setSave({ state: 'failed', message: `저장하지 못했습니다${body?.detail ? `: ${body.detail}` : '.'} 서버의 초안으로 다시 맞췄습니다.` })
       }
     })
-  }, [id, load, readOnly])
+  }, [id, load, readOnly, backend])
 
   const testSession = useTestSession(id, useCallback(() => queue.current, []))
   const focusTurn = (turn: TestTurn, nodeId: string | null) => {
@@ -141,14 +138,14 @@ export default function FlowEditorPage() {
   return (
     <div className="space-y-3 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Link to="/tenant/flows" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-ink"><ArrowLeft className="h-4 w-4" />흐름 목록</Link>
+        <Link to={backend.back.to} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-ink"><ArrowLeft className="h-4 w-4" />{backend.back.label}</Link>
         <h1 className="font-cond text-lg font-semibold tracking-wide text-ink">{name}</h1>
         <span className="hmi-label flex items-center gap-1.5" role="status">
           <span className={`lamp ${save.state === 'saving' ? 'lamp-run' : save.state === 'failed' ? 'lamp-alarm' : 'lamp-ok'}`} />
           {save.state === 'saving' ? '저장 중' : save.state === 'failed' ? '저장 실패' : '초안 저장됨'}
         </span>
         <span className="hmi-label">{errors.length === 0 ? '검증 통과' : `검증 오류 ${errors.length}건`}</span>
-        {!isAdmin && <span className="hmi-label border border-line-soft px-1.5 py-0.5">읽기 전용 — 흐름 편집 권한이 없습니다</span>}
+        {!isAdmin && <span className="hmi-label border border-line-soft px-1.5 py-0.5">{backend.readOnlyNotice}</span>}
         {deployedVersion !== null && <span className="hmi-label flex items-center gap-1.5"><span className="lamp lamp-ok" />v{deployedVersion} 배포 중</span>}
       </div>
       {flowErrors.map((e, i) => <p key={i} role="alert" className="text-sm text-destructive">{e.message}</p>)}
@@ -187,12 +184,16 @@ export default function FlowEditorPage() {
           )}
           </section>
           <div className="border-t border-line-soft pt-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-            <VersionsPanel
-              flowId={id} versions={versions} deployedVersion={deployedVersion} pending={pendingRequest}
-              requiresApproval={requiresApproval} canDeploy={isAdmin} me={me} testedTurns={testSession.turns.length}
-              viewing={viewing?.number ?? null} onView={viewVersion}
-              onChanged={() => { reloadMeta().catch(() => {}); appsTenantsApiGetConfig().then((r) => setRequiresApproval(!!(r.data as unknown as { deploy_requires_approval?: boolean }).deploy_requires_approval)).catch(() => {}) }}
-            />
+            {backend.versionsPanel ? (
+              <VersionsPanel
+                flowId={id} versions={versions} deployedVersion={deployedVersion} pending={pendingRequest}
+                requiresApproval={requiresApproval} canDeploy={isAdmin} me={me} testedTurns={testSession.turns.length}
+                viewing={viewing?.number ?? null} onView={viewVersion}
+                onChanged={() => { reloadMeta().catch(() => {}); loadAccount() }}
+              />
+            ) : (
+              <p className="text-xs text-muted-foreground">{backend.versionsNote}</p>
+            )}
           </div>
         </aside>
 
@@ -226,7 +227,7 @@ export default function FlowEditorPage() {
 
         <aside className="min-w-0 space-y-3 border border-line-soft bg-surface p-3 lg:min-h-0 lg:overflow-y-auto" aria-label="노드 설정">
           <div role="tablist" className="flex border-b border-line-soft">
-            {([['test', '시험 대화'], ['log', '판단 기록'], ['config', '노드 설정']] as const).map(([k, label]) => (
+            {([['test', '시험 대화'], ['log', '판단 기록'], ['config', '노드 설정']] as const).filter(([k]) => k === 'config' || backend.testChat).map(([k, label]) => (
               <button
                 key={k} type="button" role="tab" aria-selected={rightTab === k} onClick={() => setRightTab(k)}
                 className={`px-3 py-1.5 text-sm ${rightTab === k ? 'border-b-2 border-ink font-semibold text-ink' : 'text-muted-foreground'}`}

@@ -14,6 +14,12 @@ export class HttpError extends Error {
   }
 }
 
+/** 공개 체험 API(/api/try, #37): 로그인 없이 `sf_try` 쿠키만 쓴다 — Bearer·refresh 를 타지 않는다. */
+const isTry = (url: string) => url.startsWith('/api/try/')
+/** 체험 세션 쿠키가 없거나 만료됐다(401 try_no_session). 체험 화면이 템플릿 고르기로 돌려보낸다. */
+export const TRY_SESSION_LOST = 'flow:try-session-lost'
+export const notifyTrySessionLost = () => window.dispatchEvent(new Event(TRY_SESSION_LOST))
+
 function kindForUrl(url: string): AuthKind {
   // 라우터 마운트와 일치: /api/operator/* → operator, 그 외(/api/tenant/*) → agent
   return url.startsWith('/api/operator') ? 'operator' : 'agent'
@@ -37,18 +43,19 @@ export async function customInstance<T>(url: string, init: RequestInit = {}): Pr
 
   const send = (): Promise<Response> => {
     const headers = new Headers(init.headers)
-    const access = getAccess(kind)
+    const access = isTry(url) ? null : getAccess(kind)
     if (access) headers.set('Authorization', `Bearer ${access}`)
     if (isForm) headers.delete('Content-Type') // multipart boundary는 브라우저가 설정
     return fetch(fullUrl, { ...init, credentials: 'include', headers }) // refresh 쿠키 동봉
   }
 
   let res = await send()
-  if (res.status === 401 && (await refresh(kind))) {
+  if (res.status === 401 && !isTry(url) && (await refresh(kind))) {
     res = await send() // 새 access로 1회 재시도
   }
   const data = await parseBody(res)
   if (!res.ok) {
+    if (isTry(url) && res.status === 401 && (data as { code?: string } | undefined)?.code === 'try_no_session') notifyTrySessionLost()
     // 테넌트 쓰기가 403 이면 역할이 바뀌었을 수 있다 — 서버 역할을 다시 읽어 화면을 맞춘다(#120).
     if (res.status === 403 && kind === 'agent' && !url.endsWith('/members/me')) void reloadRole()
     throw new HttpError(res.status, fullUrl, data)

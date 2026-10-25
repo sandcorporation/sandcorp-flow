@@ -12,6 +12,7 @@ describe('390폭 넘침 시험의 라우트 목록', () => {
     for (const m of app.matchAll(/<Route\s+path="([^"]+)"/g)) {
       const p = m[1]
       if (p === '/operator' || p === '/tenant') { role = p.slice(1); continue }
+      if (p.startsWith('/try')) { found.push(`public/${p.slice(1)}`); continue } // 로그인 없는 공개 화면(#37)
       if (role) found.push(`${role}/${p}`)
     }
     const want = Object.entries(listed).filter(([k]) => !k.startsWith('_')).flatMap(([r, l]) => (l as string[]).map(p => `${r}/${p}`))

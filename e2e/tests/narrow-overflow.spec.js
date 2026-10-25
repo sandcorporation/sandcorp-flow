@@ -29,7 +29,17 @@ const VERSIONS = [
   { number: 1, note: 'https://example.com/' + 'a'.repeat(120), created_by_name: '김관리', created_at: T0, deployed: false, hash: 'h1' },
 ]
 
+const TRY_SESSION = { flow_id: 'f-long-0001', template: 'shop_support', turns_remaining: 12, expires_at: '2026-12-01T00:00:00Z' }
 const FIXTURES = [
+  // 공개 체험 /try (#37) — 긴 이름·긴 문서명으로 카드와 머리줄이 넘치지 않는지 본다.
+  [/\/api\/try\/templates\/$/, ['sandcorp_home', 'shop_support', 'academy_reservation'].map((id) => ({ id, name: LONG, documents: [LONG, 'https://example.com/' + 'a'.repeat(80)] }))],
+  [/\/api\/try\/templates\/[^/]+\/$/, { id: 'shop_support', name: LONG, documents: [LONG], graph: { nodes: FLOW_NODES, edges: [{ from: 'start', to: 'ai_1' }] } }],
+  [/\/api\/try\/session\/$/, TRY_SESSION],
+  [/\/api\/try\/flows\/[^/]+\/$/, {
+    flow: FLOW_OUT,
+    draft: { graph: { nodes: FLOW_NODES, edges: [{ from: 'start', to: 'ai_1' }] }, valid: true, errors: [] },
+    versions: [], pending_request: null,
+  }],
   [/\/api\/tenant\/flows\/$/, [{ ...FLOW_OUT, has_pending_request: true }]],
   [/\/api\/tenant\/deploy-requests\/$/, [REQ_OUT]],
   [/\/api\/tenant\/members\/me$/, { id: 'm1', tenant_id: 't1', tenant_name: '고객사', role: 'admin', name: '김관리', email: 'a@example.com' }],
@@ -78,7 +88,7 @@ const FIXTURES = [
 ]
 
 async function mockApi(page) {
-  await page.route(/\/api\/(operator|tenant)\//, (route) => {
+  await page.route(/\/api\/(operator|tenant|try)\//, (route) => {
     const req = route.request()
     if (req.method() !== 'GET') return route.fallback()
     const { pathname } = new URL(req.url())
@@ -119,14 +129,15 @@ for (const theme of ['light', 'dark']) {
     for (const { role, route } of targets) {
       test(`${role}/${route}`, async ({ page }) => {
         const url = route.split('/').map((s) => PARAMS[s] ?? s).join('/')
+        const pub = role === 'public' // 로그인 없는 화면 — 토큰을 심지 않는다
         const key = role === 'operator' ? 'op_access' : 'agent_access'
-        const token = role === 'operator' ? operatorToken() : memberToken()
+        const token = pub ? '' : role === 'operator' ? operatorToken() : memberToken()
         await page.addInitScript(([k, t, th]) => {
-          sessionStorage.setItem(k, t)
+          if (t) sessionStorage.setItem(k, t)
           localStorage.setItem('admin_theme', th)
         }, [key, token, theme])
         await mockApi(page)
-        await page.goto(`${ADMIN_URL}/admin-ui/${role}/${url}`)
+        await page.goto(`${ADMIN_URL}/admin-ui/${pub ? '' : role + '/'}${url}`)
         await page.waitForLoadState('load') // HITL 은 SSE 가 열려 있어 networkidle 이 오지 않는다
         await page.waitForTimeout(800)
         if (SHOTS) {

@@ -14,6 +14,7 @@ import type {
   TestTurnIn,
   TrySessionOut,
   TryStartIn,
+  TryTemplateDetailOut,
   TryTemplateOut
 } from '../../model';
 
@@ -338,6 +339,42 @@ export const getAppsTenantsTryApiTryTemplatesUrl = () => {
 export const appsTenantsTryApiTryTemplates = async ( options?: RequestInit): Promise<appsTenantsTryApiTryTemplatesResponse> => {
   
   return customInstance<appsTenantsTryApiTryTemplatesResponse>(getAppsTenantsTryApiTryTemplatesUrl(),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+);}
+
+
+/**
+ * 「흐름 보기」 — 세션을 만들지 않고 예제의 흐름 그래프를 읽기 전용으로 준다(IP 한도를 쓰지 않는다).
+ * @summary Try Template Detail
+ */
+export type appsTenantsTryApiTryTemplateDetailResponse200 = {
+  data: TryTemplateDetailOut
+  status: 200
+}
+    
+export type appsTenantsTryApiTryTemplateDetailResponseSuccess = (appsTenantsTryApiTryTemplateDetailResponse200) & {
+  headers: Headers;
+};
+;
+
+export type appsTenantsTryApiTryTemplateDetailResponse = (appsTenantsTryApiTryTemplateDetailResponseSuccess)
+
+export const getAppsTenantsTryApiTryTemplateDetailUrl = (templateId: string,) => {
+
+
+  
+
+  return `/api/try/templates/${templateId}/`
+}
+
+export const appsTenantsTryApiTryTemplateDetail = async (templateId: string, options?: RequestInit): Promise<appsTenantsTryApiTryTemplateDetailResponse> => {
+  
+  return customInstance<appsTenantsTryApiTryTemplateDetailResponse>(getAppsTenantsTryApiTryTemplateDetailUrl(templateId),
   {      
     ...options,
     method: 'GET'

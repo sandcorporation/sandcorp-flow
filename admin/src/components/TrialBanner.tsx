@@ -22,7 +22,7 @@ export function trialMessage(t: Trial): { tone: 'info' | 'warn'; text: string } 
 }
 
 // 시험 대화 턴이 끝나면 체험 횟수가 올랐으므로 배너가 다시 읽게 알린다(#103). 방문자 위젯 턴은 대상이 아니다.
-const TRIAL_CHANGED = 'flow:trial-changed'
+export const TRIAL_CHANGED = 'flow:trial-changed'
 export const notifyTrialChanged = () => window.dispatchEvent(new Event(TRIAL_CHANGED))
 
 export default function TrialBanner() {
