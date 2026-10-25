@@ -14,6 +14,7 @@ import VersionsPanel from './VersionsPanel'
 import type { Me } from './DeployRequestCard'
 import NodeConfigForm from './NodeConfigForm'
 import { DecisionLog, TestChat, useTestSession } from './TestPanel'
+import { useIsNarrow } from '@/lib/useIsNarrow'
 import { turnPath, type TestTurn } from '@/lib/testTrace'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -42,7 +43,9 @@ export default function FlowEditorPage() {
   const [loadError, setLoadError] = useState('')
   const [schemas, setSchemas] = useState<Record<string, { config: object }>>({})
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const narrow = useIsNarrow() // 폰: 캔버스는 읽기만, 노드 설정·시험 대화는 하단 시트(#38)
   const [rightTab, setRightTab] = useState<'test' | 'log' | 'config'>('config')
+  const [sheet, setSheet] = useState<'config' | 'test' | 'log' | 'versions' | null>(null)
   const [highlight, setHighlight] = useState<{ nodes: Set<string>; edges: Set<string> } | null>(null)
   const [save, setSave] = useState<{ state: SaveState; message: string }>({ state: 'saved', message: '' })
   const graphRef = useRef(graph)
@@ -132,6 +135,61 @@ export default function FlowEditorPage() {
   const selected = shownGraph.nodes.find((n) => n.id === selectedId) ?? null
   const flowErrors = flowLevelErrors(errors)
 
+  const tab = narrow ? sheet : rightTab
+  const versionsBody = backend.versionsPanel ? (
+    <VersionsPanel
+      flowId={id} versions={versions} deployedVersion={deployedVersion} pending={pendingRequest}
+      requiresApproval={requiresApproval} canDeploy={isAdmin} me={me} testedTurns={testSession.turns.length}
+      viewing={viewing?.number ?? null} onView={(n) => { viewVersion(n); setSheet(null) }}
+      onChanged={() => { reloadMeta().catch(() => {}); loadAccount() }}
+    />
+  ) : (
+    <p className="text-xs text-muted-foreground">{backend.versionsNote}</p>
+  )
+  const panelBody = (
+    <>
+      {tab === 'test' && <TestChat {...testSession} readOnly={readOnly} />}
+      {tab === 'log' && <DecisionLog turns={testSession.turns} graph={shownGraph} onFocus={focusTurn} />}
+      {tab === 'config' && (selected ? (
+        <NodePanel key={selected.id} node={selected} schema={schemas[selected.kind]?.config} errors={errors} readOnly={readOnly} canDelete={!narrow} commit={commit} onDeleted={() => setSelectedId(null)} />
+      ) : (
+        <Overview errors={errors} graph={graph} onPick={(nid) => { setSelectedId(nid); if (narrow) setSheet('config') }} />
+      ))}
+      {tab === 'versions' && versionsBody}
+    </>
+  )
+  const canvas = (
+    <FlowCanvas
+      key={viewing ? `v${viewing.number}` : 'draft'}
+      graph={shownGraph}
+      errors={shownErrors}
+      selectedId={selectedId}
+      readOnly={readOnly || narrow}
+      spotRef={spotRef}
+      activeNodeIds={tab === 'log' ? highlight?.nodes : undefined}
+      activeEdgeKeys={tab === 'log' ? highlight?.edges : undefined}
+      onSelect={(nid) => {
+        setSelectedId(nid)
+        if (narrow) setSheet(nid ? 'config' : (s) => (s === 'config' ? null : s))
+        else if (nid) setRightTab('config')
+      }}
+      onMoved={(nid, position) => commit([{ op: 'upsert_node', id: nid, position }])}
+      onConnect={(from, handle, to) => commit([{ op: 'connect', from, to, handle }])}
+      onDelete={(ids, cuts) => {
+        commit([...ids.map((x): PatchOp => ({ op: 'delete_node', id: x })), ...cuts.map((c): PatchOp => ({ op: 'disconnect', from: c.from, handle: c.handle }))])
+        if (selectedId && ids.includes(selectedId)) setSelectedId(null)
+      }}
+      onDropKind={(kind, position) => addNode(kind, { x: Math.round(position.x), y: Math.round(position.y) })}
+    />
+  )
+  const viewingBar = viewing && (
+    <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-2 border-b border-ink bg-raised px-3 py-1.5 text-sm" role="status">
+      <span className="font-semibold text-ink">v{viewing.number} 보는 중</span>
+      <span className="text-muted-foreground">읽기 전용 — 저장된 버전은 고칠 수 없습니다</span>
+      <Button type="button" size="sm" variant="outline" className="ml-auto h-7" onClick={() => setViewing(null)}>초안으로 돌아가기</Button>
+    </div>
+  )
+
   if (loadError) return <p role="alert" className="text-sm text-destructive">{loadError}</p>
   if (!loaded) return <div aria-busy="true" />
 
@@ -151,6 +209,34 @@ export default function FlowEditorPage() {
       {flowErrors.map((e, i) => <p key={i} role="alert" className="text-sm text-destructive">{e.message}</p>)}
       {save.state === 'failed' && <p role="alert" className="text-sm text-destructive">{save.message}</p>}
 
+      {narrow ? (
+        <>
+          <div className="relative h-[calc(100dvh-13rem)] min-h-[300px] min-w-0 overflow-hidden border border-line-soft bg-background" data-testid="flow-canvas">
+            {viewingBar}
+            {canvas}
+          </div>
+          <div className="h-12" aria-hidden="true" />
+          {sheet && (
+            <section role="dialog" aria-label={SHEET_LABEL[sheet]} data-testid="phone-sheet" className="fixed inset-x-0 bottom-12 z-40 flex max-h-[62dvh] flex-col border-t-2 border-ink bg-surface shadow-lg">
+              <div className="flex items-center justify-between border-b border-line-soft px-3 py-1.5">
+                <h2 className="hmi-label">{SHEET_LABEL[sheet]}</h2>
+                <button type="button" aria-label="시트 닫기" className="px-2 text-lg leading-none text-muted-foreground hover:text-ink" onClick={() => setSheet(null)}>×</button>
+              </div>
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-3">{panelBody}</div>
+            </section>
+          )}
+          <nav aria-label="하단 탭" className="fixed inset-x-0 bottom-0 z-50 flex h-12 border-t-2 border-ink bg-head text-head-foreground">
+            {([['config', '노드 설정'], ['test', '시험 대화'], ['log', '판단 기록'], ['versions', '버전']] as const)
+              .filter(([k]) => (k !== 'test' && k !== 'log') || backend.testChat)
+              .map(([k, label]) => (
+                <button
+                  key={k} type="button" aria-pressed={sheet === k} onClick={() => setSheet(sheet === k ? null : k)}
+                  className={`min-w-0 flex-1 truncate px-1 text-sm ${sheet === k ? 'border-t-2 border-run font-semibold' : 'opacity-80'}`}
+                >{label}</button>
+              ))}
+          </nav>
+        </>
+      ) : (
       <div className="grid gap-3 lg:min-h-[480px] lg:flex-1 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
         <aside className="min-w-0 space-y-4 border border-line-soft bg-surface p-3 lg:flex lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-3 lg:overflow-hidden">
           <section aria-label="노드 목록" className="space-y-2 lg:max-h-[38%] lg:shrink-0 lg:overflow-y-auto">
@@ -184,45 +270,13 @@ export default function FlowEditorPage() {
           )}
           </section>
           <div className="border-t border-line-soft pt-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-            {backend.versionsPanel ? (
-              <VersionsPanel
-                flowId={id} versions={versions} deployedVersion={deployedVersion} pending={pendingRequest}
-                requiresApproval={requiresApproval} canDeploy={isAdmin} me={me} testedTurns={testSession.turns.length}
-                viewing={viewing?.number ?? null} onView={viewVersion}
-                onChanged={() => { reloadMeta().catch(() => {}); loadAccount() }}
-              />
-            ) : (
-              <p className="text-xs text-muted-foreground">{backend.versionsNote}</p>
-            )}
+            {versionsBody}
           </div>
         </aside>
 
         <div className="relative h-[420px] min-w-0 overflow-hidden border border-line-soft bg-background lg:h-auto lg:min-h-0" data-testid="flow-canvas">
-          {viewing && (
-            <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-2 border-b border-ink bg-raised px-3 py-1.5 text-sm" role="status">
-              <span className="font-semibold text-ink">v{viewing.number} 보는 중</span>
-              <span className="text-muted-foreground">읽기 전용 — 저장된 버전은 고칠 수 없습니다</span>
-              <Button type="button" size="sm" variant="outline" className="ml-auto h-7" onClick={() => setViewing(null)}>초안으로 돌아가기</Button>
-            </div>
-          )}
-          <FlowCanvas
-            key={viewing ? `v${viewing.number}` : 'draft'}
-            graph={shownGraph}
-            errors={shownErrors}
-            selectedId={selectedId}
-            readOnly={readOnly}
-            spotRef={spotRef}
-            activeNodeIds={rightTab === 'log' ? highlight?.nodes : undefined}
-            activeEdgeKeys={rightTab === 'log' ? highlight?.edges : undefined}
-            onSelect={(nid) => { setSelectedId(nid); if (nid) setRightTab('config') }}
-            onMoved={(nid, position) => commit([{ op: 'upsert_node', id: nid, position }])}
-            onConnect={(from, handle, to) => commit([{ op: 'connect', from, to, handle }])}
-            onDelete={(ids, cuts) => {
-              commit([...ids.map((x): PatchOp => ({ op: 'delete_node', id: x })), ...cuts.map((c): PatchOp => ({ op: 'disconnect', from: c.from, handle: c.handle }))])
-              if (selectedId && ids.includes(selectedId)) setSelectedId(null)
-            }}
-            onDropKind={(kind, position) => addNode(kind, { x: Math.round(position.x), y: Math.round(position.y) })}
-          />
+          {viewingBar}
+          {canvas}
         </div>
 
         <aside className="min-w-0 space-y-3 border border-line-soft bg-surface p-3 lg:min-h-0 lg:overflow-y-auto" aria-label="노드 설정">
@@ -234,18 +288,15 @@ export default function FlowEditorPage() {
               >{label}</button>
             ))}
           </div>
-          {rightTab === 'test' && <TestChat {...testSession} readOnly={readOnly} />}
-          {rightTab === 'log' && <DecisionLog turns={testSession.turns} graph={shownGraph} onFocus={focusTurn} />}
-          {rightTab === 'config' && (selected ? (
-            <NodePanel key={selected.id} node={selected} schema={schemas[selected.kind]?.config} errors={errors} readOnly={readOnly} commit={commit} onDeleted={() => setSelectedId(null)} />
-          ) : (
-            <Overview errors={errors} graph={graph} onPick={setSelectedId} />
-          ))}
+          {panelBody}
         </aside>
       </div>
+      )}
     </div>
   )
 }
+
+const SHEET_LABEL = { config: '노드 설정', test: '시험 대화', log: '판단 기록', versions: '버전' } as const
 
 function Overview({ errors, graph, onPick }: { errors: FlowError[]; graph: FlowGraph; onPick: (id: string) => void }) {
   return (
@@ -272,8 +323,8 @@ function Overview({ errors, graph, onPick }: { errors: FlowError[]; graph: FlowG
 }
 
 /** 노드 하나의 설정: 이름 + 「폼」(종류별) / 「고급」(JSON) 탭. 저장은 어느 쪽이든 config 통째 교체. */
-function NodePanel({ node, schema, errors, readOnly, commit, onDeleted }: {
-  node: FlowNodeJson; schema?: object; errors: FlowError[]; readOnly: boolean; commit: (ops: PatchOp[]) => void; onDeleted: () => void
+function NodePanel({ node, schema, errors, readOnly, canDelete, commit, onDeleted }: {
+  node: FlowNodeJson; schema?: object; errors: FlowError[]; readOnly: boolean; canDelete: boolean; commit: (ops: PatchOp[]) => void; onDeleted: () => void
 }) {
   const pretty = JSON.stringify(node.config ?? {}, null, 2)
   const [text, setText] = useState(pretty)
@@ -337,7 +388,7 @@ function NodePanel({ node, schema, errors, readOnly, commit, onDeleted }: {
           {!readOnly && <Button type="button" size="sm" onClick={apply}>설정 적용</Button>}
         </div>
       )}
-      {!readOnly && (
+      {!readOnly && canDelete && (
         <div className="flex flex-wrap gap-2">
           <Button type="button" size="sm" variant="outline" onClick={() => { commit([{ op: 'delete_node', id: node.id }]); onDeleted() }}><Trash2 className="h-4 w-4" />노드 삭제</Button>
         </div>
