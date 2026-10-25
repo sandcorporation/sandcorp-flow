@@ -19,3 +19,4 @@ langfuse.env
 .mcp.json
 .playwright-mcp/
 async-smoke-widget.png
+.e2e-soak/
