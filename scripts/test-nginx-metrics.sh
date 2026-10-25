@@ -135,6 +135,18 @@ og_img /embed/flow/og.png /terms
 og_img /embed/flow/og.png /privacy
 og_img /admin-ui/flow/og.png /admin-ui/
 
+echo "== 접근 로그 시간 필드(#185): 줄 끝에 rt=<초> urt=<초|-> =="
+start "$URL" ""
+curl -s -o /dev/null -H 'User-Agent: logtime-probe' "http://127.0.0.1:$PORT/terms"
+curl -s -o /dev/null -H 'User-Agent: logtime-probe' "http://127.0.0.1:$PORT/api/health"
+sleep 0.5
+logs=$(docker logs nginx-metrics-test 2>&1)
+line=$(grep 'GET /terms ' <<<"$logs" | grep logtime-probe | tail -1)
+if grep -Eq '"logtime-probe" rt=[0-9]+\.[0-9]+ urt=-$' <<<"$line"; then echo "ok   정적 요청 줄 끝 rt=숫자 urt=-"; else echo "FAIL 정적 요청 로그 줄: '$line'"; FAILS=$((FAILS+1)); fi
+line=$(grep 'GET /api/health ' <<<"$logs" | grep logtime-probe | tail -1)
+# api 컨테이너가 없는 시험 환경이라 502 — 그래도 줄 끝은 같은 모양(urt 은 숫자 또는 -)이어야 한다
+if grep -Eq '"logtime-probe" rt=[0-9]+\.[0-9]+ urt=([0-9]+\.[0-9]+|-)$' <<<"$line"; then echo "ok   프록시 요청 줄 끝 rt=숫자 urt=…"; else echo "FAIL 프록시 요청 로그 줄: '$line'"; FAILS=$((FAILS+1)); fi
+
 echo "== webmanifest =="
 ct=$(curl -sI "http://127.0.0.1:$PORT/embed/flow/site.webmanifest" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print $2}')
 [ "$ct" = "application/manifest+json" ] && echo "ok   content-type $ct" || { echo "FAIL webmanifest content-type: '$ct'"; FAILS=$((FAILS+1)); }
