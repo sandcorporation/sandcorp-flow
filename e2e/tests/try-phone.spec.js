@@ -31,6 +31,8 @@ const noScrollDrag = (page) => page.evaluate(() => {
   if (window.scrollY !== 0) out.push(`window ${window.scrollY}`)
   return out
 })
+/** 폰 편집기는 한 화면에 들어간다 — 문서가 뷰포트보다 길면 아무 스크롤(Playwright 의 클릭 보정 포함)이 window 를 끌고 간다(#160). */
+const noVerticalOverflow = (page) => page.evaluate(() => document.scrollingElement.scrollHeight - document.scrollingElement.clientHeight)
 const viewportOf = (page) => page.locator('.react-flow__viewport').evaluate((el) => getComputedStyle(el).transform)
 
 test.describe('폰 모드 — 실제 스택', () => {
@@ -86,6 +88,7 @@ test.describe('폰 모드 — 실제 스택', () => {
     await sheet.getByRole('button', { name: '설정 적용' }).click()
     await expect(page.getByText('초안 저장됨')).toBeVisible()
     expect(await noHorizontalOverflow(page)).toEqual([])
+    expect(await noVerticalOverflow(page)).toBeLessThanOrEqual(0) // 머리줄에 상태 표시가 붙어 줄이 접혀도 문서가 넘치지 않는다(#160)
     await shot(page, 'phone-sheet-light')
 
     // 하단 탭에서 시험 대화 한 턴

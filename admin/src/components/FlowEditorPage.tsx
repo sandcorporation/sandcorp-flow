@@ -221,7 +221,8 @@ export default function FlowEditorPage() {
 
       {narrow ? (
         <>
-          <div className="relative h-[calc(100dvh-13rem)] min-h-[300px] min-w-0 overflow-hidden border border-line-soft bg-background" data-testid="flow-canvas">
+          {/* 15rem = 머리줄·여백·제목줄(상태 표시가 붙어 두 줄로 접힐 수 있다)·아래 탭 자리. 13rem 이던 때 27px 넘쳐 문서가 끌렸다(#160) */}
+          <div className="relative h-[calc(100dvh-15rem)] min-h-[300px] min-w-0 overflow-hidden border border-line-soft bg-background" data-testid="flow-canvas">
             {viewingBar}
             {canvas}
           </div>
