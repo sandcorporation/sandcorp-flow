@@ -1,0 +1,8 @@
+# 방문 지표 스니펫(#154) — nginx 공식 이미지의 envsubst 템플릿(/etc/nginx/templates → conf.d/flow-metrics.conf).
+# METRICS_SNIPPET_URL 이 http(s):// 로 시작할 때만 $flow_metrics_head 가 <script> 태그가 되고,
+# 비면 빈 문자열이라 sub_filter 가 아무것도 넣지 않는다(빈 src 태그 없음). 빌드가 아니라 컨테이너 시작 때 정해진다.
+# nginx.oracle.conf 가 http 블록에서 include 하고, 랜딩·약관·처리방침·admin location 에서만 sub_filter 로 쓴다.
+map "${METRICS_SNIPPET_URL}" $flow_metrics_head {
+    default "";
+    "~^https?://" '<script defer src="${METRICS_SNIPPET_URL}" data-site="${METRICS_SITE_KEY}"></script>';
+}

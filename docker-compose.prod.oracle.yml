@@ -169,8 +169,14 @@ services:
       - "${NGINX_PORT:-8080}:80"
     volumes:
       - ./backend/nginx/nginx.oracle.conf:/etc/nginx/nginx.conf:ro
+      # 방문 지표 스니펫(#154): 공식 이미지가 시작 때 envsubst 로 conf.d/flow-metrics.conf 를 만든다.
+      - ./backend/nginx/flow-metrics.conf.template:/etc/nginx/templates/flow-metrics.conf.template:ro
       - widget_dist:/app/widget:ro
       - admin_dist:/app/admin:ro
+    environment:
+      NGINX_ENVSUBST_FILTER: "^METRICS_"
+      METRICS_SNIPPET_URL: ${METRICS_SNIPPET_URL:-}
+      METRICS_SITE_KEY: ${METRICS_SITE_KEY:-flow}
     depends_on:
       widget-init:
         condition: service_completed_successfully
