@@ -183,8 +183,8 @@ async def test_classify_failure_does_not_break_the_turn_and_falls_to_else(tenant
 
 
 @pytest.mark.django_db(transaction=True)
-async def test_example_flow_runs_one_turn_up_to_the_http_node(tenant_with_key, fake_chat_llm):
-    """예제 ①: 전체가 지어지고, HTTP 노드 앞까지의 분기가 한 턴에 돈다."""
+async def test_example_flow_runs_one_turn_up_to_the_contact_guide(tenant_with_key, fake_chat_llm):
+    """예제 ①: 전체가 지어지고, 문의 폼 안내 앞까지의 분기가 한 턴에 돈다."""
     import json
     from pathlib import Path
 
@@ -194,8 +194,8 @@ async def test_example_flow_runs_one_turn_up_to_the_http_node(tenant_with_key, f
     graph = json.loads((Path(__file__).parent.parent / "apps/flows/examples/sandcorp_home.json").read_text())
     compile_flow(graph)  # 모든 노드 종류에 핸들러가 있다(HTTP 도구 #34까지)
 
-    # HTTP 노드만 빼고 같은 분기를 돈다(HTTP 호출은 test_flow_http_tool.py) — 가격 약속 판정은 걸리지 않게 둔다
-    dropped = {"submit", "submitted", "submit_failed"}
+    # 마지막 안내 노드만 빼고 같은 분기를 돈다 — 가격 약속 판정은 걸리지 않게 둔다
+    dropped = {"contact"}
     trimmed = {"nodes": [n for n in graph["nodes"] if n["id"] not in dropped],
                "edges": [e for e in graph["edges"] if not dropped & {e["from"], e["to"]}]}
     fake_chat_llm.by_schema["GuardrailVerdict"] = lambda m, schema: schema(violates=False)

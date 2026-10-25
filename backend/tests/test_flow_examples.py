@@ -170,19 +170,26 @@ async def test_academy_course_question_is_searched_and_guarded(tenant_with_key, 
     _no_network(net)
 
 
-# ── ① Sandcorp 홈: 문의 접수 ─────────────────────────────────────────────────
+# ── ① Sandcorp 홈: 문의는 홈 문의 폼으로 안내 ───────────────────────────────
+
+def test_sandcorp_template_has_no_http_tool_node():
+    kinds = {n["kind"] for n in _graph("sandcorp_home")["nodes"]}
+    assert "http_tool" not in kinds
+
 
 @pytest.mark.django_db(transaction=True)
-async def test_sandcorp_template_submits_the_inquiry_to_the_fake_api(tenant_with_key, fake_chat_llm, net):
+async def test_sandcorp_project_inquiry_ends_with_the_home_form_guide(tenant_with_key, fake_chat_llm, net):
     tenant, _ = tenant_with_key
     fake_chat_llm.by_schema["GuardrailVerdict"] = lambda m, schema: schema(violates=False)
     _classify(fake_chat_llm, label="project_inquiry", confidence=0.9, fields={"requirements_complete": True})
 
     result, _ = await _turn(tenant, _graph("sandcorp_home"), "쇼핑몰을 한 달 안에 만들고 싶어요")
 
-    assert _path(result) == ["start", "classify", "route", "enough", "cases", "draft", "guard", "submit", "submitted"]
-    assert result["fields"]["inquiry_no"].startswith("Q-")
-    assert _http_entry(result)["record"]["request"]["url"] == "https://demo-api.flow.sandcorp.co.kr/inquiries"
+    assert _path(result) == ["start", "classify", "route", "enough", "cases", "draft", "guard", "contact"]
+    assert not [t for t in result["trace"] if t["kind"] == "http_tool"]
+    contact = next(n for n in _graph("sandcorp_home")["nodes"] if n["id"] == "contact")
+    assert "https://sandcorp.co.kr/#home-inquiry" in contact["config"]["instructions"]  # 안내 답이 이 링크로 이어진다
+    assert "@" not in contact["config"]["instructions"]  # 이메일 주소는 넣지 않는다
     _no_network(net)
 
 
@@ -256,18 +263,11 @@ def _sandcorp_flow():
     return tenant, Flow.objects.get(tenant_id=tenant.id)
 
 
-def _submit_node(graph: dict) -> dict:
-    return next(n for n in graph["nodes"] if n["id"] == "submit")
-
-
 @pytest.mark.django_db
-def test_seed_sandcorp_creates_tenant_public_flow_and_knowledge_once(settings):
+def test_seed_sandcorp_creates_tenant_public_flow_and_knowledge_once():
     from apps.flows.models import Flow, FlowVersion
     from apps.rag.models import Document
     from apps.tenants.models import Tenant
-
-    settings.SANDCORP_INQUIRY_URL = "https://demo-api.flow.sandcorp.co.kr/inquiries"
-    settings.SANDCORP_INQUIRY_API_KEY = ""
 
     call_command("seed_sandcorp")
     call_command("seed_sandcorp")
@@ -283,39 +283,39 @@ def test_seed_sandcorp_creates_tenant_public_flow_and_knowledge_once(settings):
 
 
 @pytest.mark.django_db
-def test_seed_sandcorp_takes_the_inquiry_url_and_key_from_settings(settings):
+def test_seed_sandcorp_creates_no_secret_or_allowed_domain():
     from apps.flows.services import validate_for_tenant
     from apps.tenants import tenant_secrets as ts
 
-    settings.SANDCORP_INQUIRY_URL = "https://api.example.com/inquiries"
-    settings.SANDCORP_INQUIRY_API_KEY = "ik-" + "x" * 20
-
-    call_command("seed_sandcorp")
+    call_command("seed_sandcorp", "--skip-knowledge")
     tenant, flow = _sandcorp_flow()
 
-    submit = _submit_node(flow.deployed_version.graph)
-    assert submit["config"]["url"] == "https://api.example.com/inquiries"
-    assert submit["config"]["headers"] == {"Authorization": "Bearer {{secret.inquiry_api_key}}"}
-    assert "inquiry_api_key" in ts.secret_names(tenant.id)
-    assert [d.pattern for d in ts.list_domains(tenant.id)] == ["api.example.com"]
+    assert list(ts.secret_names(tenant.id)) == [] and list(ts.list_domains(tenant.id)) == []
     assert validate_for_tenant(tenant.id, flow.deployed_version.graph) == []
-    assert ("ik-" + "x" * 20) not in str(flow.deployed_version.graph)  # 값은 흐름에 없다
 
 
 @pytest.mark.django_db
-def test_seed_sandcorp_update_flow_redeploys_when_the_setting_changes(settings):
-    from apps.flows.models import FlowVersion
+def test_seed_sandcorp_update_flow_replaces_an_old_graph_with_inquiry_node():
+    """운영에 옛 그래프(문의 접수 노드 있음)로 시드돼 있어도 --update-flow가 새 그래프로 바꿔 배포·공개한다."""
+    from apps.flows import services
+    from apps.flows.models import Flow, FlowVersion
 
-    settings.SANDCORP_INQUIRY_API_KEY = ""
-    settings.SANDCORP_INQUIRY_URL = "https://demo-api.flow.sandcorp.co.kr/inquiries"
-    call_command("seed_sandcorp")
-    settings.SANDCORP_INQUIRY_URL = "https://api.example.com/inquiries"
-    call_command("seed_sandcorp")  # 기본은 있는 흐름을 건드리지 않는다
-    assert FlowVersion.objects.filter(flow=_sandcorp_flow()[1]).count() == 1
-    call_command("seed_sandcorp", "--update-flow")
-    call_command("seed_sandcorp", "--update-flow")
-
+    call_command("seed_sandcorp", "--skip-knowledge")
     tenant, flow = _sandcorp_flow()
-    assert FlowVersion.objects.filter(flow=flow).count() == 2
-    assert _submit_node(flow.deployed_version.graph)["config"]["url"] == "https://api.example.com/inquiries"
+    old = _graph("sandcorp_home")
+    old["nodes"] = [n for n in old["nodes"] if n["id"] != "contact"] + [
+        {"id": "submit", "kind": "http_tool", "code": "N-09", "name": "문의 접수", "position": {"x": 0, "y": 0},
+         "config": {"method": "POST", "url": "https://demo-api.flow.sandcorp.co.kr/inquiries"}}]
+    old["edges"] = [e for e in old["edges"] if "contact" not in (e["from"], e["to"])] + [{"from": "guard", "to": "submit"}]
+    services.save_draft(tenant.id, flow.id, old)
+    version = services.save_version(tenant.id, flow.id, note="옛 그래프").version
+    services.deploy_version(tenant.id, flow.id, version.number)
+
+    call_command("seed_sandcorp", "--skip-knowledge")  # 기본은 불변
+    assert any(n["id"] == "submit" for n in Flow.objects.get(pk=flow.pk).deployed_version.graph["nodes"])
+    call_command("seed_sandcorp", "--skip-knowledge", "--update-flow")
+
+    flow = Flow.objects.get(pk=flow.pk)
+    assert flow.is_public and FlowVersion.objects.filter(flow=flow).count() == 3
+    assert flow.deployed_version.graph["nodes"] == _graph("sandcorp_home")["nodes"]
     assert flow.draft.graph == flow.deployed_version.graph
