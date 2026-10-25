@@ -31,7 +31,7 @@ test('/try?template=home → 고쳐 보기 → 노드 설정 → 시험 대화 �
   await card.getByRole('button', { name: '고쳐 보기' }).click()
   await expect(page).toHaveURL(/\/try\/flow\//)
   await expect(page.locator('.react-flow__node').first()).toBeVisible()
-  await expect(page.getByRole('button', { name: '이 흐름으로 가입' })).toBeDisabled()
+  await expect(page.getByRole('link', { name: '이 흐름으로 가입' })).toHaveAttribute('href', /then=try_claim/)
   await expect(page.getByText(/남은 대화 \d+턴/)).toBeVisible()
   await expect(page.getByText('버전 이력')).toHaveCount(0)
 

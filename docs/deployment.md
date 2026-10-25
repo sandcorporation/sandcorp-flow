@@ -259,7 +259,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
        하루 비용 누적은 `try_spend_days` 표(정리에 지워지지 않음), IP 하루 세션 수는 `try_ip_days`(이틀 지난 행은 정리 때 삭제).
     4. **확인 기록**: 2026-10-25 build 52·53(3e8bff5·c3cf15f) — 0012·0013 적용, seed_try_library 문서 9건·도서관 숨김 확인, prune 수동 1회 0건, 공개 API templates 200·Origin 없음 403 try_bad_origin·세션 201+Set-Cookie(HttpOnly·Secure·SameSite=Strict·Path=/api/try/)·deploy 403 try_restricted·시험 대화 SSE 정상·turns 20→19.
 
-13. [ ] **Sandcorp 공개 위젯·공개 흐름 보기(#39)** — 10번 `PLATFORM_OPENAI_API_KEY`가 들어간 뒤, 이번 배포 직후 한 번.
+13. [x] **Sandcorp 공개 위젯·공개 흐름 보기(#39)** — 10번 `PLATFORM_OPENAI_API_KEY`가 들어간 뒤, 이번 배포 직후 한 번.
     1. **env**(값 없이 이름만, 10번 표와 같은 키를 재사용): `PLATFORM_OPENAI_API_KEY`(필수), `PLATFORM_LLM_MODEL`·`PLATFORM_EMBED_MODEL`(기본값이면 생략 —
        임베딩은 `text-embedding-3-small`·`text-embedding-3-large`·`text-embedding-ada-002` 중 하나, 그 밖이면 시드가 멈춘다),
        레이트리밋 `CHAT_RATE_LIMIT_PER_VISITOR`(20)·`CHAT_RATE_LIMIT_PER_TENANT`(300)·`PUBLIC_FLOW_RATE_LIMIT_PER_MINUTE`(60, IP당 분당).
@@ -270,6 +270,13 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     3. **확인**: `curl -s https://flow.sandcorp.co.kr/api/public/flows/sandcorp/`가 200 JSON(`template`=`sandcorp_home`, `Cache-Control: public, max-age=60`),
        `curl -s -o /dev/null -w '%{http_code}' https://flow.sandcorp.co.kr/api/public/flows/없는-slug/`가 404.
        관리 화면 설정에서 Provider 3종이 `openai`, 「공개 흐름 보기」가 켜짐. sandcorp.co.kr 위젯에서 한 마디 → 답이 오고 「체험 중 — 남은 대화」가 줄지 않는다(자기 Provider).
+14. [ ] **「이 흐름으로 가입」 옮기기(#42)** — 배포 직후 한 번, 실제 sandcorp-auth 왕복으로 확인. sandcorp-auth 등록 변경은 **필요 없다**
+    (돌아오는 주소는 기존 콜백 `/api/auth/callback` 그대로 — 옮기기 표시는 서명된 시도 쿠키에 담긴다). env도 새로 넣을 것 없음
+    (`AUTH_TRY_CLAIM_REDIRECT` 기본 `/admin-ui/try/claim`).
+    1. 로그아웃한 브라우저에서 `https://flow.sandcorp.co.kr/admin-ui/try?template=shop` → 「고쳐 보기」 → 노드 하나 고치기 → 머리줄 「이 흐름으로 가입」.
+    2. sandcorp-auth 로그인 → `/admin-ui/try/claim`에 착지. (새 계정) 조직 이름 → 「만들고 흐름 옮기기」 / (Admin 조직이 있는 계정) 「기존 테넌트에 추가」.
+    3. `/admin-ui/tenant/flows/<id>?claimed=1` 편집기에 「체험에서 옮긴 흐름이에요」 안내·고친 노드 그대로·배포 중 표시 없음, 흐름 목록에 기본 흐름 옆에 보임.
+    4. 같은 브라우저에서 `/admin-ui/try/flow/<체험 흐름 id>`를 다시 열면 `/try?expired=1`로 돌아간다(체험 세션 삭제됨).
 
 ### portfolio(sandcorp.co.kr)가 쓰는 Flow 주소(#39)
 
