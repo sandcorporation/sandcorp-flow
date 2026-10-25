@@ -8,7 +8,7 @@ export default function SiteFooter() {
         <div className="footer-top">
           <div className="footer-brand">
             <div className="footer-logo">Sandcorp Flow</div>
-            <p className="footer-tagline">지식그래프 기반 AI 챗봇 플랫폼</p>
+            <p className="footer-tagline">흐름으로 만드는 상담 챗봇</p>
           </div>
           <nav className="footer-links">
             <a href="/">홈</a>

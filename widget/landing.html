@@ -3,8 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sandcorp Flow — 지식그래프 기반 AI 챗봇 플랫폼</title>
-    <meta name="description" content="지식그래프 기반 RAG로 더 정확하게 답하는 멀티테넌트 AI 챗봇 플랫폼. 실시간 토큰 스트리밍·HITL 상담 전환·임베드 위젯." />
+    <meta name="color-scheme" content="light dark" />
+    <title>Sandcorp Flow — 흐름으로 만드는 상담 챗봇</title>
+    <meta name="description" content="상담을 노드와 선으로 그리고, 시험 대화로 확인한 뒤 배포하는 상담 챗봇. 가입 없이 템플릿을 고쳐 보고 시험 대화까지 체험할 수 있습니다." />
+    <!-- 아이콘·favicon 자리: #142 에서 채운다. -->
+    <script>
+      // 저장된 수동 테마를 첫 그림 전에 적용(깜박임 방지). 키·값은 ThemeToggle 과 같다.
+      try { var t = localStorage.getItem('admin_theme'); if (t) document.documentElement.classList.add(t === 'dark' ? 'dark' : 'light') } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

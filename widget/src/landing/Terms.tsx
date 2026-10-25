@@ -1,4 +1,5 @@
 import SiteFooter from './SiteFooter'
+import ThemeToggle from './ThemeToggle'
 import { BUSINESS } from './business'
 
 // 이용약관 — 표준 템플릿. 시행 전 법률 검토 권장.
@@ -6,7 +7,7 @@ export default function Terms() {
   return (
     <div className="landing">
       <header className="doc-header">
-        <div className="container"><a href="/" className="doc-home">← Sandcorp Flow</a></div>
+        <div className="container doc-head-inner"><a href="/" className="doc-home">← Sandcorp Flow</a><ThemeToggle /></div>
       </header>
       <main className="container doc">
         <h1>이용약관</h1>
