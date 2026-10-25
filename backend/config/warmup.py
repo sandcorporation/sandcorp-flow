@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib
 
 # async 경로가 함수 안에서 늦게 부르던 무거운 모듈(계측 스택에서 확인). 함수 안 import 를 새로 더하면 여기도.
+# 누락은 tests/test_warmup_guard.py 가 잡는다(#189).
 HEAVY_LAZY_MODULES = (
     # 시험·체험 한 턴(apps.flows.executor)
     "langgraph.checkpoint.postgres.aio",
