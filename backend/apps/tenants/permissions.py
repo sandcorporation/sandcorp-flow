@@ -4,7 +4,7 @@
 추후 per-member 세분화를 도입해도 엔드포인트 가드 지점은 불변이다.
 
 - Admin = 전체 권한
-- Member = 전체 − ADMIN_ONLY(조직 단위 3종 + 흐름 편집·배포·승인·공개 보기 4종 + 비밀·허용 도메인 2종)
+- Member = 전체 − ADMIN_ONLY(조직 단위 3종 + 흐름 편집·배포·승인·공개 보기 4종 + 비밀·허용 도메인 2종 + Provider·웹훅 2종)
 - Tenant(=TENANT_KEY 인증 주체) = Admin 등가(break-glass·프로그램 프로비저닝 유지)
 """
 
@@ -28,8 +28,14 @@ FLOW_PUBLIC_VIEW = "flow.public_view"  # 「공개 흐름 보기」 켜기·끄�
 SECRETS_MANAGE = "secrets.manage"    # 비밀 만들기·값 교체·지우기
 DOMAINS_MANAGE = "domains.manage"    # 허용 도메인 더하기·지우기
 
+# 설정(#162) — Provider 키·base_url·종류·모델은 비용·키 유출 경로, 웹훅 주소는 상담 내용이 나가는 길이라 Admin 전용.
+# 시스템 프롬프트·상담 문구류는 Member도 고친다.
+PROVIDERS_MANAGE = "providers.manage"  # LLM·임베딩·OCR Provider 종류·base_url·API 키·모델·빠른 설정·모델 목록 불러오기
+WEBHOOK_MANAGE = "webhook.manage"      # 에스컬레이션 웹훅 주소·종류
+
 ADMIN_ONLY = frozenset({
     AGENTS_MANAGE, TENANT_KEY_ROTATE, SLUG_CHANGE, FLOW_EDIT, FLOW_DEPLOY, FLOW_APPROVE, FLOW_PUBLIC_VIEW, SECRETS_MANAGE, DOMAINS_MANAGE,
+    PROVIDERS_MANAGE, WEBHOOK_MANAGE,
 })
 
 

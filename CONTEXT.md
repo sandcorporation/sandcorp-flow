@@ -11,7 +11,7 @@ Sandcorp Flow(`flow.sandcorp.co.kr`)는 옛 Embed Chat을 넓힌 셀프 가입 S
 챗봇을 자기 사이트에 embed해서 쓰는 B2B 계약 고객사. 자기 RAG Knowledge Base, Visitor Memory를 어드민 페이지에서 직접 관리. `Tenant.name`은 표시명이며 전역 unique다(대소문자·공백 무관 충돌 처리). 로그인에는 쓰지 않는다 — 고객은 sandcorp-auth로 로그인하고 Membership으로 조직에 들어온다. 공개 챗봇 URL용 Slug와는 별개다.
 
 **Tenant Admin / Tenant Member**
-Membership의 권한 등급. **Tenant Admin**은 조직 내 모든 권한을 가진다(팀원 관리·TENANT_KEY 회전·Slug 변경 포함). **Tenant Member**는 일상 운영 권한 전체를 가지되 *조직 단위·되돌리기 어려운* 행위는 제외한다 — 팀원 관리, TENANT_KEY 회전, Slug 변경. 권한 검사는 역할이 아니라 **Permission** 단위로 이뤄지며, 역할은 그 권한 집합의 프리셋이다(추후 세분화 여지). 한 조직은 항상 최소 1명의 활성 Tenant Admin을 유지한다(마지막 Admin은 비활성화·강등 불가 — lockout 방지).
+Membership의 권한 등급. **Tenant Admin**은 조직 내 모든 권한을 가진다(팀원 관리·TENANT_KEY 회전·Slug 변경 포함). **Tenant Member**는 일상 운영 권한 전체를 가지되 *조직 단위·되돌리기 어려운* 행위는 제외한다 — 팀원 관리, TENANT_KEY 회전, Slug 변경, 흐름 편집·배포, Provider 키·base_url·모델과 웹훅 주소(시스템 프롬프트·상담 문구는 Member도 고친다). 권한 검사는 역할이 아니라 **Permission** 단위로 이뤄지며, 역할은 그 권한 집합의 프리셋이다(추후 세분화 여지). 한 조직은 항상 최소 1명의 활성 Tenant Admin을 유지한다(마지막 Admin은 비활성화·강등 불가 — lockout 방지).
 _Avoid_: Operator(플랫폼 운영자 — Tenant 외부); "관리자"만으로 Operator/Tenant Admin 혼용 금지
 
 **Permission**

@@ -531,3 +531,38 @@ describe('ConfigTab — 공개 흐름 보기(#39)', () => {
     expect(await screen.findByLabelText('공개 흐름 보기')).toBeDisabled()
   })
 })
+
+describe('ConfigTab — Provider·웹훅 입력은 Admin 전용(#162)', () => {
+  beforeEach(() => { vi.mocked(api.currentAgentRole).mockReturnValue('member') })
+
+  it('Member: AI 탭의 Provider 타입·Base URL·API Key·모델 입력이 비활성이고 안내가 보인다', async () => {
+    mockConfig({ llm_provider_type: 'custom', llm_api_key: '********', embed_provider_type: 'custom', ocr_provider_type: 'custom' })
+    renderConfig('ai')
+    expect(await screen.findByLabelText('LLM Provider 타입')).toBeDisabled()
+    expect(screen.getByLabelText('LLM Base URL')).toBeDisabled()
+    expect(screen.getByLabelText('LLM API Key')).toBeDisabled()
+    expect(screen.getByLabelText('AI 모델 직접 입력')).toBeDisabled()
+    expect(screen.getByLabelText('Embedding API Key')).toBeDisabled()
+    expect(screen.getByLabelText('OCR API Key')).toBeDisabled()
+    expect(screen.getByText(/관리자만 바꿀 수 있습니다/)).toBeInTheDocument()
+  })
+
+  it('Member: 상담 전환 탭의 웹훅 유형·URL이 비활성이다', async () => {
+    mockConfig({ webhook_type: 'slack', webhook_url: 'https://hooks.example.com/a' })
+    renderConfig('handoff')
+    expect(await screen.findByLabelText('웹훅 유형 선택')).toBeDisabled()
+    expect(screen.getByDisplayValue('https://hooks.example.com/a')).toBeDisabled()
+  })
+
+  it('Member: 시스템 프롬프트는 계속 편집 가능하다', async () => {
+    renderConfig('general')
+    expect(await screen.findByTestId('system-prompt-input')).toBeEnabled()
+  })
+
+  it('Admin: Provider·웹훅 입력이 활성이다', async () => {
+    vi.mocked(api.currentAgentRole).mockReturnValue('admin')
+    mockConfig({ llm_provider_type: 'custom', webhook_type: 'slack' })
+    renderConfig('ai')
+    expect(await screen.findByLabelText('LLM API Key')).toBeEnabled()
+  })
+})
