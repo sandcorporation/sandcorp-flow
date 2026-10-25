@@ -6733,6 +6733,7 @@
     },
     "/api/try/session/": {
       "get": {
+        "description": "내 체험 세션. 쿠키가 없거나 위조·만료면 **200 null** — 「아직 없음」을 묻는 의도된 질의라 오류가 아니다(#163).\n다른 엔드포인트는 같은 상황에 401 ``try_no_session``을 그대로 낸다(진짜 거부).",
         "operationId": "apps_tenants_try_api_try_session_get",
         "parameters": [],
         "responses": {
@@ -6740,7 +6741,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrySessionOut"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TrySessionOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               }
             },

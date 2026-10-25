@@ -24,7 +24,7 @@ export default function TryFlowPage({ view = false }: { view?: boolean }) {
   const [starting, setStarting] = useState(false)
 
   const refresh = useCallback(() => {
-    appsTenantsTryApiTrySessionGet().then((r) => setLeft(r.data.turns_remaining)).catch(() => {})
+    appsTenantsTryApiTrySessionGet().then((r) => { if (r.data) setLeft(r.data.turns_remaining) }).catch(() => {})
   }, [])
 
   useEffect(() => {

@@ -80,7 +80,8 @@ for (const [label, width, scheme] of [['1600-light', 1600, 'light'], ['390-dark'
     await expect(page.getByText('쇼핑몰 배송·반품 상담')).toBeVisible()
     // 체험 세션은 지워졌다
     const gone = await page.evaluate(async () => (await fetch('/api/try/session/', { credentials: 'include' })).status)
-    expect(gone).toBe(401)
+    expect(gone).toBe(200)
+    expect(await page.evaluate(async () => (await (await fetch('/api/try/session/', { credentials: 'include' })).json()))).toBeNull()
   })
 }
 

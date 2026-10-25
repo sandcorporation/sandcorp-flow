@@ -7,6 +7,7 @@
 import type {
   AppsTenantsTryApiTryDeploy403,
   AppsTenantsTryApiTryNodeSchema200,
+  AppsTenantsTryApiTrySessionGet200,
   DraftOut,
   DraftPatchIn,
   DraftPutIn,
@@ -279,10 +280,12 @@ export const appsTenantsTryApiTryNodeSchema = async ( options?: RequestInit): Pr
 
 
 /**
+ * 내 체험 세션. 쿠키가 없거나 위조·만료면 **200 null** — 「아직 없음」을 묻는 의도된 질의라 오류가 아니다(#163).
+다른 엔드포인트는 같은 상황에 401 ``try_no_session``을 그대로 낸다(진짜 거부).
  * @summary Try Session Get
  */
 export type appsTenantsTryApiTrySessionGetResponse200 = {
-  data: TrySessionOut
+  data: AppsTenantsTryApiTrySessionGet200
   status: 200
 }
     

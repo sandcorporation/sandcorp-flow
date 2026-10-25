@@ -36,6 +36,17 @@ describe('TryPage — 템플릿 고르기', () => {
     expect(screen.getByText(/지식 문서 · 환불 규정/)).toBeInTheDocument()
   })
 
+  it('세션이 없으면 4xx 응답 없이 200 null 로 받고 이어서 배너를 보이지 않는다(#163)', async () => {
+    const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Sandcorp 홈 상담' })
+    await waitFor(async () => expect((await fake.statuses()).some((c) => c.path === '/api/try/session/')).toBe(true))
+    const all = await fake.statuses()
+    expect(all.filter((c) => c.status >= 400)).toEqual([])
+    expect(all.find((c) => c.path === '/api/try/session/')!.status).toBe(200)
+    expect(screen.queryByText(/진행 중인 체험이 있어요/)).not.toBeInTheDocument()
+  })
+
   it('「흐름 보기」는 세션 없이 읽기 전용 화면으로 간다', async () => {
     fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
     renderPage()

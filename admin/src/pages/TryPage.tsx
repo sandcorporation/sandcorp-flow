@@ -19,7 +19,7 @@ export default function TryPage() {
 
   useEffect(() => {
     appsTenantsTryApiTryTemplates().then((r) => setTemplates(r.data)).catch(() => setLoadError('템플릿을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'))
-    appsTenantsTryApiTrySessionGet().then((r) => setSession(r.data)).catch(() => setSession(null)) // 401 = 세션 없음
+    appsTenantsTryApiTrySessionGet().then((r) => setSession(r.data)).catch(() => setSession(null)) // 세션 없음은 200 null(#163) — catch 는 네트워크 오류 몫
   }, [])
 
   const edit = async (id: string) => {
