@@ -376,7 +376,7 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
   - 리눅스에선 시험 컨테이너가 호스트 uid:gid로 돌아, 마운트한 `backend/`에 root 소유 파일을 남기지 않습니다.
 - **E2E**: Playwright. 챗 LLM은 OpenAI 호환 **Fake LLM 서비스**(`fake_llm/`)로 결정화합니다.
   - **부하 재현(#177)**: `bash scripts/e2e-soak/soak.sh [판 수] [출력 폴더]` — 전체 e2e 판을 여러 번 돌리며 판마다 api 요청별 응답 시간·동시 처리 수, **이벤트 루프 지연과 막힌 순간의 스택**, 컨테이너 CPU, DB 대기를 따로 남기고 표로 요약합니다(`scripts/e2e-soak/README.md`).
-  - api 워커는 시작 때 URLconf 와 async 경로의 무거운 지연 import(langgraph·langchain·taskiq)를 미리 불러옵니다(`config/warmup.py`). 첫 요청·첫 시험 턴이 루프 스레드에서 모듈을 불러오며 같은 프로세스의 모든 요청을 1초씩 멈추던 것을 없앴습니다(#177).
+  - api 워커는 시작 때 URLconf 와 async 경로의 무거운 지연 import(langgraph·langchain·taskiq)를 미리 불러옵니다(`config/warmup.py`). 첫 요청·첫 시험 턴이 루프 스레드에서 모듈을 불러오며 같은 프로세스의 모든 요청을 1초씩 멈추던 것을 없앴습니다(#177). 함수 안 import 를 새로 더하고 이 목록에 빼먹으면 `backend/tests/test_warmup_guard.py` 가 빨강이 됩니다(#189).
 - 인제스션·추출 프롬프트의 실제 타당성은 실제 OpenRouter로 bring-up 검증합니다.
 
 ---
