@@ -100,17 +100,17 @@ test.describe('흐름 편집기 — 시험 대화·판단 기록(실제 스택)'
         await page.waitForTimeout(400)
         await shot(page, `log-${theme}-1600x900`)
         if (theme === 'light') {
-          await page.setViewportSize({ width: 390, height: 844 })
+          await page.setViewportSize({ width: 768, height: 844 })
           await aside.scrollIntoViewIfNeeded()
           await page.waitForTimeout(400)
-          await shot(page, 'log-390')
+          await shot(page, 'log-768')
           const over = await page.evaluate(() => {
             const bad = []
             if (document.documentElement.scrollWidth > document.documentElement.clientWidth) bad.push('page')
             document.querySelectorAll('aside, section, ul, ol, li, button').forEach((el) => { if (el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).overflowX === 'visible' && el.closest('aside')) bad.push(el.tagName + ':' + (el.getAttribute('aria-label') || el.textContent.slice(0, 20))) })
             return bad
           })
-          console.log('[overflow-390]', JSON.stringify(over))
+          console.log('[overflow-768]', JSON.stringify(over))
           expect(over).toEqual([])
         }
       }

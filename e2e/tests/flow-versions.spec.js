@@ -145,17 +145,17 @@ test.describe('흐름 버전·배포 — 실제 스택', () => {
     await expect(versions.locator('li[data-version="4"]')).toContainText('배포 중')
 
     if (SHOTS) {
-      await page.setViewportSize({ width: 390, height: 844 })
+      await page.setViewportSize({ width: 768, height: 844 })
       await versions.scrollIntoViewIfNeeded()
       await page.waitForTimeout(400)
-      await shot(page, 'history-390')
+      await shot(page, 'history-768')
       const over = await page.evaluate(() => {
         const bad = []
         if (document.documentElement.scrollWidth > document.documentElement.clientWidth) bad.push('page')
         document.querySelectorAll('aside, section, ul, li, button').forEach((el) => { if (el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).overflowX === 'visible') bad.push(el.tagName + ':' + (el.getAttribute('aria-label') || el.textContent.slice(0, 20))) })
         return bad
       })
-      console.log('[overflow-390]', JSON.stringify(over))
+      console.log('[overflow-768]', JSON.stringify(over))
       expect(over).toEqual([])
     }
   })

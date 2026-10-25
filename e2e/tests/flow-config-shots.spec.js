@@ -1,4 +1,4 @@
-// 증거 사진 전용(SHOTS_DIR 이 있을 때만): 예제 흐름(노드 11개)으로 맞춤 보기·높이와 종류별 설정 폼을 라이트·다크·390폭으로 남긴다.
+// 증거 사진 전용(좁은 쪽은 768폭 — 390폭은 폰 모드(#38)라 편집기 모양이 다르다, 그건 try-phone.spec.js)(SHOTS_DIR 이 있을 때만): 예제 흐름(노드 11개)으로 맞춤 보기·높이와 종류별 설정 폼을 라이트·다크·390폭으로 남긴다.
 const fs = require('fs')
 const path = require('path')
 const { test, expect, request } = require('@playwright/test')
@@ -64,13 +64,13 @@ test.describe('흐름 편집기 증거 사진', () => {
       await page.waitForTimeout(800)
     }
     await page.evaluate(() => localStorage.setItem('admin_theme', 'light'))
-    await page.setViewportSize({ width: 390, height: 844 })
+    await page.setViewportSize({ width: 768, height: 844 })
     await page.reload()
     await expect(page.locator('.react-flow__node').first()).toBeVisible()
     await page.locator('[data-node-id="guard"]').click()
     await page.waitForTimeout(400)
     await aside.scrollIntoViewIfNeeded()
-    await shot(page, 'form-390')
+    await shot(page, 'form-768')
     await api.dispose()
   })
 })
