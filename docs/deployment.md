@@ -248,15 +248,16 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     4. **운영 `.env`**: `AUTH_MCP_RESOURCE`(기본 `https://flow.sandcorp.co.kr/mcp`)는 기본값이면 적지 않는다.
     5. **확인**: `curl -s https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource/mcp`가 `resource`=`https://flow.sandcorp.co.kr/mcp`, `scopes_supported`=`["flow.read","flow.write"]`인 JSON, `curl -si -X POST https://flow.sandcorp.co.kr/mcp`가 401 + `WWW-Authenticate: Bearer resource_metadata="https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource/mcp"`. 그다음 claude.ai → 설정 → 커넥터에 `https://flow.sandcorp.co.kr/mcp`를 더해 로그인하고 `list_tenants`가 내 테넌트를 돌려주는지 본다.
 
-12. [ ] **Try Session 체험 도서관·정리**(#134, ADR-0030) — 10번 플랫폼 키가 들어간 뒤.
+12. [x] **Try Session 체험 도서관·정리**(#134, ADR-0030) — 10번 플랫폼 키가 들어간 뒤.
     1. **도서관 적재(1회, 예제 문서가 바뀌면 `--force`)**: `docker compose -f docker-compose.prod.oracle.yml exec api python manage.py seed_try_library`.
        도서관 테넌트는 Provider 없이 플랫폼 키로 임베딩·추출한다(키가 비면 `KnowledgeSeedError` — 키를 넣고 다시 돌리면 실패분만 이어 적재).
        확인: 출력 `try library <id> seeded`, 운영자 테넌트 목록에는 도서관이 **나오지 않는다**(숨은 테넌트).
-    2. **24시간 정리**: `python manage.py prune_try_tenants`를 주기로 돌린다(호스트 cron 매시간, 또는 상주 `--every 3600`). 아직 박스에 등록돼 있지 않다.
+    2. **24시간 정리**: `python manage.py prune_try_tenants`를 주기로 돌린다(호스트 cron 매시간, 또는 상주 `--every 3600`). 호스트 root crontab 매시 15분 등록(compose exec -T api, 로그 /var/log/sandcorp-flow-cron.log).
     3. **공개 API 확인(#135)**: `curl -s https://flow.sandcorp.co.kr/api/try/templates/`가 예제 셋을 돌려주고,
        `curl -si -X POST https://flow.sandcorp.co.kr/api/try/sessions/ -H 'Content-Type: application/json' -d '{"template":"shop_support"}'`
        (Origin 없음)가 403 `try_bad_origin`인지 본다. 브라우저에서 같은 호스트로 만든 세션은 `Set-Cookie: sf_try=…; HttpOnly; Secure; SameSite=Strict; Path=/api/try/`.
        하루 비용 누적은 `try_spend_days` 표(정리에 지워지지 않음), IP 하루 세션 수는 `try_ip_days`(이틀 지난 행은 정리 때 삭제).
+    4. **확인 기록**: 2026-10-25 build 52·53(3e8bff5·c3cf15f) — 0012·0013 적용, seed_try_library 문서 9건·도서관 숨김 확인, prune 수동 1회 0건, 공개 API templates 200·Origin 없음 403 try_bad_origin·세션 201+Set-Cookie(HttpOnly·Secure·SameSite=Strict·Path=/api/try/)·deploy 403 try_restricted·시험 대화 SSE 정상·turns 20→19.
 
 ## 관련 문서
 - [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md) — 무중단 롤링 설계·기각안
