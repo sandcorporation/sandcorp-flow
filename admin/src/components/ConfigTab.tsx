@@ -255,7 +255,8 @@ export default function ConfigTab() {
 
       {/* ── AI 모델 ───────────────────────────────────────── */}
       {section === 'ai' && (
-        <div className="space-y-6">
+        <fieldset disabled={!isAdmin} className="m-0 min-w-0 space-y-6 border-0 p-0" data-testid="provider-fieldset">
+          {!isAdmin && <p className="text-sm text-muted-foreground">AI 제공자 키·주소·모델은 관리자만 바꿀 수 있습니다.</p>}
           {/* 미설정 → OpenAI 한방 카드 */}
           {isUnset && (
             <div className="space-y-3 rounded-lg border border-primary/40 bg-primary/5 p-4">
@@ -442,7 +443,7 @@ export default function ConfigTab() {
             </div>
           </div>
           </div>
-        </div>
+        </fieldset>
       )}
 
       {/* ── 상담 전환(HITL) ───────────────────────────────── */}
@@ -456,6 +457,7 @@ export default function ConfigTab() {
             </label>
             <p className={hint}>끄면 AI 전용으로 운영되며 상담원 전환(escalation)이 발생하지 않습니다.</p>
           </div>
+          <fieldset disabled={!isAdmin} className="m-0 min-w-0 space-y-6 border-0 p-0" data-testid="webhook-fieldset">
           <div className="space-y-2">
             <Label>웹훅 유형</Label>
             <Select aria-label="웹훅 유형 선택" value={config.webhook_type}
@@ -471,6 +473,8 @@ export default function ConfigTab() {
                 placeholder="https://hooks.slack.com/..." />
             </div>
           )}
+          {!isAdmin && <p className={hint}>웹훅 주소는 관리자만 바꿀 수 있습니다.</p>}
+          </fieldset>
 
           {/* ── 상담 가능 시간(영업시간) ─ HITL 켜진 경우에만 ── */}
           {config.hitl_enabled && (

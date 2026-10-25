@@ -50,7 +50,7 @@ Accepted (2026-10-25, 사용자 결정 — #36·#134)
 - **사본마다 지식 재임베딩**: 기각. 비용이 세션 수에 비례하고 첫 화면이 늦다.
 
 ## 보충: 「이 흐름으로 가입」 옮기기(#42)
-대장(조율자) 결정, 사용자 사후 보고 예정.
+대장(조율자) 결정, 사용자 승인(사후, 2026-10-25).
 - **넣는 자리**: 체험 사본은 대상 테넌트의 **새 흐름(초안, 배포·공개 없음)**으로 들어간다. 새 가입자는 기존 온보딩(`create_tenant_for`)으로 만든 테넌트의 기본 흐름 옆에, Admin인 테넌트가 있으면 골라서 같은 방식으로. 이름이 겹치면 「이름 (2)」.
 - **소유권**: `POST /api/try/claim/`은 `sf_try` 쿠키(세션 행을 `SELECT … FOR UPDATE`) **와** 고객 멤버 세션 Bearer(`flow.edit` = Admin) 둘 다 요구한다. 옮길 테넌트는 Bearer의 테넌트다 — 새 테넌트·테넌트 선택은 기존 온보딩·선택 엔드포인트가 세션을 연다. 쿠키 경로(`/api/try/`) 아래라 SameSite=Strict 쿠키가 같은 사이트 fetch에 실린다.
 - **로그인 왕복**: `/api/auth/authorize/member?then=try_claim` — 옮기기 표시는 서명된 시도 쿠키에 담기고, 콜백은 테넌트 수와 무관하게 표(`member_ticket`)를 주고 `AUTH_TRY_CLAIM_REDIRECT`(`/admin-ui/try/claim`)로 보낸다. sandcorp-auth 리다이렉트 URI는 그대로.

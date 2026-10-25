@@ -29,6 +29,8 @@ Operator의 수동 프로비저닝 경로(create_tenant)는 **공존**한다.
 
 > **추가(#28)**: 흐름 비트 `flow.edit`·`flow.deploy`·`flow.approve`를 Admin 전용으로 더했다(Member = 전체 − 6종). 상담 응답을 바꾸는 일이라 MCP의 「Admin만 편집·배포」(#74)와 같은 판정이어야 해서, MCP `can_edit`도 `flow.edit` 비트를 본다 — 판정은 `apps/tenants/permissions.py` 한 곳. Member에게 `flow.edit`를 주고 싶어지면 이 모듈의 `ADMIN_ONLY`만 바꾸면 HTTP와 MCP가 함께 바뀐다.
 
+> **갱신(#162, 2026-10-25)**: 앞의 「Member도 Provider 키」는 뒤집혔다. `providers.manage`(LLM·임베딩·OCR의 종류·base_url·API 키·모델·임베딩 차원, 빠른 설정, 모델 목록 불러오기)와 `webhook.manage`(웹훅 주소·종류)를 Admin 전용으로 더했다(Member = 전체 − 10종). 키는 비용·유출 경로이고, 웹훅 주소는 상담 내용이 나가는 길이다. 시스템 프롬프트·환영 문구·표시 이름·범위 문구는 Member가 계속 고친다. 검사는 `PATCH /api/tenant/config/`의 `CONFIG_FIELD_PERMISSIONS`(#152) 한 자리이며 **값이 바뀔 때만** 본다 — 키는 가림 값(`********`)을 되돌려 보낸 것과, 저장된 키가 없을 때의 빈 값은 변경이 아니다(저장된 키를 빈 값으로 지우는 일은 변경). 가림 키로 저장된 키를 풀어 임의 주소로 보낼 수 있는 `providers/models`도 같은 비트로 막는다. 사용자 승인(사후, 2026-10-25).
+
 > **추가(#33)**: HTTP 도구용 `secrets.manage`(테넌트 비밀 만들기·교체·지우기)·`domains.manage`(허용 도메인 더하기·지우기)를 Admin 전용으로 더했다(Member = 전체 − 8종). 비밀은 외부 자격 증명이고 허용 도메인은 서버가 나가는 길을 넓히므로 흐름 편집과 같은 무게다. 비밀 이름·도메인 목록 읽기는 Member도 된다(값은 누구에게도 안 보인다).
 
 **D. Lockout 방지·복구.** 한 조직은 **항상 최소 1명의 활성 Admin**을 유지한다(마지막 Admin 비활성화·강등
@@ -43,7 +45,7 @@ Operator의 수동 프로비저닝 경로(create_tenant)는 **공존**한다.
   식별자까지 흔들어 결합이 과하다. name과 slug의 역할을 분리해 두는 편이 깔끔.
 - **역할 하드코딩(role 문자열로 if 분기)**: 기각. 비트 가드로 두면 나중에 per-agent 세분화를 도입해도
   엔드포인트 가드 지점이 불변이다(C의 동기).
-- **Member에서 Provider 키 편집도 차단**: 보류. 키는 한 PATCH 엔드포인트에 prompt/scope/hitl과 섞여 있어
+- **Member에서 Provider 키 편집도 차단**: 보류했다가 #162에서 채택(위 「갱신」). 키는 한 PATCH 엔드포인트에 prompt/scope/hitl과 섞여 있어
   필드 단위 authz가 필요하고, 과금키 교체는 "재입력=복구"라 slug/키회전 같은 *즉시 단절*과 성격이 다르다.
   필요해지면 필드 authz를 추가한다.
 
