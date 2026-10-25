@@ -81,7 +81,16 @@ export async function authFetch(kind: AuthKind, path: string, opts: RequestInit 
   return res
 }
 
+/** 로그인 없이 보는 화면(체험 /try·/try/view·/try/flow, 공개 흐름 /flows/:slug) — 로그인 세션을 복구할 까닭이 없다(#150).
+ *  /try/claim 은 로그인 뒤 착지라 refresh 쿠키로 access 를 되살려야 하므로 제외한다. */
+export function isAnonymousRoute(pathname: string = window.location.pathname): boolean {
+  const p = pathname.replace(/^\/admin-ui(?=\/|$)/, '')
+  if (p === '/try/claim' || p.startsWith('/try/claim/')) return false
+  return p === '/try' || p.startsWith('/try/') || p.startsWith('/flows/')
+}
+
 export async function bootSilentRefresh(kind: AuthKind): Promise<boolean> {
   if (getAccess(kind)) return true
+  if (isAnonymousRoute()) return false
   return refresh(kind)
 }

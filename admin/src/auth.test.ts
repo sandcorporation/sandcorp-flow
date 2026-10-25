@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { authFetch, refresh, bootSilentRefresh, getAccess, setAccess, clearAccess } from './auth'
 
 beforeEach(() => {
@@ -40,6 +40,28 @@ describe('bootSilentRefresh', () => {
       expect.objectContaining({ method: 'POST', credentials: 'include' }),
     )
     expect(getAccess('operator')).toBe('boot-access')
+  })
+})
+
+describe('bootSilentRefresh — 로그인 없는 체험·공개 보기(#150)', () => {
+  const at = (path: string) => window.history.pushState({}, '', path)
+  afterEach(() => at('/'))
+  it.each(['/admin-ui/try', '/admin-ui/try/flow/abc', '/admin-ui/try/view/xyz', '/admin-ui/flows/some-slug'])('%s 에서는 refresh 를 시도하지 않는다', async (path) => {
+    at(path)
+    clearAccess('operator'); clearAccess('agent')
+    const fetchMock = vi.fn()
+    globalThis.fetch = fetchMock
+    expect(await bootSilentRefresh('operator')).toBe(false)
+    expect(await bootSilentRefresh('agent')).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+  it('/try/claim(로그인 뒤 착지)은 refresh 쿠키로 access 를 복구한다', async () => {
+    at('/admin-ui/try/claim')
+    clearAccess('agent')
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ access_token: 'a' }) })
+    globalThis.fetch = fetchMock
+    expect(await bootSilentRefresh('agent')).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
 

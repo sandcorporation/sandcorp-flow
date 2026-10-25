@@ -91,7 +91,7 @@ export const tryBackend: FlowEditorBackend = {
   askTrial: false,
   back: { to: '/try', label: '템플릿 고르기' },
   readOnlyNotice: '읽기 전용',
-  tenantLookups: true,
+  tenantLookups: false, // 체험엔 테넌트 허용 도메인·비밀이 없다(조회하면 401) — 경고도 숨기고 가짜 API 안내만 남는다,
   draftStatus: true,
 }
 
