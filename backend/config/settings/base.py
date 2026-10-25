@@ -90,6 +90,8 @@ REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 # Chat 레이트리밋 (공개 /chatbot/{slug}/ 남용·비용 고갈 가드)
 CHAT_RATE_LIMIT_PER_VISITOR = int(os.environ.get("CHAT_RATE_LIMIT_PER_VISITOR", "20"))
 CHAT_RATE_LIMIT_PER_TENANT = int(os.environ.get("CHAT_RATE_LIMIT_PER_TENANT", "300"))
+# 공개 흐름 보기(#39, 익명 읽기 전용 GET) — IP당 분당 요청 수. 응답은 60초 캐시되므로 사람이 보는 데는 넉넉하다.
+PUBLIC_FLOW_RATE_LIMIT_PER_MINUTE = int(os.environ.get("PUBLIC_FLOW_RATE_LIMIT_PER_MINUTE", "60"))
 
 # 공개 Self-Signup 레이트리밋 — IP당 윈도우(기본 1시간) 1회(성공 가입만 소비, ADR-0025)
 SIGNUP_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("SIGNUP_RATE_LIMIT_WINDOW_SECONDS", "3600"))

@@ -3,7 +3,9 @@
 - ``seed_example_knowledge``: 예제의 작은 문서들을 테넌트 지식으로 적재한다. 문서 id가 (테넌트, 예제, 이름)에서 정해져
   다시 돌려도 중복이 없다(이미 ready면 건너뜀, 실패·중단분만 다시).
 - ``seed_sandcorp_tenant``: slug ``sandcorp`` 테넌트와 공개 흐름 「Sandcorp 홈 상담」(예제 ① 그대로)을 만든다.
-  문의는 받지 않고 홈 문의 폼으로 안내만 하므로 설정값·비밀·허용 도메인이 없다.
+  문의는 받지 않고 홈 문의 폼으로 안내만 하므로 설정값·비밀·허용 도메인이 없다. 「공개 흐름 보기」를 켠다(#39).
+  플랫폼 키(``PLATFORM_OPENAI_API_KEY``)가 있으면 LLM·임베딩·OCR Provider를 그 키·``PLATFORM_LLM_MODEL``·
+  ``PLATFORM_EMBED_MODEL``로 설정한다(암호화 저장, 매번 env 값으로 맞춘다). 키가 비면 Provider는 건드리지 않는다.
 """
 from __future__ import annotations
 
@@ -25,6 +27,41 @@ _DOC_NAMESPACE = uuid.UUID("5a2c3f0e-35b1-4f7e-9d0a-0f1e2d3c4b5a")
 
 class UnknownExample(KeyError):
     pass
+
+
+class PlatformProviderError(Exception):
+    """플랫폼 env로 Provider를 설정할 수 없다(모르는 임베딩 모델 등)."""
+
+
+# OpenAI 임베딩 모델 → 원래 차원. 테넌트 Provider는 `dimensions`를 보내지 않으므로 원래 차원이어야 한다.
+OPENAI_EMBED_DIMS = {"text-embedding-3-small": 1536, "text-embedding-3-large": 3072, "text-embedding-ada-002": 1536}
+
+
+def apply_platform_providers(config) -> bool:
+    """플랫폼 키가 있으면 LLM·임베딩·OCR Provider를 그 키로 맞추고 True(키가 비면 아무것도 안 하고 False).
+
+    키 검증(외부 호출)은 하지 않는다 — 시드는 배포 직후 돌고, 틀린 키는 첫 대화의 Provider 오류로 드러난다.
+    """
+    key = settings.PLATFORM_OPENAI_API_KEY
+    if not key:
+        return False
+    embed_model = settings.PLATFORM_EMBED_MODEL
+    if embed_model not in OPENAI_EMBED_DIMS:
+        raise PlatformProviderError(
+            f"PLATFORM_EMBED_MODEL={embed_model!r}의 차원을 모릅니다({', '.join(OPENAI_EMBED_DIMS)} 중 하나).")
+    from apps.tenants.crypto import encrypt_secret
+
+    base_url = "" if settings.PLATFORM_OPENAI_BASE_URL.rstrip("/") == "https://api.openai.com/v1" \
+        else settings.PLATFORM_OPENAI_BASE_URL
+    enc = encrypt_secret(key)
+    config.llm_provider_type = config.embed_provider_type = config.ocr_provider_type = "openai"
+    config.llm_base_url = config.embed_base_url = config.ocr_base_url = base_url
+    config.llm_api_key = config.embed_api_key = config.ocr_api_key = enc
+    config.model_id = config.ocr_model = settings.PLATFORM_LLM_MODEL
+    config.extraction_model = ""  # 빈값 = 대화 모델과 같다
+    config.embed_model = embed_model
+    config.embed_dim = OPENAI_EMBED_DIMS[embed_model]
+    return True
 
 
 class KnowledgeSeedError(Exception):
@@ -84,6 +121,8 @@ class SandcorpSeed:
     flow_id: uuid.UUID
     created_tenant: bool
     flow_action: str  # "created" | "updated" | "kept"
+    providers_set: bool = False  # 플랫폼 키로 Provider를 맞췄나(False = env에 키 없음)
+    embed_changed: bool = False  # 임베딩 벡터 공간이 바뀌었나(그러면 이미 적재된 지식을 다시 임베딩해야 한다)
 
 
 def seed_sandcorp_tenant(*, update_flow: bool = False) -> SandcorpSeed:
@@ -104,9 +143,16 @@ def seed_sandcorp_tenant(*, update_flow: bool = False) -> SandcorpSeed:
             tenant = Tenant.objects.create_with_key(name=SANDCORP_NAME, raw_key=secrets.token_urlsafe(32))
             tenant.slug = SANDCORP_SLUG
             tenant.save(update_fields=["slug"])
+        config = tenant.config
+        old_embed = (config.embed_provider_type, config.embed_base_url, config.embed_model, config.embed_dim)
+        providers = apply_platform_providers(config)
+        config.public_flow_view = True
+        config.save()
+        embed_changed = old_embed != (config.embed_provider_type, config.embed_base_url, config.embed_model,
+                                      config.embed_dim)
         flow = Flow.objects.for_tenant(tenant.id).filter(name=SANDCORP_FLOW_NAME).first()
         if flow is not None and not update_flow:
-            return SandcorpSeed(tenant.id, flow.id, created, "kept")
+            return SandcorpSeed(tenant.id, flow.id, created, "kept", providers, embed_changed)
 
         graph = example_graph(SANDCORP_HOME)
         if flow is None:
@@ -119,4 +165,4 @@ def seed_sandcorp_tenant(*, update_flow: bool = False) -> SandcorpSeed:
         services.deploy_version(tenant.id, flow.id, version.number)
         Flow.objects.for_tenant(tenant.id).exclude(pk=flow.pk).filter(is_public=True).update(is_public=False)
         Flow.objects.filter(pk=flow.pk).update(is_public=True)
-        return SandcorpSeed(tenant.id, flow.id, created, action)
+        return SandcorpSeed(tenant.id, flow.id, created, action, providers, embed_changed)

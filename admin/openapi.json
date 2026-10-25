@@ -1390,6 +1390,73 @@
         "title": "ProviderModelsOut",
         "type": "object"
       },
+      "PublicDetailOut": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "PublicDetailOut",
+        "type": "object"
+      },
+      "PublicFlowOut": {
+        "properties": {
+          "brand_name": {
+            "title": "Brand Name",
+            "type": "string"
+          },
+          "flow_name": {
+            "title": "Flow Name",
+            "type": "string"
+          },
+          "graph": {
+            "additionalProperties": {
+              "items": {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JSON"
+                },
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "title": "Graph",
+            "type": "object"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slug",
+          "brand_name",
+          "flow_name",
+          "version",
+          "graph",
+          "template"
+        ],
+        "title": "PublicFlowOut",
+        "type": "object"
+      },
       "QuickSetupIn": {
         "properties": {
           "api_key": {
@@ -1846,6 +1913,17 @@
             ],
             "title": "Ocr Provider Type"
           },
+          "public_flow_view": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Flow View"
+          },
           "require_identity_verification": {
             "anyOf": [
               {
@@ -2029,6 +2107,11 @@
           },
           "platform_default_providers_enabled": {
             "title": "Platform Default Providers Enabled",
+            "type": "boolean"
+          },
+          "public_flow_view": {
+            "default": false,
+            "title": "Public Flow View",
             "type": "boolean"
           },
           "require_identity_verification": {
@@ -3414,6 +3497,58 @@
         "summary": "Operator Usage",
         "tags": [
           "usage"
+        ]
+      }
+    },
+    "/api/public/flows/{slug}/": {
+      "get": {
+        "operationId": "apps_flows_public_api_get_public_flow",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicFlowOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicDetailOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicDetailOut"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Get Public Flow",
+        "tags": [
+          "public"
         ]
       }
     },
