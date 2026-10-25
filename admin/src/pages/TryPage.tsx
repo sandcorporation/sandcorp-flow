@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { appsTenantsTryApiTrySessionGet, appsTenantsTryApiTryTemplates } from '../generated/endpoints/try/try'
 import type { TrySessionOut, TryTemplateOut } from '../generated/model'
 import { BLURB, startTry, templateId } from '@/lib/tryTemplates'
+import { useEmbed } from '@/lib/embed'
 import TryShell from '../components/TryShell'
 import { Button, buttonVariants } from '../components/ui/button'
 
@@ -11,6 +12,7 @@ export default function TryPage() {
   const nav = useNavigate()
   const [params] = useSearchParams()
   const picked = templateId(params.get('template'))
+  const embed = useEmbed()
   const [templates, setTemplates] = useState<TryTemplateOut[] | null>(null)
   const [loadError, setLoadError] = useState('')
   const [session, setSession] = useState<TrySessionOut | null>(null)
@@ -26,6 +28,9 @@ export default function TryPage() {
     setBusy(id); setError('')
     try { nav(`/try/flow/${await startTry(id)}`) } catch (e) { setError((e as Error).message); setBusy(null) }
   }
+
+  const heroOnly = embed && picked !== null && !!templates?.some((t) => t.id === picked)
+  const shown = heroOnly ? templates!.filter((t) => t.id === picked) : templates
 
   return (
     <TryShell fill>
@@ -48,8 +53,9 @@ export default function TryPage() {
         {loadError && <p role="alert" className="text-sm text-destructive">{loadError}</p>}
         {!templates && !loadError && <div aria-busy="true" />}
 
-        <div className="grid gap-3 md:grid-cols-3">
-          {templates?.map((t) => (
+        {/* 임베드(#180) + 고른 템플릿: 방문만으로 세션을 만들지 않는다(IP 3세션/일·비용 한도). 골라진 카드 하나와 「고쳐 보기 시작」 한 번. */}
+        <div className={heroOnly ? 'grid gap-3' : 'grid gap-3 md:grid-cols-3'}>
+          {shown?.map((t) => (
             <article
               key={t.id} data-template={t.id} data-selected={String(t.id === picked)}
               className={`flex min-w-0 flex-col gap-3 border bg-surface p-4 ${t.id === picked ? 'border-ink ring-2 ring-primary' : 'border-line-soft'}`}
@@ -58,8 +64,9 @@ export default function TryPage() {
               <p className="text-sm text-muted-foreground break-keep">{BLURB[t.id] ?? ''}</p>
               {t.documents.length > 0 && <p className="hmi-label break-keep">지식 문서 · {t.documents.join(' · ')}</p>}
               <div className="mt-auto flex flex-wrap gap-2 pt-1">
-                <Button type="button" onClick={() => edit(t.id)} disabled={busy !== null}>{busy === t.id ? '여는 중…' : '고쳐 보기'}</Button>
+                <Button type="button" onClick={() => edit(t.id)} disabled={busy !== null}>{busy === t.id ? '여는 중…' : heroOnly ? '고쳐 보기 시작' : '고쳐 보기'}</Button>
                 <Link to={`/try/view/${t.id}`} className={buttonVariants({ variant: 'outline' })}>흐름 보기</Link>
+                {heroOnly && <Link to="/try" className={buttonVariants({ variant: 'ghost' })}>다른 템플릿 보기</Link>}
               </div>
             </article>
           ))}
