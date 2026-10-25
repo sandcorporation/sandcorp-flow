@@ -2,8 +2,8 @@
 
 - ``seed_example_knowledge``: 예제의 작은 문서들을 테넌트 지식으로 적재한다. 문서 id가 (테넌트, 예제, 이름)에서 정해져
   다시 돌려도 중복이 없다(이미 ready면 건너뜀, 실패·중단분만 다시).
-- ``seed_sandcorp_tenant``: slug ``sandcorp`` 테넌트와 공개 흐름 「Sandcorp 홈 상담」을 만든다. 문의 접수 URL·키는
-  설정값(``SANDCORP_INQUIRY_URL``, ``SANDCORP_INQUIRY_API_KEY``)에서 주입한다.
+- ``seed_sandcorp_tenant``: slug ``sandcorp`` 테넌트와 공개 흐름 「Sandcorp 홈 상담」(예제 ① 그대로)을 만든다.
+  문의는 받지 않고 홈 문의 폼으로 안내만 하므로 설정값·비밀·허용 도메인이 없다.
 """
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ import os
 import secrets
 import uuid
 from dataclasses import dataclass
-from urllib.parse import urlsplit
 
 from django.conf import settings
 
@@ -21,7 +20,6 @@ from apps.flows.schema import JSON
 SANDCORP_SLUG = "sandcorp"
 SANDCORP_NAME = "Sandcorp"
 SANDCORP_FLOW_NAME = "Sandcorp 홈 상담"
-INQUIRY_SECRET_NAME = "inquiry_api_key"
 _DOC_NAMESPACE = uuid.UUID("5a2c3f0e-35b1-4f7e-9d0a-0f1e2d3c4b5a")
 
 
@@ -73,17 +71,6 @@ def seed_example_knowledge(tenant_id: uuid.UUID, example_id: str, *, force: bool
     return docs
 
 
-def sandcorp_flow_graph(inquiry_url: str, api_key: str) -> JSON:
-    """예제 ①에 문의 접수 URL·(키가 있으면) Bearer 비밀 참조를 넣은 실제 흐름 JSON. 키 값은 흐름에 들어가지 않는다."""
-    graph = example_graph(SANDCORP_HOME)
-    for node in graph["nodes"]:
-        if node["id"] == "submit":
-            node["config"]["url"] = inquiry_url
-            if api_key:
-                node["config"]["headers"] = {"Authorization": f"Bearer {{{{secret.{INQUIRY_SECRET_NAME}}}}}"}
-    return graph
-
-
 @dataclass(frozen=True)
 class SandcorpSeed:
     tenant_id: uuid.UUID
@@ -93,7 +80,7 @@ class SandcorpSeed:
 
 
 def seed_sandcorp_tenant(*, update_flow: bool = False) -> SandcorpSeed:
-    """Sandcorp 테넌트·공개 흐름을 만든다(있으면 그대로). ``update_flow``면 설정값으로 흐름을 다시 만들어 배포한다.
+    """Sandcorp 테넌트·공개 흐름을 만든다(있으면 그대로). ``update_flow``면 예제 ① 그래프로 흐름을 다시 만들어 배포한다.
 
     관리 화면에서 고친 흐름을 덮어쓰지 않도록, 기본은 이미 있는 흐름을 건드리지 않는다.
     """
@@ -101,11 +88,8 @@ def seed_sandcorp_tenant(*, update_flow: bool = False) -> SandcorpSeed:
 
     from apps.flows import services
     from apps.flows.models import Flow
-    from apps.tenants import tenant_secrets as ts
     from apps.tenants.models import Tenant
 
-    url, key = settings.SANDCORP_INQUIRY_URL, settings.SANDCORP_INQUIRY_API_KEY
-    host = urlsplit(url).hostname or ""
     with transaction.atomic():
         tenant = Tenant.objects.filter(slug=SANDCORP_SLUG).first()
         created = tenant is None
@@ -117,23 +101,14 @@ def seed_sandcorp_tenant(*, update_flow: bool = False) -> SandcorpSeed:
         if flow is not None and not update_flow:
             return SandcorpSeed(tenant.id, flow.id, created, "kept")
 
-        from apps.flows.demo_api import HOST as DEMO_HOST
-
-        if host and host != DEMO_HOST:  # 가짜 API는 허용 도메인이 필요 없다
-            try:
-                ts.add_domain(tenant.id, host)
-            except ts.DomainExists:
-                pass
-        if key:
-            ts.set_secret(tenant.id, INQUIRY_SECRET_NAME, key)
-        graph = sandcorp_flow_graph(url, key)
+        graph = example_graph(SANDCORP_HOME)
         if flow is None:
             flow = services.create_flow(tenant.id, SANDCORP_FLOW_NAME, graph)
             action = "created"
         else:
             services.save_draft(tenant.id, flow.id, graph)
             action = "updated"
-        version = services.save_version(tenant.id, flow.id, note="설정값으로 시드").version
+        version = services.save_version(tenant.id, flow.id, note="예제 ①로 시드").version
         services.deploy_version(tenant.id, flow.id, version.number)
         Flow.objects.for_tenant(tenant.id).exclude(pk=flow.pk).filter(is_public=True).update(is_public=False)
         Flow.objects.filter(pk=flow.pk).update(is_public=True)

@@ -199,12 +199,12 @@ HTTP 도구의 인증 계열 헤더(이름에 `authorization`·`cookie`·`token`
 ## 예제 ① Sandcorp 홈 상담 에이전트
 
 의도 분류 → (프로젝트 문의면) 요구사항이 다 모였나 → 모자라면 **요구사항 되묻기**(답을 기다린 뒤 다시 의도 분류로) /
-다 모였으면 사례 찾기 → 범위·기간 초안 → 가드레일 → 문의 접수(HTTP) → 접수 안내(실패면 실패 안내). 사람을 원하거나 의도가 불확실하면 사람 넘김.
+다 모였으면 사례 찾기 → 범위·기간 초안 → 가드레일 → **홈 문의 폼 안내**(이 흐름은 문의를 직접 받지 않는다). 사람을 원하거나 의도가 불확실하면 사람 넘김.
 
 ```
 N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
   inquiry → N-04 요구사항이 다 모였나
-              complete → N-06 사례 찾기 → N-07 범위·기간 초안 → N-08 가드레일 → N-09 문의 접수(HTTP) → N-12 접수 안내 / error → N-13 접수 실패 안내
+              complete → N-06 사례 찾기 → N-07 범위·기간 초안 → N-08 가드레일 → N-09 문의 폼 안내
               else     → N-05 요구사항 되묻기(await_reply) ──(다음 턴)──→ N-02 의도 분류
   human   → N-10 사람 넘김
   else    → N-11 일반 답변
@@ -222,10 +222,8 @@ N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
                          {"name": "human", "when": "label == 'human_request' or confidence < 0.5"}]}},
 {"id": "ask", "kind": "ai_answer", "code": "N-05", "name": "요구사항 되묻기",
  "config": {"instructions": "빠진 요구사항(목적·규모·기한) 중 하나만 짧게 되묻는다.", "await_reply": true}},
-{"id": "submit", "kind": "http_tool", "code": "N-09", "name": "문의 접수",
- "config": {"method": "POST", "url": "https://demo-api.flow.sandcorp.co.kr/inquiries",
-            "body_template": "{\"message\": \"{{state.user_message}}\", \"label\": \"{{state.label}}\"}",
-            "save": {"inquiry_no": "$.inquiry_no"}}}
+{"id": "contact", "kind": "ai_answer", "code": "N-09", "name": "문의 폼 안내",
+ "config": {"instructions": "이 대화로는 문의를 접수하지 않는다고 밝히고, 「문의는 여기서 남겨 주세요」라는 말과 함께 마크다운 링크 [문의 남기기](https://sandcorp.co.kr/#home-inquiry) 를 그대로 한 줄로 안내한다. 이메일 주소는 적지 않는다. 영업일 기준 1일 이내 답이 간다고 덧붙인다."}}
 ```
 
 ```json
@@ -239,10 +237,9 @@ N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
 ]
 ```
 
-**템플릿과 Sandcorp 실제 흐름.** 위 JSON은 템플릿이라 문의 접수가 가짜 API고 비밀 헤더가 없다(비밀 참조가 있으면 어느 테넌트에서나
-`unknown_secret`). Sandcorp 테넌트에 시드되는 실제 흐름(`manage.py seed_sandcorp`)은 같은 흐름에서 `submit`의 `url`만 설정값
-`SANDCORP_INQUIRY_URL`(기본: 위 가짜 API)로 바꾼다. `SANDCORP_INQUIRY_API_KEY`가 있으면 그 값을 테넌트 비밀 `inquiry_api_key`로 저장하고
-`headers: {"Authorization": "Bearer {{secret.inquiry_api_key}}"}`를 더하며, URL 호스트를 허용 도메인에 올린다(흐름 JSON에는 키 값이 들어가지 않는다).
+**Sandcorp 실제 흐름.** 위 JSON이 그대로 Sandcorp 테넌트의 공개 흐름이다(`manage.py seed_sandcorp`). 설정값·비밀·허용 도메인이 없고
+HTTP 도구도 쓰지 않는다 — 문의는 홈페이지 문의 폼이 받고, 이 흐름은 폼으로 안내만 한다. HTTP 도구 시연은 예제 ②③에만 있다.
+이미 옛 그래프(문의 접수 노드 있음)로 시드돼 있으면 `manage.py seed_sandcorp --update-flow`로 새 그래프를 버전 저장·배포·공개한다.
 
 ## 예제 ② 쇼핑몰 배송·반품 상담
 

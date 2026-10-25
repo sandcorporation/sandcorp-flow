@@ -1,6 +1,6 @@
 """Sandcorp 테넌트 시드(#35): 테넌트 + 공개 흐름 「Sandcorp 홈 상담」 + 지식 묶음. 멱등.
 
-문의 접수 URL·키는 설정값 ``SANDCORP_INQUIRY_URL``(기본 가짜 API)·``SANDCORP_INQUIRY_API_KEY`` 에서 온다.
+흐름은 예제 ① 그대로다(문의는 받지 않고 홈 문의 폼으로 안내만 한다).
 """
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
@@ -13,7 +13,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser: CommandParser) -> None:
         parser.add_argument("--update-flow", action="store_true",
-                            help="이미 있는 흐름을 설정값으로 다시 만들어 배포한다(관리 화면에서 고친 내용은 덮어쓴다)")
+                            help="이미 있는 흐름을 예제 ①로 다시 만들어 배포한다(관리 화면에서 고친 내용은 덮어쓴다)")
         parser.add_argument("--skip-knowledge", action="store_true", help="지식 적재는 건너뛴다")
 
     def handle(self, *args: object, **options: object) -> None:
