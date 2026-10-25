@@ -227,7 +227,7 @@ export default function FlowEditorPage() {
           )}
           <nav aria-label="하단 탭" className="fixed inset-x-0 bottom-0 z-50 flex h-12 border-t-2 border-ink bg-head text-head-foreground">
             {([['config', '노드 설정'], ['test', '시험 대화'], ['log', '판단 기록'], ['versions', '버전']] as const)
-              .filter(([k]) => (k !== 'test' && k !== 'log') || backend.testChat)
+              .filter(([k]) => (k === 'config') || (k === 'versions' ? backend.versionsPanel : backend.testChat))
               .map(([k, label]) => (
                 <button
                   key={k} type="button" aria-pressed={sheet === k} onClick={() => setSheet(sheet === k ? null : k)}
