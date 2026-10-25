@@ -278,15 +278,29 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     3. `/admin-ui/tenant/flows/<id>?claimed=1` 편집기에 「체험에서 옮긴 흐름이에요」 안내·고친 노드 그대로·배포 중 표시 없음, 흐름 목록에 기본 흐름 옆에 보임.
     4. 같은 브라우저에서 `/admin-ui/try/flow/<체험 흐름 id>`를 다시 열면 `/try?expired=1`로 돌아간다(체험 세션 삭제됨).
 
-### portfolio(sandcorp.co.kr)가 쓰는 Flow 주소(#39)
+### portfolio(sandcorp.co.kr)가 쓰는 Flow 주소(#39, #165)
 
-| 쓰임 | 주소 |
-|---|---|
-| 공개 위젯 slug | `sandcorp` |
-| 위젯 embed 코드 | `<iframe src="https://flow.sandcorp.co.kr/chatbot/sandcorp/" width="400" height="600" style="border:none" allow="microphone"></iframe>` (공개 slug URL, ADR-0011 — 토큰 없음) |
-| 공개 챗봇 페이지 | `https://flow.sandcorp.co.kr/chatbot/sandcorp/` |
-| 공개 흐름 보기(읽기 전용) | `https://flow.sandcorp.co.kr/admin-ui/flows/sandcorp` (API `GET /api/public/flows/sandcorp/`) |
-| 체험 진입(이 흐름 고쳐 보기) | `https://flow.sandcorp.co.kr/admin-ui/try?template=home` |
+**이 표가 바깥(portfolio 등)에 약속한 주소의 단일 출처다.** README·다른 문서는 이 표를 가리키고, 주소를 바꾸면 `bash scripts/test-nginx-metrics.sh`(짧은 주소 계약)가 깨진다. 호스트는 `https://flow.sandcorp.co.kr`.
+
+| 쓰임 | 주소 | 비고 |
+|---|---|---|
+| 체험 진입 | `/try` | 301 → `/admin-ui/try`(쿼리 보존). 템플릿 고르는 화면 |
+| 체험 — 홈 상담 | `/try?template=home` | 템플릿 카드 `sandcorp_home`를 미리 고름 |
+| 체험 — 쇼핑몰 고객 지원 | `/try?template=shop` | `shop_support` |
+| 체험 — 학원 예약 | `/try?template=academy` | `academy_reservation` |
+| 공개 흐름 보기(읽기 전용) | `/flows/{slug}` — 예: `/flows/sandcorp` | 301 → `/admin-ui/flows/{slug}`. 테넌트가 「공개 흐름 보기」를 켠 경우만(꺼짐·없는 slug·미배포는 화면의 「공개된 흐름이 없습니다.」) |
+| 공개 흐름 보기 API | `GET /api/public/flows/{slug}/` | 인증 없음, 200은 `max-age=60`, IP당 분당 60회 |
+| 위젯 embed(iframe) | `<iframe src="https://flow.sandcorp.co.kr/chatbot/sandcorp/" width="400" height="600" style="border:none" allow="microphone"></iframe>` | 공개 slug URL, ADR-0011 — 토큰 없음. **바꾸지 않는다** |
+| 공개 챗봇 페이지 | `/chatbot/sandcorp/` | 위 iframe과 같은 주소(slug `sandcorp`) |
+| 위젯 SPA 자산 | `/embed/` | 위젯 base. portfolio는 직접 쓰지 않는다 |
+
+- 체험 템플릿 slug는 `backend/apps/flows/examples/*.json`의 예제 이름과 `admin/src/lib/tryTemplates.ts`의 `SHORT` 표가 단일 출처다(`home`·`shop`·`academy`; 전체 id `sandcorp_home`·`shop_support`·`academy_reservation`도 그대로 받는다). 모르는 값은 카드를 고르지 않고 템플릿 화면만 보인다.
+- 방식: **301 리다이렉트**(그 경로에서 바로 서빙하지 않음). SPA는 basename `/admin-ui` 아래에서만 돌고 자산·라우터·방문 지표(sub_filter)가 거기 맞춰져 있어, 같은 index.html을 `/try`에도 서빙하면 주소가 둘이 된다. 301이면 브라우저 주소창이 `/admin-ui/try…`로 바뀌어 새로고침·공유가 한 주소로 모이고, 지표 스니펫은 도착한 페이지에 한 번만 붙는다(리다이렉트 응답엔 본문이 없다). `Location`은 상대 경로(`absolute_redirect off`) — NPM이 TLS를 종단해 이 nginx는 http:80이라 절대 URL이면 `http://`로 내려가기 때문이다.
+- 겹침 없음: 정확히 `/try`·`/try/`와 `/flows/` 접두만 잡는다(`/tryout`·`/flowsX`·`/flows`는 404). `/api/`·`/embed/`·`/chatbot/`·`/mcp`·`/favicon.ico`·`/admin-ui/`·랜딩 `location = /`는 그대로(계약 시험이 확인).
+- 앱 안쪽 `navigate`(예: 공개 흐름 보기의 「고쳐 보기」)는 SPA basename 안이라 `/admin-ui/try…`로 가도 된다. 바깥에 노출되는 링크(랜딩 「체험해 보기」·템플릿 링크, 설정 「공개 흐름 보기」에 보이는 주소)만 짧은 주소다.
+- 예전 주소 `/admin-ui/try`·`/admin-ui/flows/{slug}`도 계속 열린다(호환).
+
+- [ ] **nginx 재적재(#165)**: 이번 배포가 `nginx.oracle.conf`에 짧은 주소 location을 더했다. nginx는 싱글톤이지만 deploy.sh가 conf 변경을 감지해 자동 재생성한다(추가 작업 없음; 수동이면 `docker compose -f docker-compose.prod.oracle.yml up -d --no-deps --force-recreate nginx`). 확인: `curl -sI 'https://flow.sandcorp.co.kr/try?template=home'`가 `301`·`location: /admin-ui/try?template=home`, `curl -sI https://flow.sandcorp.co.kr/flows/sandcorp`가 `301`·`location: /admin-ui/flows/sandcorp`. NPMplus 쪽 작업은 없다(같은 호스트·경로 전달 그대로 — `/try`·`/flows/`를 막는 별도 규칙이 있으면 풀 것).
 
 - [ ] **nginx 재적재(#142)**: 이번 배포가 `backend/nginx/nginx.oracle.conf`에 `location = /favicon.ico`를 더했다. nginx는 싱글톤이라 rollout 대상이 아니다 — 배포 후 nginx 컨테이너를 재시작(또는 `nginx -s reload`)해야 반영된다. 확인: `curl -sI https://flow.sandcorp.co.kr/favicon.ico`가 200.
 - [ ] **방문 지표 스니펫(#154)**: 운영 `.env`에 `METRICS_SNIPPET_URL=https://metrics.sandcorp.co.kr/m.js`(필요하면 `METRICS_SITE_KEY`, 기본 `flow`)를 넣는다. 방식: nginx 컨테이너가 시작할 때 `backend/nginx/flow-metrics.conf.template`을 envsubst해 `sub_filter`가 랜딩·약관·처리방침·admin `index.html`의 `</head>` 앞에 `<script defer src=… data-site=…>`를 넣는다(위젯 `/embed/`·`/chatbot/`은 제외, URL이 비면 태그 없음). 정적 HTML은 CI에서 빌드돼 env를 굽지 않는다. **반영**: nginx는 싱글톤·rollout 대상이 아니고 env는 컨테이너 시작 때만 읽으므로, `.env`를 바꾼 뒤 `docker compose -f docker-compose.prod.oracle.yml up -d --no-deps --force-recreate nginx`(이번 배포는 nginx.oracle.conf가 바뀌어 deploy.sh가 자동 재생성하므로, `.env`를 **배포 전에** 채워 두면 추가 작업이 없다). 확인: `curl -s https://flow.sandcorp.co.kr/ | grep -o '<script defer src="https://metrics[^>]*>'`가 한 줄, `curl -s https://flow.sandcorp.co.kr/embed/ | grep -c metrics`가 0. 며칠 뒤 metrics(대장의 sandcorp-metrics)에서 key `flow`의 방문 집계와 포트폴리오 Flow 카드·홈 합계를 확인. SPA 경로 전환(pushState)은 m.js가 스스로 잡는다. 시험: `bash scripts/test-nginx-metrics.sh`.
