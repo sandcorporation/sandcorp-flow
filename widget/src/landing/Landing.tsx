@@ -1,4 +1,5 @@
 import SiteFooter from './SiteFooter'
+import FlowMark from './FlowMark'
 import ThemeToggle from './ThemeToggle'
 
 // 랜딩: 흐름 챗봇 소개 + /try 체험 + 로그인. 경로는 같은 호스트의 admin 앱(basename /admin-ui).
@@ -26,7 +27,7 @@ export default function Landing() {
     <div className="landing">
       <header className="site-head">
         <div className="container head-inner">
-          <a href="/" className="brand">Sandcorp Flow</a>
+          <a href="/" className="brand"><FlowMark />Sandcorp Flow</a>
           <nav className="head-nav" aria-label="바로가기">
             <a href={TRY}>체험</a>
             <a href="#login">로그인</a>

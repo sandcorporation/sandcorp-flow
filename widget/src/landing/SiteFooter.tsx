@@ -1,4 +1,5 @@
 import { BUSINESS } from './business'
+import FlowMark from './FlowMark'
 
 // 정보통신망법·전자상거래법 사업자 정보 + 약관/처리방침 링크. 랜딩·약관·처리방침 페이지가 공유.
 export default function SiteFooter() {
@@ -7,7 +8,7 @@ export default function SiteFooter() {
       <div className="container footer-inner">
         <div className="footer-top">
           <div className="footer-brand">
-            <div className="footer-logo">Sandcorp Flow</div>
+            <div className="footer-logo"><FlowMark size={24} />Sandcorp Flow</div>
             <p className="footer-tagline">흐름으로 만드는 상담 챗봇</p>
           </div>
           <nav className="footer-links">

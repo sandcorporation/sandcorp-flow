@@ -1,3 +1,4 @@
+import FlowMark from './FlowMark'
 import { ReactNode, useState } from 'react'
 import { Menu, X } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
@@ -36,7 +37,7 @@ export default function DashboardLayout({
     <div className="flex min-h-screen flex-col bg-background text-foreground md:h-screen md:flex-row">
       <aside className="flex flex-shrink-0 flex-col md:overflow-y-auto border-b border-border bg-surface md:w-60 md:border-b-0 md:border-r">
         <div className="flex min-h-12 items-center gap-2 border-b-2 border-ink bg-head px-5 font-cond text-base font-semibold tracking-[0.02em] text-head-foreground">
-          <span aria-hidden className="h-4 w-4 flex-none bg-[linear-gradient(180deg,#e7c46a_0_55%,#8a6214_55%_100%)]" />
+          <FlowMark />
           <span className="min-w-0 flex-1 truncate">{brand}</span>
           <button type="button" aria-label="메뉴" aria-expanded={menuOpen} onClick={() => setMenuOpen(o => !o)}
             className="flex h-8 w-8 flex-none items-center justify-center border border-head-foreground/40 md:hidden">

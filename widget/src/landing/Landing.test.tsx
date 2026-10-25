@@ -8,6 +8,13 @@ describe('Landing (흐름 챗봇 소개)', () => {
     localStorage.clear()
   })
 
+  it('머리 brand 에 Flow 아이콘이 붙고 글자 이름은 그대로다 (#142)', () => {
+    const { container } = render(<Landing />)
+    const brand = container.querySelector('a.brand')!
+    expect(brand.querySelector('img[src$="flow/icon.svg"]')).not.toBeNull()
+    expect(brand).toHaveTextContent('Sandcorp Flow')
+  })
+
   it('한 줄 소개 제목이 「흐름으로 만드는 상담 챗봇」이다', () => {
     render(<Landing />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('흐름으로 만드는 상담 챗봇')
