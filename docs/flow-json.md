@@ -223,7 +223,7 @@ N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
 {"id": "ask", "kind": "ai_answer", "code": "N-05", "name": "요구사항 되묻기",
  "config": {"instructions": "빠진 요구사항(목적·규모·기한) 중 하나만 짧게 되묻는다.", "await_reply": true}},
 {"id": "contact", "kind": "ai_answer", "code": "N-09", "name": "문의 폼 안내",
- "config": {"instructions": "이 대화로는 문의를 접수하지 않는다고 밝히고, 「문의는 여기서 남겨 주세요」라는 말과 함께 마크다운 링크 [문의 남기기](https://sandcorp.co.kr/#home-inquiry) 를 그대로 한 줄로 안내한다. 이메일 주소는 적지 않는다. 영업일 기준 1일 이내 답이 간다고 덧붙인다."}}
+ "config": {"instructions": "이 대화로는 문의를 접수하지 않는다고 밝히고, 「문의는 여기서 남겨 주세요」라는 말과 함께 마크다운 링크 [문의 남기기](https://sandcorp.co.kr/#home-inquiry) 를 그대로 한 줄로 안내한다. 이메일 주소는 적지 않는다."}}
 ```
 
 ```json

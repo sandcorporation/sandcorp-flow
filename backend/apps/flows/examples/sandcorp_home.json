@@ -10,7 +10,7 @@
     {"id": "guard", "kind": "guardrail", "code": "N-08", "name": "가드레일", "position": {"x": 1440, "y": -120}, "config": {"rules": ["price_promise", "pii"], "action": "rewrite"}},
     {"id": "handoff", "kind": "handoff", "code": "N-10", "name": "사람 넘김", "position": {"x": 720, "y": 120}, "config": {"reason": "방문자가 사람을 원하거나 의도가 불확실함"}},
     {"id": "general", "kind": "ai_answer", "code": "N-11", "name": "일반 답변", "position": {"x": 720, "y": 0}, "config": {"instructions": "회사 소개 범위에서 짧게 답한다."}},
-    {"id": "contact", "kind": "ai_answer", "code": "N-09", "name": "문의 폼 안내", "position": {"x": 1680, "y": -120}, "config": {"instructions": "이 대화로는 문의를 접수하지 않는다고 밝히고, 「문의는 여기서 남겨 주세요」라는 말과 함께 마크다운 링크 [문의 남기기](https://sandcorp.co.kr/#home-inquiry) 를 그대로 한 줄로 안내한다. 이메일 주소는 적지 않는다. 영업일 기준 1일 이내 답이 간다고 덧붙인다."}}
+    {"id": "contact", "kind": "ai_answer", "code": "N-09", "name": "문의 폼 안내", "position": {"x": 1680, "y": -120}, "config": {"instructions": "이 대화로는 문의를 접수하지 않는다고 밝히고, 「문의는 여기서 남겨 주세요」라는 말과 함께 마크다운 링크 [문의 남기기](https://sandcorp.co.kr/#home-inquiry) 를 그대로 한 줄로 안내한다. 이메일 주소는 적지 않는다."}}
   ],
   "edges": [
     {"from": "start", "to": "classify"},
