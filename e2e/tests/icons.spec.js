@@ -58,14 +58,14 @@ test('랜딩·admin 로그인 화면에 Flow 로고가 실제로 그려진다 (�
       await page.goto(`${WIDGET_URL}/embed/landing.html`)
       const img = page.locator('a.brand img.flow-mark')
       await expect(img).toBeVisible()
-      expect(await img.evaluate((i) => i.complete && i.naturalWidth > 0)).toBe(true)
+      await expect.poll(() => img.evaluate((i) => i.complete && i.naturalWidth > 0)).toBe(true)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
       await shot(page, `landing-${scheme}-${w}`)
 
       await page.goto(`${ADMIN_URL}/admin-ui/`)
       const login = page.locator('img[src$="flow/icon.svg"]').first()
       await expect(login).toBeVisible()
-      expect(await login.evaluate((i) => i.complete && i.naturalWidth > 0)).toBe(true)
+      await expect.poll(() => login.evaluate((i) => i.complete && i.naturalWidth > 0)).toBe(true)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
       await shot(page, `admin-login-${scheme}-${w}`)
 
@@ -73,7 +73,7 @@ test('랜딩·admin 로그인 화면에 Flow 로고가 실제로 그려진다 (�
       await page.goto(`${ADMIN_URL}/admin-ui/try`)
       const tryMark = page.locator('header img[src$="flow/icon.svg"]')
       await expect(tryMark).toBeVisible()
-      expect(await tryMark.evaluate((i) => i.complete && i.naturalWidth > 0)).toBe(true)
+      await expect.poll(() => tryMark.evaluate((i) => i.complete && i.naturalWidth > 0)).toBe(true)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
       await shot(page, `try-${scheme}-${w}`)
     }

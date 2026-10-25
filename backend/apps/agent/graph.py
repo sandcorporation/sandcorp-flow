@@ -2,6 +2,7 @@
 # psycopg PostgresSaver의 느슨한 시그니처 타입 — 런타임은 정상.
 # pyright: reportArgumentType=false
 from typing import Annotated, List
+import time
 import operator
 from typing_extensions import TypedDict
 
@@ -36,6 +37,11 @@ def _build_conninfo() -> str:
     )
 
 
+# 체크포인트 스키마 준비(setup)는 CREATE TABLE·INDEX 라 동시에 처음 돌면 pg_type 유니크 위반으로 한쪽이 500 이 된다(#160).
+# 프로세스·워커가 달라도 막도록 DB 어드바이저리 락으로 한 줄로 세운다.
+CHECKPOINT_SETUP_LOCK_KEY = 160_020_160
+
+
 def _create_checkpointer():
     import psycopg
     from langgraph.checkpoint.postgres import PostgresSaver
@@ -43,7 +49,13 @@ def _create_checkpointer():
     conninfo = _build_conninfo()
     # setup()은 CREATE INDEX CONCURRENTLY를 사용하므로 autocommit 필요
     with psycopg.connect(conninfo, autocommit=True) as setup_conn:
-        PostgresSaver(setup_conn).setup()
+        # 기다리는 pg_advisory_lock 은 CREATE INDEX CONCURRENTLY 와 맞물려 교착이 난다 — 짧은 try 로 돌며 잡는다
+        while not setup_conn.execute("SELECT pg_try_advisory_lock(%s)", (CHECKPOINT_SETUP_LOCK_KEY,)).fetchone()[0]:
+            time.sleep(0.05)
+        try:
+            PostgresSaver(setup_conn).setup()
+        finally:
+            setup_conn.execute("SELECT pg_advisory_unlock(%s)", (CHECKPOINT_SETUP_LOCK_KEY,))
 
     # autocommit=True: PostgresSaver.put()이 명시적 commit을 호출하지 않아
     # non-autocommit 연결에서 close() 시 롤백이 발생하기 때문

@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -36,6 +37,7 @@ from apps.flows.schema import DEFAULT_HANDLE, JSON, MAX_STEPS_PER_TURN, FlowGrap
 
 if TYPE_CHECKING:
     from langgraph.checkpoint.base import BaseCheckpointSaver
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
     from apps.chat.models import ChatSession
 
@@ -198,6 +200,24 @@ def turn_input(base: dict[str, object], hitl_enabled: bool, *, dry_run: bool = F
     }
 
 
+async def setup_checkpointer(saver: "AsyncPostgresSaver") -> None:
+    """체크포인트 스키마를 준비한다. 첫 동시 호출이 CREATE TABLE 로 부딪혀 500 이 나지 않게 어드바이저리 락으로 직렬화한다(#160)."""
+    from apps.agent.graph import CHECKPOINT_SETUP_LOCK_KEY
+
+    # 기다리는 pg_advisory_lock 은 쓰지 않는다 — setup 의 CREATE INDEX CONCURRENTLY 가 다른 세션의 진행 중 문장을 기다려
+    # 락 대기와 맞물려 교착이 난다. 짧은 try 로 돌며 잡는다.
+    while True:
+        cur = await saver.conn.execute("SELECT pg_try_advisory_lock(%s) AS got", (CHECKPOINT_SETUP_LOCK_KEY,))
+        row = await cur.fetchone()
+        if row and row["got"]:  # AsyncPostgresSaver 연결은 dict_row
+            break
+        await asyncio.sleep(0.05)
+    try:
+        await saver.setup()
+    finally:
+        await saver.conn.execute("SELECT pg_advisory_unlock(%s)", (CHECKPOINT_SETUP_LOCK_KEY,))
+
+
 async def run_flow_turn_async(
     session: ChatSession, user_message: str, graph_json: JSON, *, dry_run: bool = False
 ) -> FlowState:
@@ -224,7 +244,7 @@ async def run_flow_turn_async(
 
     started = time.monotonic()
     async with AsyncPostgresSaver.from_conn_string(_build_conninfo()) as saver:
-        await saver.setup()
+        await setup_checkpointer(saver)
         graph = compile_flow(graph_json, checkpointer=saver)
         result: FlowState = await graph.ainvoke(
             turn_input(dict(initial_state), effective_hitl, dry_run=dry_run),
