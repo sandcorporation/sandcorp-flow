@@ -84,6 +84,16 @@ test.describe('설정 > 내 사이트에 붙이기 (#166)', () => {
         expect(o.card).toBe(false)
         expect(o.preOutsideCard).toBe(false)
         expect(o.preScrollsInside).toBe(true)
+        // #174: 접두 라벨 「/chatbot/」이 줄바꿈되지 않고(한 줄 높이), 입력칸은 쓸 만한 폭을 가진다.
+        const row = await page.evaluate(() => {
+          const label = [...document.querySelectorAll('span')].find(e => e.textContent === '/chatbot/')
+          const input = document.querySelector('input[aria-label="Tenant Slug"]')
+          const l = label.getBoundingClientRect(), i = input.getBoundingClientRect()
+          return { labelH: l.height, labelW: l.width, inputH: i.height, inputW: i.width }
+        })
+        expect(row.labelH).toBeLessThanOrEqual(row.inputH)
+        expect(row.labelW).toBeGreaterThan(40)
+        expect(row.inputW).toBeGreaterThan(120)
         if (SHOTS) {
           fs.mkdirSync(SHOTS, { recursive: true })
           await page.locator('section[aria-label="내 사이트에 붙이기"]').scrollIntoViewIfNeeded()
