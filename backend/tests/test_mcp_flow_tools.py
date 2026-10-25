@@ -194,7 +194,7 @@ def test_example_flow_built_by_patches_deploys_then_trimmed_runs(signer: Signer,
     no_llm_branch = {"contact"}  # 아래 시험 대화는 LLM 분기 없이 짧게 돌린다
 
     # ③ 짧은 갈래만 남겨 다시 잇는다: 시작 → 사례 검색 → 일반 답변 →(넘김) 사람 넘김.
-    trim = [{"op": "delete_node", "id": nid} for nid in sorted(no_llm_branch | {"guard", "ask", "draft", "classify", "route", "enough"})]
+    trim = [{"op": "delete_node", "id": nid} for nid in sorted(no_llm_branch | {"guard", "ask", "draft", "classify", "route", "enough", "kb"})]
     trim += [
         {"op": "connect", "from": "start", "to": "cases"},
         {"op": "connect", "from": "cases", "to": "general"},

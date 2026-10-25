@@ -198,7 +198,7 @@ HTTP 도구의 인증 계열 헤더(이름에 `authorization`·`cookie`·`token`
 
 ## 예제 ① Sandcorp 홈 상담 에이전트
 
-의도 분류 → (프로젝트 문의면) 요구사항이 다 모였나 → 모자라면 **요구사항 되묻기**(답을 기다린 뒤 다시 의도 분류로) /
+의도 분류 → (문의 방법을 묻는 `contact_request`면 되묻지 않고 곧장 **홈 문의 폼 안내**) → (프로젝트 문의면) 요구사항이 다 모였나 → 모자라면 **요구사항 되묻기**(답을 기다린 뒤 다시 의도 분류로) /
 다 모였으면 사례 찾기 → 범위·기간 초안 → 가드레일 → **홈 문의 폼 안내**(이 흐름은 문의를 직접 받지 않는다). 사람을 원하거나 의도가 불확실하면 사람 넘김.
 
 ```
@@ -206,8 +206,9 @@ N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
   inquiry → N-04 요구사항이 다 모였나
               complete → N-06 사례 찾기 → N-07 범위·기간 초안 → N-08 가드레일 → N-09 문의 폼 안내
               else     → N-05 요구사항 되묻기(await_reply) ──(다음 턴)──→ N-02 의도 분류
+  contact → N-09 문의 폼 안내
   human   → N-10 사람 넘김
-  else    → N-11 일반 답변
+  else    → N-12 회사 지식 찾기 → N-11 일반 답변(찾은 지식으로만, 없으면 모른다고 하고 문의 폼·대표 넘김 권유)
 ```
 
 전문은 `backend/apps/flows/examples/sandcorp_home.json`. 핵심 부분:
@@ -215,10 +216,11 @@ N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
 ```json
 {"id": "classify", "kind": "ai_classify", "code": "N-02", "name": "의도 분류",
  "config": {"instructions": "방문자 의도를 분류하고, 요구사항이 다 모였는지 함께 판단한다.",
-            "labels": ["project_inquiry", "human_request", "other"],
+            "labels": ["project_inquiry", "contact_request", "human_request", "other"],
             "fields": [{"name": "requirements_complete", "type": "boolean", "description": "목적·규모·기한이 모두 나왔으면 true"}]}},
 {"id": "route", "kind": "condition", "code": "N-03", "name": "의도에 따라",
  "config": {"branches": [{"name": "inquiry", "when": "label == 'project_inquiry'"},
+                         {"name": "contact", "when": "label == 'contact_request'"},
                          {"name": "human", "when": "label == 'human_request' or confidence < 0.5"}]}},
 {"id": "ask", "kind": "ai_answer", "code": "N-05", "name": "요구사항 되묻기",
  "config": {"instructions": "빠진 요구사항(목적·규모·기한) 중 하나만 짧게 되묻는다.", "await_reply": true}},
@@ -230,7 +232,9 @@ N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
 "edges": [
   {"from": "route", "to": "enough", "handle": "inquiry"},
   {"from": "route", "to": "handoff", "handle": "human"},
-  {"from": "route", "to": "general", "handle": "else"},
+  {"from": "route", "to": "contact", "handle": "contact"},
+  {"from": "route", "to": "kb", "handle": "else"},
+  {"from": "kb", "to": "general"},
   {"from": "enough", "to": "cases", "handle": "complete"},
   {"from": "enough", "to": "ask", "handle": "else"},
   {"from": "ask", "to": "classify"}
@@ -239,7 +243,7 @@ N-01 시작 → N-02 의도 분류 → N-03 의도에 따라
 
 **Sandcorp 실제 흐름.** 위 JSON이 그대로 Sandcorp 테넌트의 공개 흐름이다(`manage.py seed_sandcorp`). 설정값·비밀·허용 도메인이 없고
 HTTP 도구도 쓰지 않는다 — 문의는 홈페이지 문의 폼이 받고, 이 흐름은 폼으로 안내만 한다. HTTP 도구 시연은 예제 ②③에만 있다.
-이미 옛 그래프(문의 접수 노드 있음)로 시드돼 있으면 `manage.py seed_sandcorp --update-flow`로 새 그래프를 버전 저장·배포·공개한다.
+이미 옛 그래프(문의 접수 노드 있음)로 시드돼 있으면 `manage.py seed_sandcorp --update-flow`로 새 그래프를 버전 저장·배포·공개하고 지식 문서도 다시 적재한다(문서 내용만 바뀐 경우도 이 명령). 체험 도서관은 `seed_try_library --force`.
 
 ## 예제 ② 쇼핑몰 배송·반품 상담
 

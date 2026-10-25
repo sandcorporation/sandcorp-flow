@@ -49,7 +49,7 @@ def test_example_sandcorp_home_flow_is_valid():
     data = json.loads(EXAMPLE.read_text())
     assert validate_flow(data) == []
     graph = parse_flow(data)
-    assert graph.outgoing("route") == {"inquiry": "enough", "human": "handoff", "else": "general"}
+    assert graph.outgoing("route") == {"inquiry": "enough", "contact": "contact", "human": "handoff", "else": "kb"}
 
 
 def test_all_eight_node_kinds_have_config_schema():

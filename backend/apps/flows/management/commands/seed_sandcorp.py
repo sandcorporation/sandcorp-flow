@@ -13,7 +13,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser: CommandParser) -> None:
         parser.add_argument("--update-flow", action="store_true",
-                            help="이미 있는 흐름을 예제 ①로 다시 만들어 배포한다(관리 화면에서 고친 내용은 덮어쓴다)")
+                            help="이미 있는 흐름을 예제 ①로 다시 만들어 배포하고 지식 문서도 다시 적재한다(관리 화면에서 고친 흐름은 덮어쓴다)")
         parser.add_argument("--skip-knowledge", action="store_true", help="지식 적재는 건너뛴다")
 
     def handle(self, *args: object, **options: object) -> None:
@@ -23,7 +23,7 @@ class Command(BaseCommand):
         if options["skip_knowledge"]:
             return
         try:
-            docs = seed_example_knowledge(seed.tenant_id, SANDCORP_HOME)
+            docs = seed_example_knowledge(seed.tenant_id, SANDCORP_HOME, force=bool(options["update_flow"]))
         except KnowledgeSeedError as exc:
             raise CommandError(str(exc)) from exc
         self.stdout.write(self.style.SUCCESS(f"지식 문서 {len(docs)}개 준비됨"))
