@@ -14,7 +14,6 @@ HTTP 도구는 **예약 호스트**(``HOST``)로 가는 요청을 네트워크 �
 엔드포인트(정확한 모양은 ``docs/flow-json.md``):
 - ``GET /orders/{번호}`` — 숫자 4~12자리. 끝자리 0 → 없음, 1~3 → 배송 중, 4~6 → 배송 완료, 7~9 → 상품 준비 중.
 - ``POST /reservations`` — ``{"date": "YYYY-MM-DD", "level": "beginner|intermediate|advanced|초급|중급|고급", "name"?}``.
-- ``POST /inquiries`` — ``{"message": 비지 않은 글, "name"?, "contact"?}``.
 - 실패 흉내: 주문 번호 ``9500`` → 500, ``9408`` → 지연(timeout). 어느 경로든 ``?simulate=error`` → 500,
   ``?simulate=timeout`` → 지연.
 """
@@ -130,19 +129,7 @@ def _reservation(body: bytes | None) -> _Reply:
                         "level": code, "level_label": label})
 
 
-def _inquiry(body: bytes | None) -> _Reply:
-    doc = _json_body(body)
-    if doc is None:
-        return _Reply(400, {"received": False, "error": "invalid_json"})
-    message = _text(doc, "message")
-    if not message:
-        return _Reply(400, {"received": False, "error": "missing_message"})
-    number = f"Q-{_hash(message, _text(doc, 'name'), _text(doc, 'contact'), n=6)}"
-    return _Reply(200, {"received": True, "inquiry_no": number, "status": "received",
-                        "reply_within": "영업일 기준 1일 이내"})
-
-
-_ROUTES: dict[str, tuple[str, ...]] = {"/orders/": ("GET",), "/reservations": ("POST",), "/inquiries": ("POST",)}
+_ROUTES: dict[str, tuple[str, ...]] = {"/orders/": ("GET",), "/reservations": ("POST",)}
 
 
 def _route(method: str, path: str, query: str, body: bytes | None) -> _Reply:
@@ -163,7 +150,7 @@ def _route(method: str, path: str, query: str, body: bytes | None) -> _Reply:
         return _order(unquote(path.removeprefix("/orders/")))
     if key == "/reservations":
         return _reservation(body)
-    return _inquiry(body)
+    return _Reply(404, {"error": "not_found"})  # 닿을 수 없다(_ROUTES와 같이 갱신)
 
 
 def request(method: str, url: str, *, body: bytes | None, limits: safe_http.Limits) -> safe_http.SafeResponse:

@@ -381,7 +381,7 @@ def test_seed_sandcorp_update_flow_replaces_an_old_graph_with_inquiry_node():
             n["config"]["branches"] = [br for br in n["config"]["branches"] if br["name"] != "contact"]
     old["nodes"] = [n for n in old["nodes"] if n["id"] not in ("contact", "kb")] + [
         {"id": "submit", "kind": "http_tool", "code": "N-09", "name": "문의 접수", "position": {"x": 0, "y": 0},
-         "config": {"method": "POST", "url": "https://demo-api.flow.sandcorp.co.kr/inquiries"}}]
+         "config": {"method": "POST", "url": "https://demo-api.flow.sandcorp.co.kr/reservations"}}]
     old["edges"] = [e for e in old["edges"] if not {"contact", "kb"} & {e["from"], e["to"]}] + [
         {"from": "guard", "to": "submit"}, {"from": "route", "to": "general", "handle": "else"}]
     services.save_draft(tenant.id, flow.id, old)
