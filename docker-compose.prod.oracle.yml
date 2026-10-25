@@ -174,9 +174,11 @@ services:
       - widget_dist:/app/widget:ro
       - admin_dist:/app/admin:ro
     environment:
-      NGINX_ENVSUBST_FILTER: "^METRICS_"
+      NGINX_ENVSUBST_FILTER: "^(METRICS_|TRY_EMBED_)"
       METRICS_SNIPPET_URL: ${METRICS_SNIPPET_URL:-}
       METRICS_SITE_KEY: ${METRICS_SITE_KEY:-flow}
+      # /admin-ui/try 를 iframe 으로 허용할 출처(공백 구분, #179). 비면 'self' 만.
+      TRY_EMBED_ORIGINS: ${TRY_EMBED_ORIGINS:-}
     depends_on:
       widget-init:
         condition: service_completed_successfully

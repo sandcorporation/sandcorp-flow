@@ -18,11 +18,11 @@ echo "$page" > "$FIX/admin/index.html"
 echo '{"name":"Flow"}' > "$FIX/widget/flow/site.webmanifest"
 chmod -R a+rX "$FIX"
 
-start() { # $1=URL $2=KEY
+start() { # $1=URL $2=KEY $3=TRY_EMBED_ORIGINS
   docker rm -f nginx-metrics-test >/dev/null 2>&1
   # compose 와 같게: 변수는 늘 정의(비어 있을 수 있음), 키 기본값은 flow.
   docker run -d --name nginx-metrics-test -p "127.0.0.1:$PORT:80" \
-    -e NGINX_ENVSUBST_FILTER='^METRICS_' -e "METRICS_SNIPPET_URL=${1:-}" -e "METRICS_SITE_KEY=${2:-flow}" \
+    -e NGINX_ENVSUBST_FILTER='^(METRICS_|TRY_EMBED_)' -e "TRY_EMBED_ORIGINS=${3:-}" -e "METRICS_SNIPPET_URL=${1:-}" -e "METRICS_SITE_KEY=${2:-flow}" \
     -v "$PWD/backend/nginx/nginx.oracle.conf:/etc/nginx/nginx.conf:ro" \
     -v "$PWD/backend/nginx/flow-metrics.conf.template:/etc/nginx/templates/flow-metrics.conf.template:ro" \
     -v "$FIX/widget:/app/widget:ro" -v "$FIX/admin:/app/admin:ro" "$IMG" >/dev/null
@@ -80,6 +80,30 @@ n=$(curl -sL "http://127.0.0.1:$PORT/try?template=home" | grep -o '<script defer
 [ "$n" = 1 ] && echo "ok   /try 를 따라가 도착한 페이지에 스니펫 1개" || { echo "FAIL 짧은 주소 스니펫 수: $n"; FAILS=$((FAILS+1)); }
 n=$(curl -sL "http://127.0.0.1:$PORT/flows/sandcorp" | grep -o '<script defer src=' | wc -l)
 [ "$n" = 1 ] && echo "ok   /flows/sandcorp 를 따라가 스니펫 1개" || { echo "FAIL 흐름 보기 스니펫 수: $n"; FAILS=$((FAILS+1)); }
+
+echo "== iframe 허용(#179): CSP frame-ancestors 만, X-Frame-Options 는 앱이 내지 않는다 =="
+ORIGINS='https://sandcorp.co.kr https://www.sandcorp.co.kr'
+csp() { curl -sI "http://127.0.0.1:$PORT$1" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-security-policy"{print $2}'; }
+xfo() { curl -sI "http://127.0.0.1:$PORT$1" | tr -d '\r' | grep -ic '^x-frame-options'; }
+expect_csp() { # $1=경로 $2=기대 값(정확히)
+  local got; got=$(csp "$1")
+  if [ "$got" = "$2" ]; then echo "ok   CSP $1 -> $got"; else echo "FAIL CSP $1: 기대 '$2', 실제 '$got'"; FAILS=$((FAILS+1)); fi
+}
+start "$URL" "" "$ORIGINS"
+TRY_CSP="frame-ancestors 'self' $ORIGINS"
+SELF_CSP="frame-ancestors 'self'"
+for p in /admin-ui/try /admin-ui/try/ "/admin-ui/try?template=home" /admin-ui/try/deep/link; do expect_csp "$p" "$TRY_CSP"; done
+for p in /admin-ui/ /admin-ui/flows/x /admin-ui/tryX /admin-ui/try-it /admin-ui/tryout/a /admin-ui/operator / /privacy /terms; do expect_csp "$p" "$SELF_CSP"; done
+for p in /embed/ /chatbot/sandcorp/ /embed/index.html; do expect_csp "$p" "frame-ancestors *"; done
+for p in / /admin-ui/ /admin-ui/try /embed/ /chatbot/sandcorp/ /terms; do
+  n=$(xfo "$p"); [ "$n" = 0 ] && echo "ok   $p X-Frame-Options 없음" || { echo "FAIL $p: X-Frame-Options 를 앱이 냄"; FAILS=$((FAILS+1)); }
+done
+# 지표 스니펫(sub_filter)·본문은 CSP 헤더와 함께 그대로
+check on-with-csp /admin-ui/try has
+check on-with-csp / has
+echo "== iframe 허용: env 비면 try 도 'self' 만 =="
+start "$URL" "" ""
+for p in /admin-ui/try /admin-ui/ /; do expect_csp "$p" "$SELF_CSP"; done
 
 echo "== webmanifest =="
 ct=$(curl -sI "http://127.0.0.1:$PORT/embed/flow/site.webmanifest" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print $2}')
