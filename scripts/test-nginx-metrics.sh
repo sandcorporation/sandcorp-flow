@@ -105,6 +105,36 @@ echo "== iframe 허용: env 비면 try 도 'self' 만 =="
 start "$URL" "" ""
 for p in /admin-ui/try /admin-ui/ /; do expect_csp "$p" "$SELF_CSP"; done
 
+echo "== 링크 공유 카드(#186): 실제 소스 head 의 OG·트위터 메타, og.png 200, 위젯 경로엔 없음 =="
+# 위에서 쓴 최소 픽스처 대신 저장소의 실제 html·이미지를 올린다(절대 URL 메타는 vite 가 건드리지 않아 소스=산출물).
+for f in landing privacy terms; do cp "widget/$f.html" "$FIX/widget/$f.html"; done
+cp widget/index.html "$FIX/widget/index.html"; cp admin/index.html "$FIX/admin/index.html"
+mkdir -p "$FIX/admin/flow"
+[ -f widget/public/flow/og.png ] && cp widget/public/flow/og.png "$FIX/widget/flow/og.png"
+[ -f admin/public/flow/og.png ] && cp admin/public/flow/og.png "$FIX/admin/flow/og.png"
+chmod -R a+rX "$FIX"
+start "$URL" ""
+og_has() { # $1=경로 $2=has|none
+  local body; body=$(curl -s "http://127.0.0.1:$PORT$1"); local has=none
+  grep -q 'property="og:image" content="https://flow.sandcorp.co.kr/' <<<"$body" && grep -q 'name="twitter:card" content="summary_large_image"' <<<"$body" && has=has
+  if [ "$has" = "$2" ]; then echo "ok   og $1 ($2)"; else echo "FAIL og $1: 기대 $2, 실제 $has"; FAILS=$((FAILS+1)); fi
+}
+for p in / /terms /privacy /admin-ui/ /admin-ui/try; do og_has "$p" has; done
+for p in /embed/ /chatbot/sandcorp/ /embed/index.html; do og_has "$p" none; done
+# 이미지 URL 이 실제로 200 + image/png + 1200x630 (PNG IHDR 의 너비·높이)
+og_img() { # $1=메타의 경로 $2=그 메타를 가진 페이지
+  grep -q "content=\"https://flow.sandcorp.co.kr$1\"" <<<"$(curl -s "http://127.0.0.1:$PORT$2")" \
+    && echo "ok   $2 의 og:image = $1" || { echo "FAIL $2 의 og:image 가 $1 아님"; FAILS=$((FAILS+1)); }
+  local ct dim
+  ct=$(curl -sI "http://127.0.0.1:$PORT$1" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print $2}')
+  dim=$(curl -s "http://127.0.0.1:$PORT$1" | head -c 24 | tail -c 8 | od -An -tu1 | awk '{print ($1*16777216+$2*65536+$3*256+$4) "x" ($5*16777216+$6*65536+$7*256+$8)}')
+  [ "$ct" = "image/png" ] && [ "$dim" = "1200x630" ] && echo "ok   $1 200 $ct $dim" || { echo "FAIL $1: type='$ct' 크기='$dim'"; FAILS=$((FAILS+1)); }
+}
+og_img /embed/flow/og.png /
+og_img /embed/flow/og.png /terms
+og_img /embed/flow/og.png /privacy
+og_img /admin-ui/flow/og.png /admin-ui/
+
 echo "== webmanifest =="
 ct=$(curl -sI "http://127.0.0.1:$PORT/embed/flow/site.webmanifest" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print $2}')
 [ "$ct" = "application/manifest+json" ] && echo "ok   content-type $ct" || { echo "FAIL webmanifest content-type: '$ct'"; FAILS=$((FAILS+1)); }
