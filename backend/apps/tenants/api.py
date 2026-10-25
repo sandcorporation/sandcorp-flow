@@ -19,7 +19,9 @@ from apps.tenants.members import (
     pending_invites, read_member_ticket,
 )
 from apps.tenants import withdrawal
-from apps.tenants.permissions import AGENTS_MANAGE, FLOW_APPROVE, FLOW_PUBLIC_VIEW, require_permission
+from apps.tenants.permissions import (
+    AGENTS_MANAGE, FLOW_APPROVE, FLOW_PUBLIC_VIEW, PROVIDERS_MANAGE, WEBHOOK_MANAGE, require_permission,
+)
 from apps.tenants.refresh_tokens import (
     issue_session, rotate, revoke_all, revoke_session, RefreshRejected,
 )
@@ -753,7 +755,20 @@ def _validate_changed_provider(config, body, kind):
 CONFIG_FIELD_PERMISSIONS: dict[str, str] = {
     "deploy_requires_approval": FLOW_APPROVE,    # 배포 승인 규칙(#28)
     "public_flow_view": FLOW_PUBLIC_VIEW,        # 흐름을 익명에게 보이는 일(#39)
+    # Provider(#162): 종류·base_url·모델은 값 비교, API 키는 아래 CONFIG_KEY_FIELDS로 따로 본다.
+    **{f"{k}_{s}": PROVIDERS_MANAGE for k in ("llm", "embed", "ocr") for s in ("provider_type", "base_url")},
+    "model_id": PROVIDERS_MANAGE, "extraction_model": PROVIDERS_MANAGE, "embed_model": PROVIDERS_MANAGE,
+    "embed_dim": PROVIDERS_MANAGE, "ocr_model": PROVIDERS_MANAGE,
+    "webhook_url": WEBHOOK_MANAGE, "webhook_type": WEBHOOK_MANAGE,
 }
+# API 키 필드 → 권한. 화면은 키를 가림 값(_KEY_MASK)으로 되돌려 보내고, 저장된 키가 없으면 빈 값을 보낸다 — 둘 다 변경이 아니다.
+CONFIG_KEY_FIELDS: dict[str, str] = {f"{k}_api_key": PROVIDERS_MANAGE for k in ("llm", "embed", "ocr")}
+
+
+def _key_field_changed(config, field: str, value: str | None) -> bool:
+    if value is None or value == _KEY_MASK:
+        return False
+    return bool(value) or bool(getattr(config, field))  # 빈 값은 저장된 키를 지우는 때만 변경
 
 
 @tenant_router.patch("/config/", response={200: TenantConfigOut, 400: dict})
@@ -763,6 +778,9 @@ def update_config(request, body: TenantConfigIn):
     for field, perm in CONFIG_FIELD_PERMISSIONS.items():
         value = getattr(body, field)
         if value is not None and value != getattr(config, field):
+            require_permission(request.auth, perm)
+    for field, perm in CONFIG_KEY_FIELDS.items():
+        if _key_field_changed(config, field, getattr(body, field)):
             require_permission(request.auth, perm)
     _old_embed = _embed_signature(config)
 
@@ -844,6 +862,8 @@ def provider_models(request, body: ProviderModelsIn):
     from django.conf import settings
     from apps.agent.provider_models import list_provider_models, ProviderError
 
+    # 가림 키는 저장된 키를 풀어 쓰므로 Member가 임의 base_url로 키를 보내 볼 수 있다 — Admin 전용(#162).
+    require_permission(request.auth, PROVIDERS_MANAGE)
     config = request.auth.tenant.config
     type_, base_url, api_key = body.type, body.base_url, body.api_key
 
@@ -882,6 +902,7 @@ def provider_quick_setup(request, body: QuickSetupIn):
     from apps.tenants.quick_setup import openai_quick_setup
     from apps.agent.provider_models import ProviderError
 
+    require_permission(request.auth, PROVIDERS_MANAGE)
     config = request.auth.tenant.config
     _old_embed = _embed_signature(config)
     try:
