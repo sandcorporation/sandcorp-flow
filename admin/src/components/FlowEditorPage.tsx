@@ -54,6 +54,7 @@ export default function FlowEditorPage() {
   graphRef.current = graph
   const queue = useRef<Promise<void>>(Promise.resolve())
   const pending = useRef(0) // 보냈거나 줄 서 있는 저장 묶음 수 — 0이 돼야 「저장됨」
+  const sheetRef = useRef<HTMLElement>(null) // 폰 하단 시트 — 캔버스가 고른 노드를 시트 위로 옮길 때 높이를 잰다(#150)
   const spotRef = useRef<(() => { x: number; y: number }) | null>(null)
 
   const load = useCallback(async () => {
@@ -169,6 +170,7 @@ export default function FlowEditorPage() {
       selectedId={selectedId}
       readOnly={readOnly || narrow}
       spotRef={spotRef}
+      coverRef={narrow ? sheetRef : undefined}
       activeNodeIds={tab === 'log' ? highlight?.nodes : undefined}
       activeEdgeKeys={tab === 'log' ? highlight?.edges : undefined}
       onSelect={(nid) => {
@@ -225,7 +227,7 @@ export default function FlowEditorPage() {
           </div>
           <div className="h-12" aria-hidden="true" />
           {sheet && (
-            <section role="dialog" aria-label={SHEET_LABEL[sheet]} data-testid="phone-sheet" className="fixed inset-x-0 bottom-12 z-40 flex max-h-[62dvh] flex-col border-t-2 border-ink bg-surface shadow-lg">
+            <section ref={sheetRef} role="dialog" aria-label={SHEET_LABEL[sheet]} data-testid="phone-sheet" className="fixed inset-x-0 bottom-12 z-40 flex max-h-[62dvh] flex-col border-t-2 border-ink bg-surface shadow-lg">
               <div className="flex items-center justify-between border-b border-line-soft px-3 py-1.5">
                 <h2 className="hmi-label">{SHEET_LABEL[sheet]}</h2>
                 <button type="button" aria-label="시트 닫기" className="px-2 text-lg leading-none text-muted-foreground hover:text-ink" onClick={() => setSheet(null)}>×</button>

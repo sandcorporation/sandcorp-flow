@@ -195,3 +195,15 @@ export function fitViewport(
   }
   return { x: place(size.width, bounds.x, bounds.width), y: place(size.height, bounds.y, bounds.height), zoom }
 }
+
+export type Box = { left: number; top: number; right: number; bottom: number }
+
+/** 폰 시트가 캔버스 아래쪽을 가렸을 때(#150): 노드(화면 좌표)가 남은 영역(visible) 안에 margin 을 두고 다 보이면 null,
+ *  아니면 노드를 남은 영역의 가운데로 옮길 화면 이동량. 축마다 따로 판단한다. */
+export function panIntoView(node: Box, visible: Box, margin: number): { dx: number; dy: number } | null {
+  const axis = (lo: number, hi: number, vlo: number, vhi: number) =>
+    lo >= vlo + margin && hi <= vhi - margin ? 0 : (vlo + vhi) / 2 - (lo + hi) / 2
+  const dx = axis(node.left, node.right, visible.left, visible.right) || 0
+  const dy = axis(node.top, node.bottom, visible.top, visible.bottom) || 0
+  return dx === 0 && dy === 0 ? null : { dx, dy }
+}

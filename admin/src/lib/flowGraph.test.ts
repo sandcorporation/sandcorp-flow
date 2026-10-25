@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { newNode, outHandles, errorsByNode, nextCode, nodeStyle, flowLevelErrors, applyOps, pathTo, edgeKey, type FlowGraph , fitViewport } from './flowGraph'
+import { newNode, outHandles, errorsByNode, nextCode, nodeStyle, flowLevelErrors, applyOps, pathTo, edgeKey, type FlowGraph , fitViewport, panIntoView } from './flowGraph'
 
 const g = (nodes: FlowGraph['nodes'] = [], edges: FlowGraph['edges'] = []): FlowGraph => ({ nodes, edges })
 const n = (id: string, kind: string, code: string, config = {}) => ({ id, kind, code, name: '', position: { x: 0, y: 0 }, config })
@@ -87,5 +87,22 @@ describe('fitViewport — 맞춤 보기는 글자가 읽히는 배율 아래로 
   it('minZoom 이상으로 들어가면 화면에 딱 맞춘다', () => {
     const v = fitViewport({ x: 0, y: 0, width: 1000, height: 100 }, { width: 800, height: 600 }, { ...opts, minZoom: 0.1 })
     expect(v.zoom).toBeCloseTo((800 - 48) / 1000)
+  })
+})
+
+describe('panIntoView — 폰 시트가 가린 캔버스에서 고른 노드를 남은 영역으로(#150)', () => {
+  const visible = { left: 0, top: 0, right: 390, bottom: 300 } // 시트 위 남은 영역
+  it('이미 남은 영역 안에 다 보이면 움직이지 않는다', () => {
+    expect(panIntoView({ left: 100, top: 100, right: 280, bottom: 180 }, visible, 12)).toBeNull()
+  })
+  it('시트 밑에 가려진 노드는 남은 영역의 세로 가운데로 끌어올린다', () => {
+    // 노드 중심 y=550 → 영역 중심 150, 가로는 이미 안이라 그대로
+    expect(panIntoView({ left: 100, top: 510, right: 280, bottom: 590 }, visible, 12)).toEqual({ dx: 0, dy: -400 })
+  })
+  it('반쯤 걸친 노드도 끌어올린다', () => {
+    expect(panIntoView({ left: 100, top: 260, right: 280, bottom: 340 }, visible, 12)?.dy).toBe(-150)
+  })
+  it('가로로 밖이면 가로도 가운데로 맞춘다', () => {
+    expect(panIntoView({ left: 300, top: 100, right: 480, bottom: 180 }, visible, 12)).toEqual({ dx: -195, dy: 0 })
   })
 })

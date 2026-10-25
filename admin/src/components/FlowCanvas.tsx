@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react'
 import {
   Background, BackgroundVariant, Controls, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, applyNodeChanges,
   useReactFlow, useUpdateNodeInternals, type Connection, type Edge, type Node, type NodeChange, type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
-  DEFAULT_HANDLE, edgeKey, errorsByNode, fitViewport, kindLabel, nodeStyle, nodeSummary, outHandles, pathTo,
+  DEFAULT_HANDLE, edgeKey, errorsByNode, fitViewport, panIntoView, kindLabel, nodeStyle, nodeSummary, outHandles, pathTo,
   type FlowError, type FlowGraph, type FlowNodeJson,
 } from '@/lib/flowGraph'
 
@@ -80,6 +80,8 @@ export type FlowCanvasProps = {
   onDropKind: (kind: string, position: { x: number; y: number }) => void
   /** 지금 보이는 캔버스에서 다른 노드와 겹치지 않는 빈 자리를 돌려주는 함수를 여기에 채운다(노드 목록의 눌러서 더하기용). */
   spotRef?: MutableRefObject<(() => { x: number; y: number }) | null>
+  /** 폰: 캔버스 아래를 덮는 하단 시트(#150). 노드를 고르면 그 노드를 시트 위 남은 영역 안으로 옮긴다. 없으면(넓은 폭) 건드리지 않는다. */
+  coverRef?: RefObject<HTMLElement | null>
 }
 
 function Inner(p: FlowCanvasProps) {
@@ -171,6 +173,25 @@ function Inner(p: FlowCanvasProps) {
     const b = rf.getNodesBounds(nodes)
     void rf.setViewport(fitViewport(b, { width: el.clientWidth, height: el.clientHeight }, { minZoom: FIT_MIN_ZOOM, maxZoom: 1, padding: 24 }))
   }
+
+  // 폰: 노드를 눌러 시트가 열리면 그 노드가 시트에 가려진다 — 시트 위 남은 영역으로 화면을 옮긴다(배율은 그대로).
+  const panTick = useRef(0)
+  useEffect(() => {
+    if (!p.coverRef || !selectedId) return
+    const tick = ++panTick.current
+    const t = setTimeout(() => { // 시트가 그려져 높이가 정해진 뒤
+      const cover = p.coverRef?.current
+      const el = wrap.current
+      const node = el?.querySelector(`.react-flow__node[data-id="${CSS.escape(selectedId)}"]`)
+      if (tick !== panTick.current || !cover || !el || !node) return
+      const c = el.getBoundingClientRect(), s = cover.getBoundingClientRect(), n = node.getBoundingClientRect()
+      const move = panIntoView(n, { left: c.left, right: c.right, top: c.top, bottom: Math.min(c.bottom, s.top) }, 12)
+      if (!move) return
+      const v = rf.getViewport()
+      void rf.setViewport({ x: v.x + move.dx, y: v.y + move.dy, zoom: v.zoom }, { duration: 200 })
+    }, 120)
+    return () => clearTimeout(t)
+  }, [selectedId, p.coverRef, rf])
 
   const onNodesChange = useCallback((changes: NodeChange<Node<CardData>>[]) => setRfNodes((ns) => applyNodeChanges(changes, ns)), [])
 
