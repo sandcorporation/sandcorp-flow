@@ -342,6 +342,11 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
   | `restore_flow` | `flow.write`, `flow.edit`, 2단계 | 보관한 흐름 복원. 미리보기 = 흐름 이름·보관 시각. 서비스 `restore_flow`는 HTTP `POST …/restore/`와 같음 |
   | `set_deploy_approval` | `flow.admin`, `flow.approve`(Admin), 2단계 | 「배포에 승인 필요」 켜기/끄기. 미리보기 = 현재→새 값 + 영향 한 줄, 이미 같으면 `no_change` |
   | `approve_deploy_request` / `reject_deploy_request` | `flow.deploy`(호환 분기 없음), `flow.approve`(Admin), 2단계 | 대기 중 배포 요청 승인(그 버전 배포)·거절. 인자 `request_id`, `note?`(200자). 미리보기 = 흐름 이름·요청 버전·현재 배포 버전·요청자(이름/이메일)·요청 시각·상태. **내가 낸 요청은 승인 불가**(`self_approval`, 미리보기부터; 거절=철회는 가능, HTTP 동작은 그대로). 이미 결정됐으면 `request_not_pending`, 없거나 남의 테넌트면 `request_not_found` |
+  | `add_document_url` | `flow.write`, 권한 비트 없음(Member도), 2단계 | URL 한 개를 지식 문서로 등록하고 가져오기·임베딩을 큐에 넣는다. 인자 `url`. 미리보기 = 주소·「가져오기·임베딩 비용 발생」·`already_registered`(**주소를 가져오지 않는다**). 미리보기·실행 모두 URL 가드(스킴·IP 리터럴·userinfo·포트)를 먼저 걸어 막히면 `url_not_allowed`(토큰 없음). 응답 「접수됨」+`list_documents`로 확인 |
+  | `refetch_document` | `flow.write`, 권한 비트 없음, 2단계 | URL 문서 재수집(그래프 기여분 지우고 교체). 인자 `document_id`. 미리보기 = 이름·출처 URL·마지막 수집 시각. 파일 문서면 `not_url_document`, 없거나 남의 테넌트면 `document_not_found` |
+  | `delete_document` | `flow.admin`, 권한 비트 없음, 2단계 | 문서 삭제(청크·그래프 기여분 포함). 미리보기 = 이름·청크 수·「복구 불가」 |
+  | `rebuild_graph` | `flow.admin`, 권한 비트 없음, 2단계 | 지식그래프 커뮤니티 재빌드(큐). 미리보기 = 문서 수·`graph_freshness`·「LLM 비용 발생」, 이미 재빌드 중이면 `note`(HTTP처럼 막지는 않음) |
+  | `delete_visitor_memory` | `flow.admin`, 권한 비트 없음, 2단계 | 방문자 기억 한 건 삭제. 인자 `visitor_id`·`memory_id`. 미리보기 = key·내용 앞 100자. 없으면 `memory_not_found`. 파일 업로드는 MCP에 없다 |
   | `set_public_flow_view` | `flow.admin`, `flow.public_view`(Admin), 2단계 | 공개 흐름 보기 켜기/끄기. 같은 미리보기 모양 |
 
   Provider·웹훅·slug·키는 이 도구들로 바꿀 수 없다. 모든 호출은 감사 로그에 남는다.
