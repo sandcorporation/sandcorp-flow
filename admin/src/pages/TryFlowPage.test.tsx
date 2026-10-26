@@ -2,7 +2,7 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
-import TryFlowPage from './TryFlowPage'
+import TryFlowPage, { TryViewRedirect } from './TryFlowPage'
 import { fakeFlowsApi } from '../flowsFakeApi'
 import type { FlowGraph } from '../lib/flowGraph'
 
@@ -37,7 +37,7 @@ function renderTry(path = '/try/flow/f1') {
       <Routes>
         <Route path="/try" element={<p>템플릿 고르기 화면</p>} />
         <Route path="/try/flow/:id" element={<TryFlowPage />} />
-        <Route path="/try/view/:id" element={<TryFlowPage view />} />
+        <Route path="/try/view/:id" element={<TryViewRedirect />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -155,19 +155,11 @@ describe('TryFlowPage — 편집기 재사용(체험 모드)', () => {
   })
 })
 
-describe('TryFlowPage — 흐름 보기(읽기 전용)', () => {
-  it('세션 없이 템플릿 그래프를 읽기 전용으로 보여 주고 시험 대화·편집·가입 도움은 없다', async () => {
-    const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
+describe('TryFlowPage — 예전 /try/view/:id', () => {
+  it('같은 템플릿의 편집기 주소로 replace 한다(#199)', async () => {
+    fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
     renderTry('/try/view/shop_support')
-    expect((await screen.findAllByText('N-02')).length).toBeGreaterThan(0)
-    expect(screen.getByRole('heading', { name: '쇼핑몰 고객 지원' })).toBeInTheDocument()
-    expect(fake.calls.map((c) => c.path)).toContain('/api/try/templates/shop_support/')
-    expect(fake.calls.some((c) => c.path.includes('/flows/'))).toBe(false)
-    const tabs = within(await aside()).getAllByRole('tab').map((t) => t.textContent)
-    expect(tabs).not.toContain('시험 대화')
-    expect(screen.getByText(/읽기 전용/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /보내기/ })).toBeNull()
-    expect(screen.queryByRole('link', { name: '이 흐름으로 가입' })).toBeNull() // 사본이 없다 — 「고쳐 보기」 뒤에 가입
-    expect(screen.queryByTestId('where')?.textContent).toBe('/try/view/shop_support')
+    expect(await screen.findByText('템플릿 고르기 화면')).toBeInTheDocument()
+    expect(screen.getByTestId('where')).toHaveTextContent('/try?template=shop')
   })
 })

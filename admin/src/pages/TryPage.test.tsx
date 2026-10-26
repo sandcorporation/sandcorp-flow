@@ -19,7 +19,6 @@ function renderPage(path = '/try') {
       <Routes>
         <Route path="/try" element={<TryPage />} />
         <Route path="/try/flow/:id" element={<p>편집기 화면</p>} />
-        <Route path="/try/view/:id" element={<p>읽기 전용 화면</p>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -27,12 +26,12 @@ function renderPage(path = '/try') {
 afterEach(() => { vi.unstubAllGlobals() })
 
 describe('TryPage — 템플릿 고르기', () => {
-  it('템플릿 셋을 카드로 보이고 각 카드에 「흐름 보기」「고쳐 보기」가 있다', async () => {
+  it('템플릿 셋을 카드로 보이고 각 카드에 「고쳐 보기」만 있다(「흐름 보기」는 없앴다, #199)', async () => {
     fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
     renderPage()
     expect(await screen.findByRole('heading', { name: 'Sandcorp 홈 상담' })).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: '고쳐 보기' })).toHaveLength(3)
-    expect(screen.getAllByRole('link', { name: '흐름 보기' })).toHaveLength(3)
+    expect(screen.getAllByRole('link', { name: '고쳐 보기' })).toHaveLength(3)
+    expect(screen.queryByRole('link', { name: '흐름 보기' })).toBeNull()
     expect(screen.getByText(/지식 문서 · 환불 규정/)).toBeInTheDocument()
   })
 
@@ -47,23 +46,15 @@ describe('TryPage — 템플릿 고르기', () => {
     expect(screen.queryByText(/진행 중인 체험이 있어요/)).not.toBeInTheDocument()
   })
 
-  it('「흐름 보기」는 세션 없이 읽기 전용 화면으로 간다', async () => {
-    fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
+  it('카드 「고쳐 보기」는 이동만 한다 — ?template= 편집기로 가고 POST 는 없다(#199)', async () => {
+    const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
     renderPage()
-    await userEvent.click((await screen.findAllByRole('link', { name: '흐름 보기' }))[1])
-    expect(await screen.findByText('읽기 전용 화면')).toBeInTheDocument()
-    expect(screen.getByTestId('where')).toHaveTextContent('/try/view/shop_support')
-  })
-
-  it('「고쳐 보기」는 세션을 만들고(POST sessions) 편집기로 간다', async () => {
-    const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: { flow_id: 'f9', template: 'shop_support', turns_remaining: 20 } } })
-    renderPage()
-    // 아직 세션이 없다고 가정하기 위해 처음 한 번만 401 — 아래 별도 시험에서 이어 가기를 본다.
-    await userEvent.click((await screen.findAllByRole('button', { name: '고쳐 보기' }))[1])
-    expect(await screen.findByText('편집기 화면')).toBeInTheDocument()
-    const post = fake.calls.find((c) => c.method === 'POST' && c.path === '/api/try/sessions/')!
-    expect(post.body).toEqual({ template: 'shop_support' })
-    expect(screen.getByTestId('where')).toHaveTextContent('/try/flow/f9')
+    const link = (await screen.findAllByRole('link', { name: '고쳐 보기' }))[1]
+    expect(link).toHaveAttribute('href', '/try?template=shop')
+    await userEvent.click(link)
+    expect(await screen.findByRole('heading', { name: '쇼핑몰 고객 지원' })).toBeInTheDocument()
+    expect(screen.getByTestId('where')).toHaveTextContent('/try')
+    expect(fake.calls.filter((c) => c.method === 'POST')).toHaveLength(0)
   })
 
   it('?template=home 같은 짧은 이름은 카드 없이 sandcorp_home 편집기를 곧바로 연다(#195)', async () => {
@@ -82,14 +73,6 @@ describe('TryPage — 템플릿 고르기', () => {
     expect(fake.calls.filter((c) => c.method === 'POST')).toHaveLength(0)
   })
 
-  it('이 IP가 오늘 3세션을 다 썼으면(429 try_ip_limit) 사유를 그대로 알린다', async () => {
-    fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null, startStatus: 429 } })
-    renderPage()
-    await userEvent.click((await screen.findAllByRole('button', { name: '고쳐 보기' }))[0])
-    expect(await screen.findByRole('alert')).toHaveTextContent('내일 다시 찾아 주세요')
-    expect(screen.queryByText('편집기 화면')).toBeNull()
-  })
-
   it('살아 있는 세션이 있으면 남은 턴과 함께 「이어서 고쳐 보기」를 준다', async () => {
     fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: { flow_id: 'f7', template: 'shop_support', turns_remaining: 12 } } })
     renderPage()
@@ -102,6 +85,6 @@ describe('TryPage — 템플릿 고르기', () => {
     fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
     renderPage('/try?expired=1')
     expect(await screen.findByText(/체험이 끝났거나 만료/)).toBeInTheDocument()
-    await waitFor(() => expect(screen.getAllByRole('button', { name: '고쳐 보기' })).toHaveLength(3))
+    await waitFor(() => expect(screen.getAllByRole('link', { name: '고쳐 보기' })).toHaveLength(3))
   })
 })

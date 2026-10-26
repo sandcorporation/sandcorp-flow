@@ -292,7 +292,7 @@ export default function FlowEditorPage() {
           </div>
         </aside>
 
-        <div className="relative h-[420px] min-w-0 overflow-hidden border border-line-soft bg-background lg:h-auto lg:min-h-0" data-testid="flow-canvas">
+        <div className={`relative h-[420px] min-w-0 overflow-hidden border border-line-soft bg-background lg:h-auto lg:min-h-0 ${embed ? 'order-first lg:order-none' : ''}`} data-testid="flow-canvas">
           {viewingBar}
           {canvas}
         </div>

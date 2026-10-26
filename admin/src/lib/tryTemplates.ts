@@ -1,5 +1,4 @@
 // /try 의 템플릿 이름·시작 호출(#37).
-import { appsTenantsTryApiTryStart } from '../generated/endpoints/try/try'
 import { HttpError } from '../mutator'
 
 /** `?template=home` 같은 짧은 이름 → 템플릿 id. id 를 그대로 주어도 된다. */
@@ -23,13 +22,4 @@ export const TRY_ERRORS: Record<string, string> = {
 export function tryFailureText(e: unknown): string {
   const body = e instanceof HttpError ? (e.body as { detail?: string; code?: string } | undefined) : undefined
   return body?.detail || (body?.code && TRY_ERRORS[body.code]) || '체험을 시작하지 못했습니다. 잠시 뒤 다시 시도하세요.'
-}
-
-/** 「고쳐 보기」: 세션(쿠키)과 사본을 만들고 흐름 id 를 돌려준다. 실패하면 사람이 읽을 사유를 던진다. */
-export async function startTry(template: string): Promise<string> {
-  try {
-    return (await appsTenantsTryApiTryStart({ template })).data.flow_id
-  } catch (e) {
-    throw new Error(tryFailureText(e))
-  }
 }
