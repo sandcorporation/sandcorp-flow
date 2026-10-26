@@ -348,6 +348,9 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
   | `rebuild_graph` | `flow.admin`, 권한 비트 없음, 2단계 | 지식그래프 커뮤니티 재빌드(큐). 미리보기 = 문서 수·`graph_freshness`·「LLM 비용 발생」, 이미 재빌드 중이면 `note`(HTTP처럼 막지는 않음) |
   | `delete_visitor_memory` | `flow.admin`, 권한 비트 없음, 2단계 | 방문자 기억 한 건 삭제. 인자 `visitor_id`·`memory_id`. 미리보기 = key·내용 앞 100자. 없으면 `memory_not_found`. 파일 업로드는 MCP에 없다 |
   | `set_public_flow_view` | `flow.admin`, `flow.public_view`(Admin), 2단계 | 공개 흐름 보기 켜기/끄기. 같은 미리보기 모양 |
+  | `change_member_role` | `flow.admin`, `agents.manage`(Admin), 2단계 | 팀원 역할을 admin/member로. 인자 `member_id`·`role`. 미리보기 = 이름·이메일·현재 역할→새 역할, **자기 강등이면 `warning`**. 마지막 활성 Admin 강등은 미리보기에서부터 `last_admin`(HTTP 409와 같은 규칙). 서비스 `apps/tenants/members.py`를 HTTP 핸들러와 공유 |
+  | `deactivate_member` | `flow.admin`, `agents.manage`, 2단계 | 팀원 비활성화. 인자 `member_id`. 미리보기 = 대상·효과(**즉시 접근 끊김**: 열린 로그인 세션의 refresh 폐기, 액세스 토큰은 다음 요청부터 `is_active` 검사로 거부, MCP는 활성 멤버십 필터로 `no_membership`)·자기 자신이면 `warning`. 마지막 Admin은 `last_admin` |
+  | `cancel_invite` | `flow.admin`, `agents.manage`, 2단계 | 초대 취소. 인자 `invite_id`. 미리보기 = 역할·만료·만든 시각. **초대 만들기 도구는 없다**(링크가 대화 기록에 남지 않게 — Admin 화면에서). 응답 어디에도 토큰·링크 없음 |
 
   Provider·웹훅·slug·키는 이 도구들로 바꿀 수 없다. 모든 호출은 감사 로그에 남는다.
 - **흐름 고치기**: `update_flow`는 연산 목록(`upsert_node`·`delete_node`·`connect`·`disconnect`)을 한 번에 **원자적으로** 적용한다(하나라도 못 하면 아무것도 안 바뀜). 초안은 틀려도 저장되고 결과에 `errors[{node_id, code, message}]`가 온다 — 도구 오류가 아니다. 버전 저장은 검증 통과한 초안만(`note` 선택 메모 200자 이내 — 만들 때만 붙고 못 바꾸며 `get_flow` 버전 목록에 `note`로 나온다), 배포는 실행기에 핸들러가 있는 노드만으로 된 버전만(되돌리기는 이전 번호 배포). `test_turn`은 초안으로 한 턴을 돌려 답·지나간 노드를 보여 준다 — 시험 세션이라 운영 대화 목록에 안 섞이고, 사람 넘김은 실제로 넘기지 않으며, 체험 테넌트면 체험 턴 1을 쓴다. 편집 규칙은 `backend/apps/flows/services.py`(흐름 API #28·편집기 #29도 이 층을 쓴다).

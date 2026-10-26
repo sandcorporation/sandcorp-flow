@@ -19,7 +19,7 @@ from apps.mcp.models import McpAuditEvent
 from apps.memory.models import VisitorMemory
 from apps.tenants import tenant_secrets
 from apps.tenants.members import create_invite
-from apps.tenants.models import Membership, Tenant
+from apps.tenants.models import Membership, Tenant, TenantInvite
 from apps.tenants.permissions import AGENTS_MANAGE, FLOW_APPROVE
 from apps.usage.models import TokenUsage
 from mcp_helpers import (  # noqa: F401 — clock·signer·flow_validator는 픽스처
@@ -33,6 +33,7 @@ from mcp_helpers import (  # noqa: F401 — clock·signer·flow_validator는 픽
     tool_text,
 )
 from resource_token_fakes import Signer
+from tests.utils import make_membership
 
 SIMPLE_OPS = [
     {"op": "upsert_node", "id": "start", "kind": "start", "code": "N-01"},
@@ -376,6 +377,23 @@ def test_no_read_tool_response_contains_any_planted_secret(signer: Signer) -> No
         for value in planted:
             assert value not in text, (tool, value)
             assert value not in tool_text(body), (tool, value)
+
+    # 팀 쓰기 도구 3개(#215)도 같은 값을 흘리지 않는다 — 미리보기·확정 응답 모두.
+    other = make_membership(tenant, Membership.ROLE_MEMBER, name="김멤버", email="kim@example.com")
+    invite = TenantInvite.objects.get(tenant=tenant)
+    admin_token = mcp_token(signer, scope="flow.read flow.admin")
+    for tool, targs in [
+        ("change_member_role", {"member_id": str(other.id), "role": "admin"}),
+        ("deactivate_member", {"member_id": str(other.id)}),
+        ("cancel_invite", {"invite_id": str(invite.id)}),
+    ]:
+        first = call(admin_token, tool, targs)
+        assert not first["result"].get("isError"), (tool, tool_text(first))
+        second = call(admin_token, tool, {**targs, "confirm_token": first["result"]["structuredContent"]["confirm_token"]})
+        assert not second["result"].get("isError"), (tool, tool_text(second))
+        text = json.dumps([first, second], ensure_ascii=False)
+        for value in planted:
+            assert value not in text, (tool, value)
 
 
 # ── 감사·테넌트 경계 ─────────────────────────────────────────────────────────

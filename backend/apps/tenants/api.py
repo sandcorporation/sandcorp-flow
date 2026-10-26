@@ -18,7 +18,7 @@ from apps.tenants.members import (
     InviteRejected, accept_invite, active_memberships, create_invite, issue_member_ticket,
     pending_invites, read_member_ticket,
 )
-from apps.tenants import withdrawal
+from apps.tenants import members as members_service, withdrawal
 from apps.tenants.config_rules import hours_changes_error, topic_scope_error
 from apps.tenants.permissions import (
     AGENTS_MANAGE, FLOW_APPROVE, FLOW_PUBLIC_VIEW, PROVIDERS_MANAGE, WEBHOOK_MANAGE, require_permission,
@@ -255,15 +255,6 @@ def _get_tenant_from_auth(auth_obj) -> Tenant:
     return auth_obj
 
 
-def _is_last_active_admin(member: Membership) -> bool:
-    """이 멤버가 조직의 마지막 활성 Admin인지 — 비활성화·강등 차단용(lockout 방지, ADR-0025 D)."""
-    if member.role != Membership.ROLE_ADMIN or not member.is_active:
-        return False
-    return not Membership.objects.filter(
-        tenant_id=member.tenant_id, role=Membership.ROLE_ADMIN, is_active=True
-    ).exclude(id=member.id).exists()
-
-
 @member_router.get("/", response=list[MemberOut], auth=member_or_tenant_key_auth)
 def list_members(request):
     tenant = _get_tenant_from_auth(request.auth)
@@ -278,11 +269,10 @@ def deactivate_member(request, member_id: str):
     require_permission(request.auth, AGENTS_MANAGE)
     tenant = _get_tenant_from_auth(request.auth)
     member = get_object_or_404(Membership.objects.select_related("user"), id=member_id, tenant=tenant)
-    if _is_last_active_admin(member):
-        return 409, {"detail": "마지막 Admin은 비활성화할 수 없습니다."}
-    member.is_active = False
-    member.save(update_fields=["is_active"])
-    revoke_all(member)  # 열린 테넌트 세션도 닫는다
+    try:
+        members_service.deactivate_member(member)  # 열린 테넌트 세션도 닫는다
+    except members_service.MemberRuleError as exc:
+        return 409, {"detail": exc.message}
     return 200, _member_out(member)
 
 
@@ -291,12 +281,10 @@ def change_member_role(request, member_id: str, body: MemberRoleIn):
     require_permission(request.auth, AGENTS_MANAGE)
     tenant = _get_tenant_from_auth(request.auth)
     member = get_object_or_404(Membership.objects.select_related("user"), id=member_id, tenant=tenant)
-    if body.role not in (Membership.ROLE_ADMIN, Membership.ROLE_MEMBER):
-        return 400, {"detail": "유효하지 않은 역할입니다."}
-    if body.role == Membership.ROLE_MEMBER and _is_last_active_admin(member):
-        return 409, {"detail": "마지막 Admin은 강등할 수 없습니다."}
-    member.role = body.role
-    member.save(update_fields=["role"])
+    try:
+        members_service.change_member_role(member, body.role)
+    except members_service.MemberRuleError as exc:
+        return exc.status, {"detail": exc.message}
     return 200, _member_out(member)
 
 
@@ -323,8 +311,7 @@ def create_tenant_invite(request, body: InviteIn):
 def revoke_tenant_invite(request, invite_id: str):
     require_permission(request.auth, AGENTS_MANAGE)
     invite = get_object_or_404(TenantInvite, id=invite_id, tenant=_get_tenant_from_auth(request.auth))
-    invite.revoked = True
-    invite.save(update_fields=["revoked"])
+    members_service.revoke_invite(invite)
     return 204, None
 
 
