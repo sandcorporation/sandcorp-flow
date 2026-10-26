@@ -15,3 +15,16 @@ def topic_scope_error(config: TenantConfig, enabled: bool | None, description: s
     if eff_enabled and not (eff_description or "").strip():
         return "주제범위 제어를 켜려면 응대 범위 설명을 입력해야 합니다."
     return None
+
+
+def hours_changes_error(
+    timezone: object = None, schedule: object = None, holidays: object = None
+) -> str | None:
+    """이번에 바꾸려는 상담 시간 칸(None = 안 바꿈)의 형식 검사. 규칙은 ``business_hours.hours_error`` 하나."""
+    from apps.tenants.business_hours import hours_error
+
+    return hours_error(
+        "" if timezone is None else timezone,
+        {} if schedule is None else schedule,
+        [] if holidays is None else holidays,
+    )

@@ -4,6 +4,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import ConfigTab from './ConfigTab'
 import * as api from '../api'
+import { HttpError } from '../mutator'
 
 vi.mock('../api')
 
@@ -110,6 +111,17 @@ describe('ConfigTab — 영업시간(상담 가능 시간)', () => {
         }),
       }),
     ))
+  })
+
+  it('서버가 상담 시간 형식을 400으로 거절하면 그 이유를 저장 실패 문구에 보여 준다(#223)', async () => {
+    vi.mocked(api.updateTenantConfig).mockRejectedValueOnce(
+      new HttpError(400, '/api/tenant/config/', { detail: "hitl_timezone 'Mars/Base'은(는) 알 수 없는 시간대입니다" }),
+    )
+    renderConfig('handoff')
+    await screen.findByLabelText('HITL 사용')
+    await userEvent.type(screen.getByLabelText('타임존'), 'Mars/Base')
+    await save()
+    expect(await screen.findByText(/저장 실패 — hitl_timezone 'Mars\/Base'/)).toBeInTheDocument()
   })
 
   it('휴일을 추가하면 hitl_holidays에 담기고, HITL을 끄면 영업시간 편집기가 사라진다', async () => {

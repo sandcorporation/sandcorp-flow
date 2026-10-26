@@ -77,9 +77,9 @@ def test_member_can_update_settings_and_gets_a_diff_of_changed_fields_only(signe
 def test_unspecified_fields_stay_and_identical_call_changes_nothing(signer: Signer) -> None:
     tenant = tenant_as(Membership.ROLE_ADMIN)
     token = mcp_token(signer)
-    ok(call(token, "update_settings", {"system_prompt": "친절하게", "hitl_schedule": {"mon": [["09:00", "18:00"]]}, "hitl_holidays": ["2026-12-25"]}))
+    ok(call(token, "update_settings", {"system_prompt": "친절하게", "hitl_schedule": {"mon": {"enabled": True, "start": "09:00", "end": "18:00"}}, "hitl_holidays": ["2026-12-25"]}))
 
-    again = ok(call(token, "update_settings", {"system_prompt": "친절하게", "hitl_schedule": {"mon": [["09:00", "18:00"]]}}))
+    again = ok(call(token, "update_settings", {"system_prompt": "친절하게", "hitl_schedule": {"mon": {"enabled": True, "start": "09:00", "end": "18:00"}}}))
 
     assert again == {"changed": {}}
     assert call(token, "update_settings", {})["result"]["isError"] is False
