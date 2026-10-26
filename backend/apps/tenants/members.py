@@ -23,6 +23,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.tenants.models import Membership, Tenant, TenantInvite, User
+from apps.tenants.refresh_tokens import revoke_all
 
 if TYPE_CHECKING:
     from apps.tenants.operator_login import IdentityClaims
@@ -144,3 +145,53 @@ def forget_user(iss: str, sub: str) -> bool:
     """
     deleted, _ = User.objects.filter(iss=iss, sub=sub, acct=User.Acct.MEMBER).delete()
     return deleted > 0
+
+
+class MemberRuleError(Exception):
+    """멤버 관리 규칙 위반. `status`는 HTTP 핸들러가 그대로 쓰는 코드(400 잘못된 값·409 충돌)."""
+
+    def __init__(self, code: str, message: str, status: int) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.status = status
+
+
+def is_last_active_admin(member: Membership) -> bool:
+    """이 멤버가 조직의 마지막 활성 Admin인지 — 비활성화·강등 차단용(lockout 방지, ADR-0025 D)."""
+    if member.role != Membership.ROLE_ADMIN or not member.is_active:
+        return False
+    return not Membership.objects.filter(
+        tenant_id=member.tenant_id, role=Membership.ROLE_ADMIN, is_active=True
+    ).exclude(id=member.id).exists()
+
+
+def check_deactivate(member: Membership) -> None:
+    if is_last_active_admin(member):
+        raise MemberRuleError("last_admin", "마지막 Admin은 비활성화할 수 없습니다.", 409)
+
+
+def check_role_change(member: Membership, role: str) -> None:
+    if role not in (Membership.ROLE_ADMIN, Membership.ROLE_MEMBER):
+        raise MemberRuleError("invalid_role", "유효하지 않은 역할입니다.", 400)
+    if role == Membership.ROLE_MEMBER and is_last_active_admin(member):
+        raise MemberRuleError("last_admin", "마지막 Admin은 강등할 수 없습니다.", 409)
+
+
+def deactivate_member(member: Membership) -> None:
+    """멤버를 비활성화하고 열린 테넌트 세션(refresh)을 닫는다. 액세스 토큰·MCP는 요청마다 `is_active`를 본다."""
+    check_deactivate(member)
+    member.is_active = False
+    member.save(update_fields=["is_active"])
+    revoke_all(member)
+
+
+def change_member_role(member: Membership, role: str) -> None:
+    check_role_change(member, role)
+    member.role = role
+    member.save(update_fields=["role"])
+
+
+def revoke_invite(invite: TenantInvite) -> None:
+    invite.revoked = True
+    invite.save(update_fields=["revoked"])
