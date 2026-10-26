@@ -229,9 +229,9 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     | `PLATFORM_LLM_MODEL` | `gpt-4o-mini` | 체험 테넌트의 챗·자료 정리 모델. |
     | `PLATFORM_EMBED_MODEL` | `text-embedding-3-small` | 체험 테넌트의 임베딩. 본래 1536차원이지만 OpenAI `dimensions` 인자로 테넌트 `embed_dim`(기본 1024)에 맞춰 보낸다 — 인덱스 차원·「Provider 바꾸면 재임베딩」 규칙이 그대로다. |
     | `TRIAL_TURNS` | `200` | 새 조직이 받는 체험 턴(1턴 = 방문자 메시지 하나). 0009 마이그레이션 때 기존 조직도 이 값을 받는다. |
-    | `TRY_TENANT_TTL_HOURS` | `24` | Try Session 체험 테넌트의 수명(ADR-0030). 지나면 `prune_try_tenants`가 테넌트째 지운다. |
+    | `TRY_TENANT_TTL_HOURS` | `24` | Try Session 체험 테넌트의 수명(ADR-0030). 첫 쓰기(세션 생성)부터 잰다(ADR-0032). 지나면 `prune_try_tenants`가 테넌트째 지운다. |
     | `TRY_SESSION_TURNS` | `20` | Try Session(체험 테넌트)당 시험 대화 턴(#135). 체험 테넌트의 `trial_turns_remaining`으로 두고 `admit_turn`이 깎는다(dev 폴백 켜짐이면 세지 않음). |
-    | `TRY_SESSIONS_PER_IP_PER_DAY` | `3` | IP당 하루 「고쳐 보기」 수. IP는 `TRUSTED_PROXY_COUNT` 규칙(XFF 끝에서 N번째)으로 정하고 HMAC으로만 저장. |
+    | `TRY_SESSIONS_PER_IP_PER_DAY` | `3` | IP당 하루 체험 세션 수(첫 쓰기 때 센다, ADR-0032 — 진입·새로고침은 안 센다). IP는 `TRUSTED_PROXY_COUNT` 규칙(XFF 끝에서 N번째)으로 정하고 HMAC으로만 저장. |
     | `TRY_DAILY_BUDGET_USD` | `5` | 체험 전체 하루 비용 상한(판단 기록 비용 합). 누적이 상한 미만일 때만 시험 대화를 들이고 턴 뒤 더한다 — 진행 중인 턴들만큼(보통 한 턴) 넘을 수 있다. 넘으면 LLM 없이 `try_daily_budget`(「내일 다시」). |
     | `TRY_QUOTA_TIMEZONE` | `Asia/Seoul` | 위 「하루」의 날짜 기준. |
     | `TRY_ALLOWED_ORIGINS` | (빈 값) | `/api/try` 쓰기 요청(POST·PUT·PATCH)에 허용할 Origin(쉼표). 비어 있어도 API와 같은 호스트의 Origin은 허용 — `/try` 화면을 다른 도메인(예: sandcorp.co.kr)에서 띄울 때만 넣는다. |
@@ -255,7 +255,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     2. **24시간 정리**: `python manage.py prune_try_tenants`를 주기로 돌린다(호스트 cron 매시간, 또는 상주 `--every 3600`). 호스트 root crontab 매시 15분 등록(compose exec -T api, 로그 /var/log/sandcorp-flow-cron.log).
     3. **공개 API 확인(#135)**: `curl -s https://flow.sandcorp.co.kr/api/try/templates/`가 예제 셋을 돌려주고,
        `curl -si -X POST https://flow.sandcorp.co.kr/api/try/sessions/ -H 'Content-Type: application/json' -d '{"template":"shop_support"}'`
-       (Origin 없음)가 403 `try_bad_origin`인지 본다. 브라우저에서 같은 호스트로 만든 세션은 `Set-Cookie: sf_try=…; HttpOnly; Secure; SameSite=Strict; Path=/api/try/`.
+       (Origin 없음)가 403 `try_bad_origin`인지 본다. 본문에 `graph`(선택, 지역 편집 그래프)를 실어도 같다. 브라우저에서 같은 호스트로 만든 세션은 `Set-Cookie: sf_try=…; HttpOnly; Secure; SameSite=Strict; Path=/api/try/`.
        하루 비용 누적은 `try_spend_days` 표(정리에 지워지지 않음), IP 하루 세션 수는 `try_ip_days`(이틀 지난 행은 정리 때 삭제).
     4. **확인 기록**: 2026-10-25 build 52·53(3e8bff5·c3cf15f) — 0012·0013 적용, seed_try_library 문서 9건·도서관 숨김 확인, prune 수동 1회 0건, 공개 API templates 200·Origin 없음 403 try_bad_origin·세션 201+Set-Cookie(HttpOnly·Secure·SameSite=Strict·Path=/api/try/)·deploy 403 try_restricted·시험 대화 SSE 정상·turns 20→19.
 
@@ -277,6 +277,14 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     2. sandcorp-auth 로그인 → `/admin-ui/try/claim`에 착지. (새 계정) 조직 이름 → 「만들고 흐름 옮기기」 / (Admin 조직이 있는 계정) 「기존 테넌트에 추가」.
     3. `/admin-ui/tenant/flows/<id>?claimed=1` 편집기에 「체험에서 옮긴 흐름이에요」 안내·고친 노드 그대로·배포 중 표시 없음, 흐름 목록에 기본 흐름 옆에 보임.
     4. 같은 브라우저에서 `/admin-ui/try/flow/<체험 흐름 id>`를 다시 열면 `/try?expired=1`로 돌아간다(체험 세션 삭제됨).
+15. [ ] **방문 즉시 편집기·「고쳐 보기」 확인(#194, ADR-0032)** — 배포 직후 한 번(env·마이그레이션 없음 — `POST sessions/`의 `graph`는 선택 칸이라 옛 번들도 그대로 돈다).
+    1. `https://flow.sandcorp.co.kr/try?template=home` 진입 직후 `GET /api/try/session/` = `null`(Network 탭), 카드·버튼 없이 편집기가 뜨고 머리줄에 「첫 저장 때 체험이 시작돼요」.
+    2. 노드를 끌어 옮기기만 하면 `POST sessions/`가 없다(위치만은 첫 쓰기가 아님). 새로고침해도 위치가 남는다.
+    3. 노드 설정을 바꿔 「설정 적용」 → `POST sessions/` 본문에 `graph`, 응답 201 `draft` → 「초안 저장됨」·「남은 대화 N턴」. 새로고침 → 같은 `flow_id`, 고친 값 그대로.
+    4. 카드 화면 `/try`에서 「고쳐 보기」 → `/try?template=…`로 이동만(POST 없음). `/admin-ui/try/view/<id>`는 `/try?template=<id>`로 돌아간다.
+    5. portfolio 홈 iframe(`/try?embed=1&template=home`): 곧바로 편집기. 929px 폭에서 캔버스가 위, 노드 목록은 아래. 편집 전 「이 흐름으로 가입」 → 새 탭이 `/admin-ui/try/signup`을 거쳐 sandcorp 로그인으로, iframe에서 `GET /session/`이 새 탭과 같은 세션.
+    6. 오늘 이 네트워크의 체험 3개를 다 쓴 뒤 `/try?template=home`: 편집기는 열리고, 설정을 바꾸면 「저장하지 못했습니다: 오늘 이 네트워크에서…」인데 화면 값은 유지된다.
+    7. 두 탭에서 같은 `/try?template=home`을 열어 한쪽을 먼저 저장 → 다른 쪽에서 저장해도 두 번째 체험이 안 생기고 이 탭 편집이 반영된다. 쿠키를 지우고 저장하면 첫 화면으로 튕기지 않고 안내가 뜬다.
 
 ### portfolio(sandcorp.co.kr)가 쓰는 Flow 주소(#39, #165)
 
@@ -284,13 +292,14 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
 
 | 쓰임 | 주소 | 비고 |
 |---|---|---|
-| 체험 진입 | `/try` | 301 → `/admin-ui/try`(쿼리 보존). 템플릿 고르는 화면 |
-| 체험 — 홈 상담 | `/try?template=home` | 템플릿 카드 `sandcorp_home`를 미리 고름 |
-| 체험 — 쇼핑몰 고객 지원 | `/try?template=shop` | `shop_support` |
-| 체험 — 학원 예약 | `/try?template=academy` | `academy_reservation` |
+| 체험 진입 | `/try` | 301 → `/admin-ui/try`(쿼리 보존). 템플릿 고르는 화면(카드의 「고쳐 보기」는 `/try?template=`으로 이동만) |
+| 체험 — 홈 상담 | `/try?template=home` | 곧바로 `sandcorp_home` 편집기(방문 즉시 편집기, ADR-0032). 세션은 첫 저장·시험 대화에 생김 |
+| 체험 — 쇼핑몰 고객 지원 | `/try?template=shop` | 곧바로 `shop_support` 편집기 |
+| 체험 — 학원 예약 | `/try?template=academy` | 곧바로 `academy_reservation` 편집기 |
+| 체험 — 가입 중간 페이지 | `/admin-ui/try/signup?template=home` | 임베드 「이 흐름으로 가입」 새 탭이 세션이 없을 때 가는 곳(세션을 만든 뒤 로그인으로). noindex·nofollow — portfolio가 직접 링크하지 않는다 |
 | 공개 흐름 보기(읽기 전용) | `/flows/{slug}` — 예: `/flows/sandcorp` | 301 → `/admin-ui/flows/{slug}`. 테넌트가 「공개 흐름 보기」를 켠 경우만(꺼짐·없는 slug·미배포는 화면의 「공개된 흐름이 없습니다.」) |
 | 공개 흐름 보기 API | `GET /api/public/flows/{slug}/` | 인증 없음, 200은 `max-age=60`, IP당 분당 60회 |
-| 체험 임베드(iframe, #178) | `<iframe id="flow-try" src="https://flow.sandcorp.co.kr/try?embed=1&template=home" title="Flow 체험" allow="clipboard-write" style="width:100%;border:0;height:480px"></iframe>` + 아래 높이 수신 스니펫 | **임베드 모드**(ADR-0031). 권장 폭 100%(390~1200 확인)·초기 높이 480px(hello 뒤 실제 높이로 바뀜). `template=home`(`shop`·`academy`)이면 그 카드가 골라진 첫 화면 + 「고쳐 보기 시작」 한 번(방문만으로 세션을 만들지 않음). 다크 호스트는 `&theme=dark`(`light`), 없으면 OS를 따름. 부모와 flow가 **같은 사이트**여야 한다 |
+| 체험 임베드(iframe, #178) | `<iframe id="flow-try" src="https://flow.sandcorp.co.kr/try?embed=1&template=home" title="Flow 체험" allow="clipboard-write" style="width:100%;border:0;height:640px"></iframe>` + 아래 높이 수신 스니펫 | **임베드 모드**(ADR-0031). 권장 폭 100%(390~1200 확인)·초기 높이 640px(hello 뒤 실제 높이로 바뀜). `template=home`(`shop`·`academy`)이면 곧바로 편집기(세션은 첫 저장·시험 대화에 생김, 방문만으로는 안 만들어짐). 다크 호스트는 `&theme=dark`(`light`), 없으면 OS를 따름. 부모와 flow가 **같은 사이트**여야 한다 |
 | 위젯 embed(iframe) | `<iframe src="https://flow.sandcorp.co.kr/chatbot/sandcorp/" width="400" height="600" style="border:none" allow="microphone"></iframe>` | 공개 slug URL, ADR-0011 — 토큰 없음. **바꾸지 않는다** |
 | 공개 챗봇 페이지 | `/chatbot/sandcorp/` | 위 iframe과 같은 주소(slug `sandcorp`) |
 | 위젯 SPA 자산 | `/embed/` | 위젯 base. portfolio는 직접 쓰지 않는다 |
@@ -299,7 +308,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
 
 ```html
 <iframe id="flow-try" src="https://flow.sandcorp.co.kr/try?embed=1&template=home" title="Flow 체험"
-        allow="clipboard-write" style="width:100%;border:0;height:480px"></iframe>
+        allow="clipboard-write" style="width:100%;border:0;height:640px"></iframe>
 <script>
   const f = document.getElementById('flow-try')
   const FLOW_ORIGIN = 'https://flow.sandcorp.co.kr' // /try 는 301 로 같은 호스트의 /admin-ui/try 에 도착한다
@@ -311,14 +320,16 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
 </script>
 ```
 
+- **초기 높이 640px의 근거**: 929px 폭(격자가 한 줄로 쌓이는 폭)에서 캔버스가 위 약 100~520px에 보이고 내용 높이가 약 932px로 고정이다. 높이 메시지로 곧 실제 값으로 자라므로 640px이면 첫 화면에 캔버스 전체와 아래 노드 목록 일부가 보인다. 1200px(3열)·390px(폰)도 첫 화면에서 편집기가 보인다.
+- **「고쳐 보기 시작」은 없다**: iframe `src`를 열면 곧바로 편집기다. 부모 쪽에 그 버튼·설명 문구가 있었다면 지운다.
 - **높이 규약**: 부모가 `{type:'sandcorp-flow:hello'}`를 FLOW 출처로 보내면 iframe이 `event.source === window.parent`일 때만 `event.origin`으로 `{type:'sandcorp-flow:height', height}`를 보낸다(내용이 바뀔 때마다). hello 전엔 아무것도 안 보낸다. 부모는 `e.origin`·`e.source`를 꼭 확인할 것(위 스니펫). 호스트가 iframe 높이를 늘려도 순환하지 않는다(임베드에선 뷰포트 단위를 안 쓴다).
 - **portfolio 쪽 전제**: CSP를 새로 걸면 `frame-src https://flow.sandcorp.co.kr`이 필요하다(지금은 CSP 없음). 임베드 전용 블록의 허용 호스트는 고정한다.
 - **flow 쪽 전제**: 운영 `.env`의 `TRY_EMBED_ORIGINS`(공백 구분 — `TRY_EMBED_ORIGINS="https://sandcorp.co.kr https://www.sandcorp.co.kr"`)가 `/admin-ui/try` 문서의 CSP `frame-ancestors 'self' …`가 된다(위 #179 항목). NPMplus가 flow 호스트에 붙이는 `X-Frame-Options: SAMEORIGIN`은 `/admin-ui/try`에서 빼야 한다(upstream 쪽 — 이미 제거됨, #179). 목록에 없는 사이트의 iframe은 브라우저가 거부한다.
 - **같은 사이트 필수**: 체험 쿠키가 `SameSite=Strict`라 부모(`sandcorp.co.kr`)와 flow(`flow.sandcorp.co.kr`)의 eTLD+1이 같아야 iframe 안 체험이 동작한다. 다른 사이트 부모에선 `/api/try/…`가 401이다.
-- 「이 흐름으로 가입」과 그 밖의 바깥 링크는 새 탭(`target=_blank rel=noopener`)으로 열린다 — 새 탭은 일반(비임베드) 화면이고 같은 체험 쿠키를 쓴다.
-- 시험: `e2e/tests/try-embed.spec.js`(화면·순환 없음), `e2e/tests/try-embed-hosts.spec.js`(같은 사이트 두 호스트 iframe 여정 — 고쳐 보기·새로고침 세션·가입 새 탭·hello→height), 프레임 거부 헤더는 `bash scripts/test-nginx-metrics.sh`.
+- 「이 흐름으로 가입」과 그 밖의 바깥 링크는 새 탭(`target=_blank rel=noopener`)으로 열린다 — 새 탭은 일반(비임베드) 화면이고 같은 체험 쿠키를 쓴다. 세션이 아직 없으면(편집 전) 가입 링크는 `/admin-ui/try/signup?template=…`(`rel="noopener nofollow"`)이고, 이 페이지가 세션을 만들어 로그인으로 보낸다. 새 탭은 iframe과 sessionStorage가 달라 iframe 안의 미저장 위치 이동은 가입 사본에 실리지 않는다(첫 진짜 쓰기 뒤에는 세션이 있어 해당 없음).
+- 시험: `e2e/tests/try-embed.spec.js`(화면·순환 없음), `e2e/tests/try-embed-hosts.spec.js`(같은 사이트 두 호스트 iframe 여정 — 첫 저장 세션·새로고침 세션·가입 새 탭·hello→height), `e2e/tests/try-lazy.spec.js`(POST 0→1→1), 프레임 거부 헤더는 `bash scripts/test-nginx-metrics.sh`.
 
-- 체험 템플릿 slug는 `backend/apps/flows/examples/*.json`의 예제 이름과 `admin/src/lib/tryTemplates.ts`의 `SHORT` 표가 단일 출처다(`home`·`shop`·`academy`; 전체 id `sandcorp_home`·`shop_support`·`academy_reservation`도 그대로 받는다). 모르는 값은 카드를 고르지 않고 템플릿 화면만 보인다.
+- 체험 템플릿 slug는 `backend/apps/flows/examples/*.json`의 예제 이름과 `admin/src/lib/tryTemplates.ts`의 `SHORT` 표가 단일 출처다(`home`·`shop`·`academy`; 전체 id `sandcorp_home`·`shop_support`·`academy_reservation`도 그대로 받는다). 모르는 값은 편집기를 열지 않고 카드 고르기 화면에 「그 템플릿을 찾지 못했어요」를 보인다. 예전 `/admin-ui/try/view/:id`(읽기 전용 흐름 보기)는 `/try?template=:id`로 리다이렉트된다.
 - 방식: **301 리다이렉트**(그 경로에서 바로 서빙하지 않음). SPA는 basename `/admin-ui` 아래에서만 돌고 자산·라우터·방문 지표(sub_filter)가 거기 맞춰져 있어, 같은 index.html을 `/try`에도 서빙하면 주소가 둘이 된다. 301이면 브라우저 주소창이 `/admin-ui/try…`로 바뀌어 새로고침·공유가 한 주소로 모이고, 지표 스니펫은 도착한 페이지에 한 번만 붙는다(리다이렉트 응답엔 본문이 없다). `Location`은 상대 경로(`absolute_redirect off`) — NPM이 TLS를 종단해 이 nginx는 http:80이라 절대 URL이면 `http://`로 내려가기 때문이다.
 - 겹침 없음: 정확히 `/try`·`/try/`와 `/flows/` 접두만 잡는다(`/tryout`·`/flowsX`·`/flows`는 404). `/api/`·`/embed/`·`/chatbot/`·`/mcp`·`/favicon.ico`·`/admin-ui/`·랜딩 `location = /`는 그대로(계약 시험이 확인).
 - 앱 안쪽 `navigate`(예: 공개 흐름 보기의 「고쳐 보기」)는 SPA basename 안이라 `/admin-ui/try…`로 가도 된다. 바깥에 노출되는 링크(랜딩 「체험해 보기」·템플릿 링크, 설정 「공개 흐름 보기」에 보이는 주소)만 짧은 주소다.
@@ -353,6 +364,7 @@ $N | grep ' /api/' | grep -v '/api/chat/stream' | awk '{for(i=1;i<=NF;i++) if($i
 ```
 
 ## 관련 문서
+- [ADR-0032](./adr/0032-try-session-created-on-first-write.md) — 체험 세션은 첫 쓰기 때 만든다(방문 즉시 편집기)
 - [ADR-0031](./adr/0031-try-embed-mode.md) — /try 임베드 모드(같은 사이트·frame-ancestors·높이 규약)
 - [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md) — 무중단 롤링 설계·기각안
 - [ADR-0012](./adr/0012-per-tenant-llm-embedding-providers.md) — per-Tenant Provider(플랫폼 기본 off)

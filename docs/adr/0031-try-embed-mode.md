@@ -1,7 +1,7 @@
 # ADR-0031: /try는 임베드 모드(`?embed=1`)로 같은 사이트 portfolio iframe에 들어간다
 
 ## Status
-Accepted (2026-10-25, 사용자·대장 결정 — #178·#179·#180·#181)
+Accepted (2026-10-25, 사용자·대장 결정 — #178·#179·#180·#181). 「자동 세션 생성 금지」 절은 [ADR-0032](./0032-try-session-created-on-first-write.md)로 바뀌었다(2026-10-26).
 
 ## Context
 portfolio(sandcorp.co.kr)가 홈 화면 안에서 「고쳐 보기」 체험을 바로 보여 주고 싶다. 체험(Try Session, ADR-0030)은 쿠키 세션이고, 쓰기는
@@ -15,11 +15,13 @@ portfolio(sandcorp.co.kr)가 홈 화면 안에서 「고쳐 보기」 체험을 
 - **임베드 판정은 `?embed=1` 쿼리 → 메모리 + sessionStorage.** SPA 이동·새로고침에도 유지되고, `noopener`로 여는 새 탭엔 따라가지 않아 새 탭은 일반 화면이다.
 - **높이는 hello 규약.** 부모가 `{type:'sandcorp-flow:hello'}`를 보내면 iframe이 `event.source === window.parent`일 때만 `event.origin`으로 `{type:'sandcorp-flow:height', height}`를 보낸다.
   허용 출처 목록을 SPA에 내려보내지 않으려는 선택이다(목록은 nginx `frame-ancestors`에만 있다). iframe이 떴다는 것은 브라우저가 조상 전부를 허용했다는 뜻이고, 보내는 것은 높이 숫자뿐이다. `'*'`는 쓰지 않는다. 임베드에선 뷰포트 단위를 쓰지 않아(폰 캔버스 480px·넓은 폭 격자 640px 고정) 호스트가 iframe을 키워도 순환하지 않는다.
-- **바깥 링크·「이 흐름으로 가입」은 새 탭**(`target=_blank rel=noopener`). 가입은 sandcorp-auth 최상위 이동이 필요하고(로그인 화면을 iframe 안에서 열지 않는다), 새 탭은 같은 사이트라 같은 체험 쿠키로 같은 세션을 옮긴다.
-- **자동 세션 생성 금지.** `template=home`이어도 홈 카드가 골라진 첫 화면에서 「고쳐 보기 시작」을 한 번 눌러야 세션이 생긴다. 방문마다 세션을 만들면 봇·새로고침이 IP 하루 3세션과 전체 하루 $5 한도를 쓴다(대장 결정).
-  - (#195 이후) 진입은 여전히 세션을 만들지 않지만 「고쳐 보기 시작」 버튼은 없어졌다 — `template=home`이면 곧바로 홈 편집기가 열리고 세션은 첫 쓰기(위치 이동만 빼고 초안 저장·시험 대화)에 생긴다. ADR-0032(초안, #194)가 #200에서 이 문장을 대신한다.
+- **바깥 링크·「이 흐름으로 가입」은 새 탭**(`target=_blank rel=noopener`, 가입은 `nofollow` 포함). 가입은 sandcorp-auth 최상위 이동이 필요하고(로그인 화면을 iframe 안에서 열지 않는다), 새 탭은 같은 사이트라 같은 체험 쿠키로 같은 세션을 옮긴다.
+- **진입은 세션을 만들지 않는다.** `template=home`이면 iframe 안에 곧바로 홈 템플릿 편집기가 열리고, 세션은 첫 쓰기(초안 저장·시험 대화, 노드 위치 이동만은 제외)에 생긴다(ADR-0032).
+  방문·새로고침·봇은 IP 하루 3세션과 전체 하루 $5를 쓰지 않는다. 그래서 처음의 「고쳐 보기 시작」 버튼은 없앴다. 세션이 없을 때의 「이 흐름으로 가입」 새 탭은
+  `/admin-ui/try/signup?template=…`(noindex·nofollow)가 세션을 만든 뒤 로그인으로 보낸다. 새 탭은 iframe과 sessionStorage가 달라 iframe 안의 미저장 위치 이동은 가입 사본에 실리지 않는다.
+- **첫 화면 배치.** 격자가 한 줄로 쌓이는 폭(929px 등)에서도 캔버스가 먼저 보이도록 임베드에서만 캔버스를 위로 올린다(#199). iframe 초기 높이 권장값은 640px이다(`docs/deployment.md`).
 
 ## Consequences
 - portfolio는 이 ADR의 규약(`docs/deployment.md` 「체험 임베드」)대로 iframe + 부모 스크립트를 붙이면 된다. 출처 추가는 flow 쪽 `TRY_EMBED_ORIGINS` 변경 + nginx 재생성.
-- 방문 즉시 편집기가 열리게 하려면(세션 지연 생성) 한도 정책을 다시 정해야 한다 — 사용자 선택지로 보고됨, 이 ADR의 범위 밖.
+- 방문 즉시 편집기는 ADR-0032(세션 지연 생성)로 정했다. 한도 값은 그대로이고 세는 시점만 첫 쓰기로 옮겼다.
 - 시험: e2e는 같은 사이트 두 호스트(`portfolio.flowtest.test`/`flow.flowtest.test`)로 iframe 여정을 확인한다(`try-embed-hosts.spec.js`). e2e 스택은 Vite라 `frame-ancestors`가 없어 **다른 사이트 거부는 nginx 계약 시험**(`scripts/test-nginx-metrics.sh`: 경로별 CSP 값)이 맡는다.
