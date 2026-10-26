@@ -38,6 +38,8 @@ def _answer_for(body: dict) -> str:
             out[name] = 0.9
         elif name == "label":
             out[name] = (spec.get("enum") or [""])[0]
+        elif name == "context_sufficient":
+            out[name] = _OpenAIStub.context_sufficient
         elif spec.get("type") == "boolean":
             out[name] = name != "needs_hitl"
         else:
@@ -49,6 +51,7 @@ class _OpenAIStub(BaseHTTPRequestHandler):
     """OpenAI chat completions·embeddings 대역. 받은 요청 본문을 ``bodies``에 남긴다."""
 
     bodies: list[dict] = []
+    context_sufficient = True  # 거짓이면 「근거가 모자라다」고 답해 AI 답변 노드의 원문 폴백을 부른다(#230)
 
     def log_message(self, *args: object) -> None:
         pass
@@ -102,6 +105,7 @@ class _OpenAIStub(BaseHTTPRequestHandler):
 def openai_stub() -> Iterator[str]:
     """대역 서버를 띄우고 그 base_url(…/v1)을 준다."""
     _OpenAIStub.bodies = []
+    _OpenAIStub.context_sufficient = True
     server = HTTPServer(("127.0.0.1", 0), _OpenAIStub)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
@@ -307,3 +311,53 @@ def test_embedding_call_inside_a_node_is_reported_to_the_node_and_rollup_once(op
     assert cost_usd(calls[0].model, 3, 0) is not None
     rows = list(TokenUsage.objects.filter(tenant_id=tenant_id))
     assert [(r.call_type, r.total_tokens, r.request_count) for r in rows] == [("embedding", 3, 1)]
+
+
+async def _fallback_turn_counts(tenant, monkeypatch) -> tuple[int, int, int, list[str]]:
+    """근거가 모자란 위젯 한 턴을 돌려 (Provider 챗 요청 수, ai_answer calls 수, chat 롤업 request_count, 흘린 토큰)을 센다."""
+    from apps.agent import nodes
+    from apps.flows.chat_turn import run_chat_turn_async
+    from apps.flows.models import DecisionTrace
+    from apps.usage.models import TokenUsage
+
+    tokens: list[str] = []
+
+    async def _atok(_sid: str, text: str) -> None:
+        tokens.append(text)
+
+    monkeypatch.setattr(nodes, "apublish_token", _atok)
+    _OpenAIStub.context_sufficient = False
+    session = await adb(_session)(tenant)
+    await run_chat_turn_async(session, "배송은 얼마나 걸려요?")
+
+    row = await adb(DecisionTrace.objects.get)(session=session)
+    answer = next(e for e in row.entries if e["kind"] == "ai_answer")
+    buckets = await adb(list)(TokenUsage.objects.filter(tenant_id=tenant.id, call_type="chat"))
+    chat_calls = [c for c in answer["calls"] if c["model"].startswith("gpt-4o-mini")]  # 원문 폴백의 질의 임베딩은 뺀다
+    return len(_OpenAIStub.bodies), len(chat_calls), sum(b.request_count for b in buckets), tokens
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_source_fallback_that_finds_nothing_new_does_not_ask_again(platform_tenant, monkeypatch):
+    """원문 폴백이 보탤 원문을 못 찾으면 같은 프롬프트를 다시 보내지 않는다(#230: 같은 토큰의 호출이 2번 남던 원인).
+
+    한 턴 = Provider 요청 1번 = 판단 기록 calls 1개 = 롤업 1번. 첫 답은 방문자에게 한 번 흐른다.
+    """
+    requests, calls, rollup, tokens = await _fallback_turn_counts(platform_tenant, monkeypatch)
+
+    assert (requests, calls, rollup) == (1, 1, 1)
+    assert "".join(tokens) == "배송은 2~3일 걸립니다."
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_source_fallback_that_adds_source_text_asks_again_and_counts_each_request_once(
+        platform_tenant, monkeypatch):
+    """원문을 보탠 폴백은 정당한 두 번째 요청이다 — 요청 2번 = calls 2개 = 롤업 2번(기록·집계 중복 없음)."""
+    from tests.test_local_source_fallback import _seed_text_unit
+
+    await adb(_seed_text_unit)(platform_tenant)
+    requests, calls, rollup, tokens = await _fallback_turn_counts(platform_tenant, monkeypatch)
+
+    assert (requests, calls, rollup) == (2, 2, 2)
+    assert "1920" in json.dumps(_OpenAIStub.bodies[1], ensure_ascii=False)
+    assert "".join(tokens) == "배송은 2~3일 걸립니다."

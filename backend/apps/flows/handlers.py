@@ -74,12 +74,23 @@ async def ai_answer(state: FlowState, ctx: NodeContext) -> NodeOutcome:
     working: dict[str, object] = {**state, "node_instructions": config.instructions, "hold_stream": ctx.hold_stream}
     update: dict[str, object] = await call(working)
     source_fallback = False
+    nothing_new = False
     if state.get("rag_searched") and not update.get("context_sufficient", True) and not state.get("source_text_tried"):
-        source_fallback = True
         working.update(update)
+        before = len(cast(list[str], working.get("rag_chunks") or []))
         added = await source_search_node(working)
-        working.update(added)
-        update = {**added, **await call(working)}
+        if len(added.get("rag_chunks") or []) > before:
+            source_fallback = True
+            working.update(added)
+            update = {**added, **await call(working)}
+        else:
+            # 보탠 원문이 없으면 프롬프트가 글자 하나 다르지 않다 — 같은 요청을 또 보내지 않고 첫 답을 낸다(#230).
+            # 첫 답은 폴백 예정이라 흘리지 않았으므로 여기서 한 번 흘린다(가드레일 보류면 가드레일이 낸다).
+            nothing_new = True
+            update = {**update, "source_text_tried": True}
+            text = str(update.get("assistant_response") or "")
+            if text and not ctx.hold_stream:
+                await publish_answer(str(state["session_id"]), text)
 
     update = {**update, "stream_held": ctx.hold_stream}
     record: dict[str, object] = {
@@ -89,7 +100,8 @@ async def ai_answer(state: FlowState, ctx: NodeContext) -> NodeOutcome:
     if can_hand_off and update.get("needs_hitl"):
         record["reason"] = f"사람 넘김이 필요하다고 판단: {update.get('hitl_reason') or '이유 없음'}"
         return NodeOutcome(update=update, handle=HANDOFF_HANDLE, record=record)
-    record["reason"] = "답변 완료" + (" (원문을 보태 다시 물음)" if source_fallback else "")
+    record["reason"] = "답변 완료" + (
+        " (원문을 보태 다시 물음)" if source_fallback else " (원문에서 더 찾은 것이 없어 다시 묻지 않음)" if nothing_new else "")
     return NodeOutcome(update=update, handle=DEFAULT_HANDLE, wait_for_reply=config.await_reply, record=record)
 
 
