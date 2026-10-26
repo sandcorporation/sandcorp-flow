@@ -314,48 +314,54 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 
 ### MCP — claude.ai에서 흐름 다루기 (#74)
 - **연결**: claude.ai → 설정 → 커넥터 → 사용자 지정 커넥터 추가 → URL `https://flow.sandcorp.co.kr/mcp`. 커넥터가 `/.well-known/oauth-protected-resource/mcp`를 읽고 sandcorp-auth로 로그인시킨다(일반 사용자 member 토큰, `aud`=`AUTH_MCP_RESOURCE`, 스코프 `flow.read`·`flow.write`). auth 쪽 등록은 [docs/deployment.md](./docs/deployment.md) 「서버 쪽 할 일」 11번.
-- **스코프(#210)**: `flow.read`(읽기)·`flow.write`(편집·시험·저장·보관)·`flow.deploy`(`deploy_version`·`rollback_flow`·`approve_deploy_request`·`reject_deploy_request`)·`flow.admin`(관리 도구, 후속). 호환 기간에는 배포 도구가 `flow.write`만 가진 옛 토큰도 받고(감사 로그 `legacy_scope`, 응답 `notice`) 새 연결부터 `flow.deploy`를 받는다. `rollback_flow`는 배포 중 버전 바로 앞 번호를 다시 배포한다(2단계 없음, Admin).
-- **권한**: 스코프는 상한이고 실제 판정은 멤버십 권한 비트 — 테넌트 **Admin만 편집·배포**, Member는 읽기(도구마다 `flow.edit`·`flow.deploy` 비트, HTTP 흐름 API와 같은 규칙). 테넌트가 「배포에 승인 필요」를 켰으면 `deploy_version`은 배포 대신 요청을 만들고 `approval_required=true`·`request_id`를 돌려준다(다른 Admin이 승인). 대표 계정도 멤버십이 있는 테넌트만 보인다(Operator 기능 없음).
+- **스코프(#210)**: 연결할 때 4개를 받는다 — `flow.read`(읽기)·`flow.write`(흐름 편집·시험·저장·보관·복원, 설정 수정, 문서 URL 등록·재수집)·`flow.deploy`(배포·되돌리기·배포 요청 승인/거절)·`flow.admin`(팀 관리, 문서·기억 삭제·그래프 재빌드, 「배포에 승인 필요」·「공개 흐름 보기」 토글). 호환 기간(#220에서 제거 예정)에는 `deploy_version`·`rollback_flow`가 `flow.write`만 가진 옛 토큰도 받고(감사 로그 `legacy_scope`, 응답 `notice`) 새 연결부터 `flow.deploy`를 받는다. 스코프가 모자란 연결은 403 `insufficient_scope` — 커넥터를 다시 연결하면 풀린다.
+- **권한**: 스코프는 상한이고 실제 판정은 멤버십 권한 비트(HTTP API와 같은 `has_permission`, 없으면 `admin_required`) — 도구별 비트는 아래 표. 흐름 편집·배포·승인·팀 관리·감사 조회는 테넌트 Admin만, 표에서 권한이 「멤버」인 도구는 Member도 쓴다. 테넌트가 「배포에 승인 필요」를 켰으면 `deploy_version`은 배포 대신 요청을 만들고 `approval_required=true`·`request_id`를 돌려준다(다른 Admin이 승인 — **내가 낸 요청은 승인 불가**, 서비스 규칙이라 HTTP·MCP 공통). 대표 계정도 멤버십이 있는 테넌트만 보인다(Operator 기능 없음).
 - **테넌트 고르기**: 테넌트 도구는 `tenant` 인자(slug **또는 테넌트 id(UUID)**)를 받고, 멤버십이 하나면 생략한다. slug는 공개 챗봇 URL용이라 없을 수 있어(null이 의도, #119) slug 없는 테넌트는 id로 고른다. 어느 쪽이든 내 활성 멤버십 안에서만 풀린다. `list_tenants`가 id·slug·이름·역할을 보여 준다.
-- **도구**(지금): `list_tenants`, `get_flow_schema`(흐름 JSON 규칙 — 흐름을 고치기 전에 한 번 읽는다), 흐름 도구(#76) `list_flows`·`get_flow`(초안·검증 결과·버전 목록, `version`으로 버전 JSON) — 여기까지 읽기, `create_flow`·`update_flow`·`save_version`·`deploy_version`·`test_turn`·`archive_flow`(흐름 보관 — 목록·조회에서 빠지고 위젯이 쓰는 공개 흐름은 `flow_in_use`로 거부, #126) — 쓰기(Admin). 문서·지식그래프·상담 읽기 도구는 #77.
-- **읽기 도구**(#77, 모두 `flow.read`·모든 멤버): `list_documents`(문서 이름·상태·오류·갱신 시각 + 지식그래프 신선도, 커서 쪽), `search_knowledge`(질의 → 엔티티·1홉 관계, 챗봇 Local Search와 같은 `apps/rag/services.py`; `top_k` ≤ 20, 엔티티당 관계 20개까지), `list_sessions`(기간 `since`/`until`·`status` all|escalated|active, 커서 쪽), `get_session`(메시지·사람 넘김 이력·고정된 흐름 버전; 메시지 `limit` ≤ 200 + 커서, 메시지당 2000자까지). 시험 한 턴 세션(`is_test`)은 목록·읽기 모두에서 빠진다. 세션 콘솔과 같은 쿼리를 `apps/memory/services.py`에서 공유한다.
-- **테넌트 읽기 도구**(#211, 모두 `flow.read`, `apps/mcp/tools/tenant_reads.py`·`sessions.py`) — 데이터는 같은 일을 하는 HTTP 핸들러와 같은 함수·쿼리를 쓴다. 목록은 `limit`+`next_cursor` 쪽(`pagination.py`).
+- **도구 표**(40개: 읽기 19·쓰기 21). 「2단계」 ○ = 처음 부르면 실행하지 않고 미리보기+`confirm_token`을 돌려준다(아래 「2단계 확인」). 쓰기는 모두 감사 로그에 남고, 읽기는 남지 않는다. 데이터는 같은 일을 하는 HTTP 핸들러와 같은 함수·쿼리를 쓴다. 목록은 `limit`+`next_cursor`(`pagination.py`).
 
-  | 도구 | 권한 | 응답 요지 |
-  |---|---|---|
-  | `get_settings` | 멤버 | 비비밀 설정 전부 + `providers{llm,embed,ocr}`(`provider_type`·`model`·`api_key_set`) + `webhook{webhook_set,webhook_type}` |
-  | `list_members` | 멤버 | id·이름·이메일·역할·`is_active` |
-  | `list_invites` | `agents.manage`(Admin) | id·역할·`expires_at`·`created_at`만(토큰·링크 없음) |
-  | `list_secrets` | 멤버 | 비밀 **이름**·시각만(값·암호문 없음) |
-  | `list_allowed_domains` | 멤버 | 허용 도메인 패턴 |
-  | `get_usage` | 멤버 | 토큰·비용 합계, call_type별, 일별(`days` ≤ 365) |
-  | `list_deploy_requests` | `flow.approve`(Admin) | 배포 요청(`status` 필터) |
-  | `get_session_trace` | 멤버 | 세션의 `decision_traces`(노드별 상세)·`retrievals`(검색 근거), 턴 `limit` ≤ 20 쪽 |
-  | `list_visitors` / `get_visitor_memory` | 멤버 | 방문자 식별값(시험 세션 제외) / 방문자 기억 항목 |
+  | 도구 | 스코프 | 권한 | 2단계 | 요지 |
+  |---|---|---|---|---|
+  | `list_tenants` | read | 멤버 | | 내 테넌트 id·slug·이름·역할(`can_edit`은 Admin만 true) |
+  | `get_flow_schema` | read | 멤버 | | 흐름 JSON 규칙 — 흐름을 고치기 전에 한 번 읽는다 |
+  | `list_flows` / `get_flow` | read | 멤버 | | 흐름 목록 / 초안·검증 결과·버전 목록(`version`으로 버전 JSON) |
+  | `list_documents` | read | 멤버 | | 문서 이름·상태·오류·갱신 시각 + 지식그래프 신선도 |
+  | `search_knowledge` | read | 멤버 | | 질의 → 엔티티·1홉 관계(챗봇 Local Search와 같은 `apps/rag/services.py`, `top_k` ≤ 20) |
+  | `list_sessions` / `get_session` | read | 멤버 | | 상담 세션 목록(`since`/`until`/`status`) / 메시지(≤200+커서, 메시지당 2000자)·사람 넘김 이력·고정 흐름 버전. 시험 세션(`is_test`)은 빠진다 |
+  | `get_settings` | read | 멤버 | | 비비밀 설정 전부 + `providers{llm,embed,ocr}`(`provider_type`·`model`·`api_key_set`) + `webhook{webhook_set,webhook_type}` |
+  | `list_members` | read | 멤버 | | id·이름·이메일·역할·`is_active` |
+  | `list_invites` | read | `agents.manage` | | id·역할·`expires_at`·`created_at`만(토큰·링크 없음) |
+  | `list_secrets` | read | 멤버 | | 비밀 **이름**·시각만(값·암호문 없음) |
+  | `list_allowed_domains` | read | 멤버 | | 허용 도메인 패턴 |
+  | `get_usage` | read | 멤버 | | 토큰·비용 합계, call_type별, 일별(`days` ≤ 365) |
+  | `list_deploy_requests` | read | `flow.approve` | | 배포 요청(`status` 필터) |
+  | `get_session_trace` | read | 멤버 | | 세션의 `decision_traces`(노드별 상세)·`retrievals`(검색 근거), 턴 `limit` ≤ 20 쪽 |
+  | `list_visitors` / `get_visitor_memory` | read | 멤버 | | 방문자 식별값(시험 세션 제외) / 방문자 기억 항목 |
+  | `list_audit_events` | read | `audit.read` | | 쓰기 감사 로그(최신 순, `next_cursor`) |
+  | `create_flow` / `update_flow` / `save_version` / `test_turn` / `archive_flow` | write | `flow.edit` | | 흐름 만들기 / 연산 목록 원자 적용 / 검증 통과한 초안을 버전으로(`note` ≤ 200자) / 초안으로 한 턴 시험 / 보관(공개 흐름은 `flow_in_use`로 거부, #126) |
+  | `restore_flow` | write | `flow.edit` | ○ | 보관한 흐름 복원. 미리보기 = 흐름 이름·보관 시각 |
+  | `update_settings` | write | 멤버 | | 허용 12칸만(system_prompt·agent_display_name·brand_name·welcome_message·topic_scope_enabled·scope_description·scope_refusal_message·hitl_enabled·hitl_timezone·hitl_schedule·hitl_holidays·require_identity_verification), 그 밖은 `invalid_arguments`(`extra="forbid"`). 안 준 칸은 그대로. 응답 `{changed:{칸:{before,after}}}`. 형식 검증은 HTTP `PATCH /config/`와 같은 함수(`config_rules`·`business_hours.hours_error`) → `invalid_settings` |
+  | `add_document_url` | write | 멤버 | ○ | URL 한 개를 지식 문서로 등록(가져오기·임베딩을 큐에). 미리보기 = 주소·「비용 발생」·`already_registered`(**주소를 가져오지 않는다**). 미리보기·실행 모두 URL 가드(스킴·IP 리터럴·userinfo·포트)를 먼저 걸어 막히면 `url_not_allowed` |
+  | `refetch_document` | write | 멤버 | ○ | URL 문서 재수집(그래프 기여분 교체). 파일 문서면 `not_url_document` |
+  | `deploy_version` | deploy (호환: write도) | `flow.deploy` | | 배포 — 승인 필요 테넌트면 요청 생성. 배포 번호는 실행기에 핸들러가 있는 노드만으로 된 버전만 |
+  | `rollback_flow` | deploy (호환: write도) | `flow.deploy` | | 배포 중 버전 바로 앞 번호를 다시 배포(긴급 복구라 2단계 없음) |
+  | `approve_deploy_request` / `reject_deploy_request` | deploy | `flow.approve` | ○ | 대기 요청 승인(그 버전 배포)·거절. 인자 `request_id`·`note?`(200자). **내가 낸 요청은 승인 불가**(`self_approval`, 미리보기부터; 거절=철회는 가능). `request_not_pending`·`request_not_found` |
+  | `set_deploy_approval` | admin | `flow.approve` | ○ | 「배포에 승인 필요」 켜기/끄기. 미리보기 = 현재→새 값, 같으면 `no_change` |
+  | `set_public_flow_view` | admin | `flow.public_view` | ○ | 공개 흐름 보기 켜기/끄기. 같은 미리보기 모양 |
+  | `delete_document` | admin | 멤버 | ○ | 문서 삭제(청크·그래프 기여분 포함). 미리보기 = 이름·청크 수·「복구 불가」 |
+  | `rebuild_graph` | admin | 멤버 | ○ | 지식그래프 커뮤니티 재빌드(큐). 미리보기 = 문서 수·신선도·「LLM 비용 발생」, 이미 재빌드 중이면 `note` |
+  | `delete_visitor_memory` | admin | 멤버 | ○ | 방문자 기억 한 건 삭제(`visitor_id`·`memory_id`). 미리보기 = key·내용 앞 100자 |
+  | `change_member_role` | admin | `agents.manage` | ○ | 팀원 역할 admin/member. 미리보기 = 현재→새 역할, 자기 강등이면 `warning`. 마지막 활성 Admin은 미리보기부터 `last_admin`(HTTP 409와 같은 규칙, 서비스 `apps/tenants/members.py` 공유) |
+  | `deactivate_member` | admin | `agents.manage` | ○ | 팀원 비활성화 — **즉시 접근 끊김**(refresh 폐기·액세스 토큰은 `is_active` 검사·MCP는 `no_membership`). 자기 자신이면 `warning`, 마지막 Admin은 `last_admin` |
+  | `cancel_invite` | admin | `agents.manage` | ○ | 초대 취소(`invite_id`). 미리보기 = 역할·만료·만든 시각. 토큰·링크는 응답 어디에도 없다 |
 
-  **비밀 처리 원칙**: API 키 값·가림 문자열(`********`)·base_url·웹훅 주소·TENANT_KEY·초대 토큰/링크·비밀 값은 어떤 도구 응답에도 없다. `get_settings`는 허용 목록으로 만들어 새 설정 칸은 기본으로 빠진다. 회귀 시험(`tests/test_mcp_tenant_reads.py`)이 값을 심어 두고 새 도구와 기존 읽기 도구 응답 전체에서 찾는다. 읽기 도구는 감사 로그에 남지 않는다.
-- **설정·복원·토글 쓰기 도구**(#212, `apps/mcp/tools/settings_writes.py`·`flows.py`):
+  **같은 스코프 안의 권한 차이**: 문서 삭제·그래프 재빌드·방문자 기억 삭제는 화면에서 Member가 하던 일이라 권한 비트를 두지 않았다(Member도 가능) — MCP에서는 2단계 확인만 더하고, 스코프는 `flow.admin`이다.
 
-  | 도구 | 스코프·권한 | 요지 |
-  |---|---|---|
-  | `update_settings` | `flow.write`, 권한 비트 없음(Member도) | 허용 12칸만(system_prompt·agent_display_name·brand_name·welcome_message·topic_scope_enabled·scope_description·scope_refusal_message·hitl_enabled·hitl_timezone·hitl_schedule·hitl_holidays·require_identity_verification), 그 밖은 `invalid_arguments`(`extra="forbid"`). 안 준 칸은 그대로. 응답 `{changed:{칸:{before,after}}}`(같은 값은 빠짐). 주제 범위·상담 시간 형식 검증은 HTTP `PATCH /config/`와 같은 함수(`apps/tenants/config_rules.py`)라 같은 문구(`invalid_settings`). 2단계 없음 |
-  | `restore_flow` | `flow.write`, `flow.edit`, 2단계 | 보관한 흐름 복원. 미리보기 = 흐름 이름·보관 시각. 서비스 `restore_flow`는 HTTP `POST …/restore/`와 같음 |
-  | `set_deploy_approval` | `flow.admin`, `flow.approve`(Admin), 2단계 | 「배포에 승인 필요」 켜기/끄기. 미리보기 = 현재→새 값 + 영향 한 줄, 이미 같으면 `no_change` |
-  | `approve_deploy_request` / `reject_deploy_request` | `flow.deploy`(호환 분기 없음), `flow.approve`(Admin), 2단계 | 대기 중 배포 요청 승인(그 버전 배포)·거절. 인자 `request_id`, `note?`(200자). 미리보기 = 흐름 이름·요청 버전·현재 배포 버전·요청자(이름/이메일)·요청 시각·상태. **내가 낸 요청은 승인 불가**(`self_approval`, 미리보기부터; 거절=철회는 가능, HTTP 동작은 그대로). 이미 결정됐으면 `request_not_pending`, 없거나 남의 테넌트면 `request_not_found` |
-  | `add_document_url` | `flow.write`, 권한 비트 없음(Member도), 2단계 | URL 한 개를 지식 문서로 등록하고 가져오기·임베딩을 큐에 넣는다. 인자 `url`. 미리보기 = 주소·「가져오기·임베딩 비용 발생」·`already_registered`(**주소를 가져오지 않는다**). 미리보기·실행 모두 URL 가드(스킴·IP 리터럴·userinfo·포트)를 먼저 걸어 막히면 `url_not_allowed`(토큰 없음). 응답 「접수됨」+`list_documents`로 확인 |
-  | `refetch_document` | `flow.write`, 권한 비트 없음, 2단계 | URL 문서 재수집(그래프 기여분 지우고 교체). 인자 `document_id`. 미리보기 = 이름·출처 URL·마지막 수집 시각. 파일 문서면 `not_url_document`, 없거나 남의 테넌트면 `document_not_found` |
-  | `delete_document` | `flow.admin`, 권한 비트 없음, 2단계 | 문서 삭제(청크·그래프 기여분 포함). 미리보기 = 이름·청크 수·「복구 불가」 |
-  | `rebuild_graph` | `flow.admin`, 권한 비트 없음, 2단계 | 지식그래프 커뮤니티 재빌드(큐). 미리보기 = 문서 수·`graph_freshness`·「LLM 비용 발생」, 이미 재빌드 중이면 `note`(HTTP처럼 막지는 않음) |
-  | `delete_visitor_memory` | `flow.admin`, 권한 비트 없음, 2단계 | 방문자 기억 한 건 삭제. 인자 `visitor_id`·`memory_id`. 미리보기 = key·내용 앞 100자. 없으면 `memory_not_found`. 파일 업로드는 MCP에 없다 |
-  | `set_public_flow_view` | `flow.admin`, `flow.public_view`(Admin), 2단계 | 공개 흐름 보기 켜기/끄기. 같은 미리보기 모양 |
-  | `change_member_role` | `flow.admin`, `agents.manage`(Admin), 2단계 | 팀원 역할을 admin/member로. 인자 `member_id`·`role`. 미리보기 = 이름·이메일·현재 역할→새 역할, **자기 강등이면 `warning`**. 마지막 활성 Admin 강등은 미리보기에서부터 `last_admin`(HTTP 409와 같은 규칙). 서비스 `apps/tenants/members.py`를 HTTP 핸들러와 공유 |
-  | `deactivate_member` | `flow.admin`, `agents.manage`, 2단계 | 팀원 비활성화. 인자 `member_id`. 미리보기 = 대상·효과(**즉시 접근 끊김**: 열린 로그인 세션의 refresh 폐기, 액세스 토큰은 다음 요청부터 `is_active` 검사로 거부, MCP는 활성 멤버십 필터로 `no_membership`)·자기 자신이면 `warning`. 마지막 Admin은 `last_admin` |
-  | `cancel_invite` | `flow.admin`, `agents.manage`, 2단계 | 초대 취소. 인자 `invite_id`. 미리보기 = 역할·만료·만든 시각. **초대 만들기 도구는 없다**(링크가 대화 기록에 남지 않게 — Admin 화면에서). 응답 어디에도 토큰·링크 없음 |
+  **MCP에 없는 것(의도)**: Provider(종류·base_url·키·모델)·웹훅·비밀 값·허용 도메인·slug·TENANT_KEY 재발급·사람 넘김 실시간 답장·**초대 만들기**(링크가 대화 기록에 남지 않게 Admin 화면에서)·파일 업로드. 근거는 ADR-0033.
 
-  Provider·웹훅·slug·키는 이 도구들로 바꿀 수 없다. 모든 호출은 감사 로그에 남는다.
+  **비밀 처리 원칙**: API 키 값·가림 문자열(`********`)·base_url·웹훅 주소·TENANT_KEY·초대 토큰/링크·비밀 값은 어떤 도구 응답에도 없다. `get_settings`는 허용 목록으로 만들어 새 설정 칸은 기본으로 빠진다. 회귀 시험(`tests/test_mcp_tenant_reads.py`)이 값을 심어 두고 새 도구와 기존 읽기 도구 응답 전체에서 찾는다.
 - **흐름 고치기**: `update_flow`는 연산 목록(`upsert_node`·`delete_node`·`connect`·`disconnect`)을 한 번에 **원자적으로** 적용한다(하나라도 못 하면 아무것도 안 바뀜). 초안은 틀려도 저장되고 결과에 `errors[{node_id, code, message}]`가 온다 — 도구 오류가 아니다. 버전 저장은 검증 통과한 초안만(`note` 선택 메모 200자 이내 — 만들 때만 붙고 못 바꾸며 `get_flow` 버전 목록에 `note`로 나온다), 배포는 실행기에 핸들러가 있는 노드만으로 된 버전만(되돌리기는 이전 번호 배포). `test_turn`은 초안으로 한 턴을 돌려 답·지나간 노드를 보여 준다 — 시험 세션이라 운영 대화 목록에 안 섞이고, 사람 넘김은 실제로 넘기지 않으며, 체험 테넌트면 체험 턴 1을 쓴다. 편집 규칙은 `backend/apps/flows/services.py`(흐름 API #28·편집기 #29도 이 층을 쓴다).
-- **도구별 권한·힌트·감사(#208)**: 도구는 등록 때 권한 비트(`permission`, `apps/tenants/permissions.py` — 흐름 쓰기 5개는 `flow.edit`, `deploy_version`은 `flow.deploy`, 비트 없는 Member 쓰기는 `None`)를 적고 디스패처가 `has_permission` 한 곳에서 판정한다(없으면 `admin_required`). `tools/list`의 `annotations`에 `readOnlyHint`·`destructiveHint`(쓰기 기본 true — `create_flow`·`save_version`·`test_turn`만 false)·`idempotentHint`(읽기와 `save_version`만 true). **쓰기 도구의 `tools/call`은 모두 감사 로그(`McpAuditEvent`, `apps/mcp/audit.py`)에 한 줄**: 시각·테넌트·User·토큰 `sub`·`client_id`·`jti`·도구·인자(JSON 4000자 상한, 넘으면 `{_truncated, preview}`)·결과(`ok`/ToolError code/`invalid_arguments`/`insufficient_scope`/`internal`)·2단계 단계(`preview`/`confirm`). 부르기 **전에** `started`로 쓰고 끝나면 고친다 — 기록이 안 되면 도구를 실행하지 않는다(fail-closed, 결과 쓰기만 실패하면 행이 `started`로 남는다). 읽기 도구는 남기지 않는다. 조회는 Admin 전용 비트 `audit.read`로 `GET /api/tenant/audit-events/?limit&cursor`(최신 순, `next_cursor`)와 MCP `list_audit_events`(`flow.read`). 보존 `MCP_AUDIT_RETENTION_DAYS`(기본 180일), 정리 `python manage.py prune_mcp_audit`(하루 한 번 cron). ADR-0033(초안).
-- **2단계 확인 기반(#209)**: `register(..., writes=True, preview=fn)`으로 등록한 도구는 `confirm_token` 없이 부르면 실행하지 않고 `{confirm_required, preview, confirm_token, expires_in: 300}`을 돌려주고, 같은 인자에 토큰을 실어 부르면 실행한다(미리보기도 스코프·권한 검사 뒤). 토큰(`apps/mcp/confirm.py`)은 SECRET_KEY 서명이고 도구·테넌트 id·사용자 sub·정규화 인자 해시(`tenant`·`confirm_token` 제외, 기본값 채운 뒤)에 묶이며 5분 만료, 한 번만(jti를 `mcp_confirm_use` 표에 고유 키로 넣는다 — 다중 워커에서도 한 번). 거부 코드 `confirm_token_invalid`·`_expired`·`_wrong_user`·`_mismatch`(토큰을 쓰지 않음)·`_used`. 레지스트리가 `destructiveHint=true`·입력의 `confirm_token` 칸·설명 끝 공통 문구를 강제한다. 감사 로그에 단계가 남고 토큰 값은 `[redacted]`. 사람의 확인을 강제하지는 않는다(사람 관문은 클라이언트 승인 UI). 실제 2단계 도구는 #212~#215.
+- **도구별 권한·힌트·감사(#208)**: 도구는 등록 때 권한 비트(`permission`, `apps/tenants/permissions.py` — 흐름 쓰기 6개는 `flow.edit`, `deploy_version`·`rollback_flow`는 `flow.deploy`, 비트 없는 Member 쓰기는 `None`)를 적고 디스패처가 `has_permission` 한 곳에서 판정한다(없으면 `admin_required`). `tools/list`의 `annotations`에 `readOnlyHint`·`destructiveHint`(쓰기 기본 true — `create_flow`·`save_version`·`test_turn`·`update_settings`만 false)·`idempotentHint`(읽기와 `save_version`·`update_settings`만 true). **쓰기 도구의 `tools/call`은 모두 감사 로그(`McpAuditEvent`, `apps/mcp/audit.py`)에 한 줄**: 시각·테넌트·User·토큰 `sub`·`client_id`·`jti`·도구·인자(JSON 4000자 상한, 넘으면 `{_truncated, preview}`)·결과(`ok`/ToolError code/`invalid_arguments`/`insufficient_scope`/`internal`)·2단계 단계(`preview`/`confirm`). 부르기 **전에** `started`로 쓰고 끝나면 고친다 — 기록이 안 되면 도구를 실행하지 않는다(fail-closed, 결과 쓰기만 실패하면 행이 `started`로 남는다). 읽기 도구는 남기지 않는다. 조회는 Admin 전용 비트 `audit.read`로 `GET /api/tenant/audit-events/?limit&cursor`(최신 순, `next_cursor`)와 MCP `list_audit_events`(`flow.read`). 보존 `MCP_AUDIT_RETENTION_DAYS`(기본 180일), 정리 `python manage.py prune_mcp_audit`(하루 한 번 cron). ADR-0033.
+- **2단계 확인 기반(#209)**: `register(..., writes=True, preview=fn)`으로 등록한 도구는 `confirm_token` 없이 부르면 실행하지 않고 `{confirm_required, preview, confirm_token, expires_in: 300}`을 돌려주고, 같은 인자에 토큰을 실어 부르면 실행한다(미리보기도 스코프·권한 검사 뒤). 토큰(`apps/mcp/confirm.py`)은 SECRET_KEY 서명이고 도구·테넌트 id·사용자 sub·정규화 인자 해시(`tenant`·`confirm_token` 제외, 기본값 채운 뒤)에 묶이며 5분 만료, 한 번만(jti를 `mcp_confirm_use` 표에 고유 키로 넣는다 — 다중 워커에서도 한 번). 거부 코드 `confirm_token_invalid`·`_expired`·`_wrong_user`·`_mismatch`(토큰을 쓰지 않음)·`_used`. 레지스트리가 `destructiveHint=true`·입력의 `confirm_token` 칸·설명 끝 공통 문구를 강제한다. 감사 로그에 단계가 남고 토큰 값은 `[redacted]`. 사람의 확인을 강제하지는 않는다(사람 관문은 클라이언트 승인 UI). 2단계 도구는 위 표의 ○.
 - **전송**: Streamable HTTP의 JSON 응답 모드(POST 한 번에 JSON 한 답, 세션·SSE 없음, 배치 거부, 본문 1 MiB). 코드는 `backend/apps/mcp/`(도구 등록 방법은 `registry.py` 머리말).
 
 ### Visitor
