@@ -72,21 +72,12 @@ def add_url_documents(request, body: UrlsIn):
     """명시적 URL(들)을 각각 Document로 등록하고 fetch·인제스션을 트리거한다(재귀 크롤 아님)."""
     tenant = request.auth.tenant
     _refuse_try_upload(tenant.id)
-    from apps.rag.tasks import ingest_document
-
     out = []
     for raw in body.urls:
         url = raw.strip()
         if not url:
             continue
-        doc = Document.objects.create(
-            tenant_id=tenant.id,
-            name=url,
-            mime_type="text/html",
-            source_type=Document.SOURCE_URL,
-            source_url=url,
-        )
-        ingest_document.delay(str(doc.id), str(tenant.id), "text/html")
+        doc = services.register_url_document(tenant.id, url)
         out.append({
             "id": str(doc.id), "name": doc.name,
             "status": doc.status, "error_message": doc.error_message,
@@ -102,13 +93,7 @@ def refetch_url_document(request, document_id: str):
     if doc.source_type != Document.SOURCE_URL:
         raise HttpError(400, "URL Document만 재-fetch할 수 있습니다")
 
-    from apps.rag.graph_store import GraphStore
-    GraphStore(str(tenant.id)).delete_document(str(doc.id))
-    doc.status = Document.STATUS_PENDING
-    doc.save()
-
-    from apps.rag.tasks import ingest_document
-    ingest_document.delay(str(doc.id), str(tenant.id), "text/html")
+    services.refetch_url_document(doc)
     return 200, {
         "id": str(doc.id), "name": doc.name,
         "status": doc.status, "error_message": doc.error_message,
@@ -197,13 +182,9 @@ def update_document(request, document_id: str, body: DocumentPatchIn):
 
 @rag_router.delete("/{document_id}", response={204: None})
 def delete_document(request, document_id: str):
-    from apps.rag.graph_store import GraphStore
-
     tenant = request.auth.tenant
     doc = get_object_or_404(Document, id=document_id, tenant_id=tenant.id)
-    # 지식그래프 정리: 출처에서 제거 후 고아 prune (공유 Entity 보존)
-    GraphStore(str(tenant.id)).delete_document(document_id)
-    doc.delete()
+    services.delete_document(doc)
     return 204, None
 
 
@@ -221,10 +202,7 @@ def graph_status(request):
 @rag_router.post("/graph/rebuild", response={202: RebuildOut})
 def rebuild_graph(request):
     """Tenant Knowledge Graph의 Community 재구축을 트리거한다 (어드민 수동)."""
-    from apps.rag.tasks import rebuild_graph_communities
-
-    tenant = request.auth.tenant
-    rebuild_graph_communities.delay(str(tenant.id))
+    services.start_graph_rebuild(request.auth.tenant.id)
     return 202, {"status": "rebuilding"}
 
 

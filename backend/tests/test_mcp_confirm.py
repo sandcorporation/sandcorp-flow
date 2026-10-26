@@ -313,7 +313,7 @@ def test_two_step_tool_is_listed_destructive_with_confirm_token_and_suffix(signe
     assert tool["description"].endswith(confirm.DESCRIPTION_SUFFIX)
     assert "confirm_token" in tool["inputSchema"]["properties"]
     assert "confirm_token" not in tool["inputSchema"].get("required", [])
-    two_step = {"restore_flow", "set_deploy_approval", "set_public_flow_view", "approve_deploy_request", "reject_deploy_request"}  # #212·#213 — 진짜 2단계 도구
+    two_step = {"restore_flow", "set_deploy_approval", "set_public_flow_view", "approve_deploy_request", "reject_deploy_request", "add_document_url", "refetch_document", "delete_document", "rebuild_graph", "delete_visitor_memory"}  # #212·#213·#214 — 진짜 2단계 도구
     for name, existing in tools.items():  # 그 밖의 기존 도구는 2단계가 아니다
         if not name.startswith("test_") and name not in two_step:
             assert "confirm_token" not in existing["inputSchema"].get("properties", {}), name

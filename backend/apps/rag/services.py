@@ -86,3 +86,61 @@ def search_subgraph(tenant_id: uuid.UUID | str, query: str) -> dict[str, list]:
                 seen_edges.add(key)
                 edges.append(e)
     return {"nodes": list(nodes_by_name.values()), "edges": edges}
+
+
+# ── 쓰기(#214) — 테넌트 API·MCP 쓰기 도구가 같은 함수를 쓴다 ────────────────────
+
+
+def ensure_upload_allowed(tenant_id: uuid.UUID | str) -> None:
+    """체험 테넌트(#134)는 문서를 들이지 않는다. 막히면 ``try_tenant.TryRestricted``."""
+    from apps.tenants import try_tenant
+
+    try_tenant.ensure_allowed(uuid.UUID(str(tenant_id)), "upload")
+
+
+def register_url_document(tenant_id: uuid.UUID | str, url: str) -> Document:
+    """URL 하나를 Document로 등록하고 가져오기·인제스션을 큐에 넣는다(재귀 크롤 아님)."""
+    from apps.rag.tasks import ingest_document
+
+    doc = Document.objects.create(
+        tenant_id=tenant_id,
+        name=url,
+        mime_type="text/html",
+        source_type=Document.SOURCE_URL,
+        source_url=url,
+    )
+    ingest_document.delay(str(doc.id), str(tenant_id), "text/html")
+    return doc
+
+
+def refetch_url_document(doc: Document) -> Document:
+    """웹 Document를 다시 가져온다: 기존 그래프 기여분을 지우고 pending으로 돌려 다시 인제스션(교체)."""
+    from apps.rag.graph_store import GraphStore
+    from apps.rag.tasks import ingest_document
+
+    GraphStore(str(doc.tenant_id)).delete_document(str(doc.id))
+    doc.status = Document.STATUS_PENDING
+    doc.save()
+    ingest_document.delay(str(doc.id), str(doc.tenant_id), "text/html")
+    return doc
+
+
+def delete_document(doc: Document) -> None:
+    """지식그래프 정리(출처에서 제거 후 고아 prune, 공유 Entity 보존) 뒤 문서 행을 지운다."""
+    from apps.rag.graph_store import GraphStore
+
+    GraphStore(str(doc.tenant_id)).delete_document(str(doc.id))
+    doc.delete()
+
+
+def start_graph_rebuild(tenant_id: uuid.UUID | str) -> None:
+    """Tenant Knowledge Graph의 Community 재구축을 큐에 넣는다(진행 중이어도 HTTP와 같이 그대로 넣는다)."""
+    from apps.rag.tasks import rebuild_graph_communities
+
+    rebuild_graph_communities.delay(str(tenant_id))
+
+
+def chunk_count(doc: Document) -> int:
+    from apps.rag.graph_store import GraphStore
+
+    return len(GraphStore(str(doc.tenant_id)).query_text_units(str(doc.id)))
