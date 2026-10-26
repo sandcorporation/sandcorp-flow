@@ -232,6 +232,16 @@ READ_TOOLS = {
     "list_sessions": None,
     "get_session": None,
     "list_audit_events": P.AUDIT_READ,
+    "get_settings": None,
+    "list_members": None,
+    "list_invites": P.AGENTS_MANAGE,
+    "list_secrets": None,
+    "list_allowed_domains": None,
+    "get_usage": None,
+    "list_deploy_requests": P.FLOW_APPROVE,
+    "get_session_trace": None,
+    "list_visitors": None,
+    "get_visitor_memory": None,
 }
 
 

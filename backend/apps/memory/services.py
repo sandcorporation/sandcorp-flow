@@ -95,3 +95,19 @@ def session_messages(session: ChatSession, *, offset: int = 0, limit: int | None
 def session_escalations(session: ChatSession) -> list[Escalation]:
     """이 세션의 사람 넘김 이력(해결된 것 포함, 오래된 순)."""
     return list(Escalation.objects.filter(session=session).order_by("created_at"))
+
+
+def visitor_ids(tenant_id: uuid.UUID, search: str | None = None) -> list[str]:
+    """이 테넌트의 방문자 식별값(시험 세션 제외, 중복 없음). 방문자 화면 API와 MCP 읽기 도구가 같이 쓴다."""
+    qs = ChatSession.objects.filter(tenant_id=tenant_id, is_test=False)
+    if search:
+        qs = qs.filter(visitor_id__icontains=search)
+    return sorted(set(qs.values_list("visitor_id", flat=True)))
+
+
+def visitor_memories(tenant_id: uuid.UUID, visitor_id: str) -> list[dict[str, str]]:
+    """방문자 기억 항목 ``{id, key, value}``. 방문자 화면 API와 MCP 읽기 도구가 같이 쓴다."""
+    from apps.memory.models import VisitorMemory
+
+    rows = VisitorMemory.objects.filter(tenant_id=tenant_id, visitor_id=visitor_id).order_by("key")
+    return [{"id": str(m.id), "key": m.key, "value": m.value} for m in rows]

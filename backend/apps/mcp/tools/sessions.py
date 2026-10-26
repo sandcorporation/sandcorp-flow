@@ -143,3 +143,52 @@ async def get_session(ctx: ToolContext, args: GetSessionArgs) -> JSONObject:
             for e in escalations
         ],
     }
+
+
+class GetSessionTraceArgs(TenantArgs):
+    session_id: str = Field(description="세션 id(list_sessions로 확인)")
+    limit: int = Field(default=5, ge=1, le=20, description="한 쪽 턴 수(최대 20, 턴마다 노드별 상세가 있어 작게 시작)")
+    cursor: str | None = Field(default=None, description="앞 결과의 next_cursor(이어 읽기)")
+
+
+@register(
+    "get_session_trace",
+    "세션의 턴별 판단 기록(오래된 턴부터)과 검색 근거: decision_traces[{turn·토큰·비용 USD(모르는 모델이면 null)·걸린 시간·"
+    "entries(노드별 기록)}], retrievals[{user_message·chunks(검색된 조각)·chunk_count·nodes(실행 노드 순서)}]. "
+    "HTTP /sessions/{id}/decision-traces·retrievals와 같은 정보. 턴 limit개씩 자르고 next_cursor로 이어 읽는다. "
+    "인자: session_id, tenant?, limit?, cursor?. 실패: session_not_found(없거나 남의 테넌트), invalid_cursor.",
+    GetSessionTraceArgs,
+    scope="flow.read",
+    permission=None,
+    idempotent=True,
+)
+async def get_session_trace(ctx: ToolContext, args: GetSessionTraceArgs) -> JSONObject:
+    from django.core.exceptions import ValidationError
+
+    from apps.agent.graph import session_retrievals
+    from apps.mcp.tools.tenant_reads import jsonable
+
+    tenant_id = ctx.require_membership().tenant_id
+    offset = decode_cursor(args.cursor)
+
+    def load():
+        try:
+            traces = trace_query.session_turns(tenant_id, args.session_id)
+        except (ValidationError, ValueError):
+            return None
+        if traces is None:
+            return None
+        return traces, session_retrievals(args.session_id)
+
+    loaded = await sync_to_async(load)()
+    if loaded is None:
+        raise ToolError("session_not_found", "그런 상담 세션이 없습니다(list_sessions로 id를 확인하세요).")
+    traces, retrievals = loaded
+    end = offset + args.limit
+    has_more = len(traces) > end or len(retrievals) > end
+    return {
+        "session_id": args.session_id,
+        "decision_traces": traces[offset:end],
+        "retrievals": jsonable(retrievals[offset:end]),  # 체크포인트 값 — HTTP와 같은 인코더로
+        "next_cursor": encode_cursor(end) if has_more else None,
+    }

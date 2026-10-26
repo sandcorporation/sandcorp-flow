@@ -4,6 +4,7 @@ from django.shortcuts import get_object_or_404
 from apps.tenants.auth import member_auth
 from apps.memory.models import VisitorMemory
 from apps.memory.manager import upsert_memory, delete_memory
+from apps.memory import services
 
 memory_router = Router(tags=["memory"], auth=member_auth)
 session_router = Router(tags=["sessions"], auth=member_auth)
@@ -42,8 +43,6 @@ def list_sessions(request, limit: int = 50, offset: int = 0):
     """
     from datetime import timedelta
     from django.utils import timezone
-    from apps.memory import services
-
     cutoff = timezone.now() - timedelta(days=SESSION_WINDOW_DAYS)
     rows = services.list_session_rows(request.auth.tenant.id, since=cutoff)
     return [
@@ -230,14 +229,8 @@ def get_session_decision_traces(request, session_id: str):
 
 @memory_router.get("/", response=List[VisitorOut])
 def list_visitors(request, search: Optional[str] = None):
-    from apps.chat.models import ChatSession
-
     tenant = request.auth.tenant
-    qs = ChatSession.objects.filter(tenant_id=tenant.id, is_test=False)
-    if search:
-        qs = qs.filter(visitor_id__icontains=search)
-    visitor_ids = list(qs.values_list("visitor_id", flat=True).distinct())
-    return [{"visitor_id": vid} for vid in visitor_ids]
+    return [{"visitor_id": vid} for vid in services.visitor_ids(tenant.id, search)]
 
 
 class MemoryOut(Schema):
@@ -272,9 +265,7 @@ def list_visitor_sessions(request, visitor_id: str):
 
 @memory_router.get("/{visitor_id}/memory/", response=List[MemoryOut])
 def list_memories(request, visitor_id: str):
-    tenant = request.auth.tenant
-    memories = VisitorMemory.objects.filter(tenant_id=tenant.id, visitor_id=visitor_id)
-    return [{"id": str(m.id), "key": m.key, "value": m.value} for m in memories]
+    return services.visitor_memories(request.auth.tenant.id, visitor_id)
 
 
 @memory_router.patch("/{visitor_id}/memory/{memory_id}", response=MemoryOut)
