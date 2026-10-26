@@ -29,7 +29,9 @@ from django.conf import settings
 from django.db import connection, transaction
 from django.utils import timezone
 
-from apps.flows.services import FlowServiceError
+from apps.flows import services
+from apps.flows.schema import JSON
+from apps.flows.services import DraftResult, FlowServiceError
 from apps.tenants.models import Tenant, TryIpDay, TrySession, TrySpendDay
 
 COOKIE_NAME = "sf_try"
@@ -60,6 +62,7 @@ class Started:
     template: str
     expires_at: dt.datetime
     turns_remaining: int
+    draft: DraftResult | None = None  # ``graph``를 실어 만들었으면 그 초안 저장 결과(DraftResult)
 
 
 # ── 날짜·해시 ────────────────────────────────────────────────────────────────
@@ -104,8 +107,11 @@ def prune_ip_days(*, now: dt.datetime | None = None) -> int:
 
 # ── 세션 만들기·찾기 ─────────────────────────────────────────────────────────
 
-def start(template: str, ip: str, *, now: dt.datetime | None = None) -> Started:
-    """체험 테넌트(예제 사본)와 세션을 만든다. 모르는 예제는 IP 한도를 쓰지 않고 거부한다."""
+def start(template: str, ip: str, *, graph: JSON | None = None, now: dt.datetime | None = None) -> Started:
+    """체험 테넌트(예제 사본)와 세션을 만든다. 모르는 예제는 IP 한도를 쓰지 않고 거부한다.
+
+    ``graph``가 있으면 사본 초안을 그 그래프로 바꾼다(PUT draft와 같은 ``save_draft`` — 틀려도 저장하고 검증 결과를 돌려준다).
+    같은 트랜잭션이라 중간에 실패하면 IP 하루 수도 테넌트도 남지 않는다."""
     from apps.flows.example_catalog import EXAMPLES
     from apps.tenants import try_tenant
 
@@ -119,7 +125,8 @@ def start(template: str, ip: str, *, now: dt.datetime | None = None) -> Started:
         turns = settings.TRY_SESSION_TURNS
         Tenant.objects.filter(pk=created.tenant_id).update(trial_turns_remaining=turns)
         session = TrySession.objects.create(token_hash=hash_token(raw), tenant_id=created.tenant_id, flow_id=created.flow_id)
-    return Started(raw, session, template, created.expires_at, turns)
+        draft = services.save_draft(created.tenant_id, created.flow_id, graph) if graph is not None else None
+    return Started(raw, session, template, created.expires_at, turns, draft)
 
 
 def resolve(raw: str | None, *, now: dt.datetime | None = None) -> TrySession:

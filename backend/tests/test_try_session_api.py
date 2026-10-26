@@ -37,9 +37,12 @@ def prod_platform(settings):
     return settings
 
 
-def _start(client: Client, template: str = "sandcorp_home", ip: str = "203.0.113.7", **extra: str):
+def _start(client: Client, template: str = "sandcorp_home", ip: str = "203.0.113.7", graph: dict | None = None, **extra: str):
     headers = {"HTTP_ORIGIN": ORIGIN, "REMOTE_ADDR": ip, **extra}
-    return client.post(f"{BASE}/sessions/", json.dumps({"template": template}), content_type="application/json", **headers)
+    body: dict[str, object] = {"template": template}
+    if graph is not None:
+        body["graph"] = graph
+    return client.post(f"{BASE}/sessions/", json.dumps(body), content_type="application/json", **headers)
 
 
 def _session(ip: str = "203.0.113.7", template: str = "sandcorp_home") -> tuple[Client, dict]:
@@ -300,6 +303,57 @@ def _no_llm(messages):
     raise AssertionError("LLM을 부르면 안 된다")
 
 
+# ── 그래프를 들고 세션 만들기(#196) ──────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_start_with_graph_makes_the_copy_draft_that_graph_with_the_put_draft_verdict():
+    c = Client()
+    r = _start(c, graph=ANSWER_ONLY)
+    assert r.status_code == 201, r.content
+    body = r.json()
+    assert body["draft"]["graph"] == ANSWER_ONLY
+    # 같은 그래프를 PUT draft로 저장한 결과와 검증 결과가 같다.
+    put = c.put(
+        f"{BASE}/flows/{body['flow_id']}/draft/", json.dumps({"graph": ANSWER_ONLY}), content_type="application/json",
+        HTTP_ORIGIN=ORIGIN,
+    ).json()
+    assert body["draft"]["errors"] == put["errors"] and body["draft"]["valid"] == put["valid"]
+    assert c.get(f"{BASE}/flows/{body['flow_id']}/").json()["draft"]["graph"] == ANSWER_ONLY
+
+
+@pytest.mark.django_db
+def test_start_with_an_invalid_graph_still_creates_the_session_and_reports_errors():
+    """PUT draft처럼 틀려도 저장하고 검증 결과를 돌려준다(세션을 안 만들면 사용자의 편집이 날아간다)."""
+    from apps.tenants.models import TrySession
+
+    r = _start(Client(), graph={"nodes": [], "edges": []})
+    assert r.status_code == 201
+    assert r.json()["draft"]["valid"] is False and r.json()["draft"]["errors"]
+    assert TrySession.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_start_without_graph_is_as_before_and_has_no_draft():
+    r = _start(Client())
+    assert r.status_code == 201 and r.json()["draft"] is None
+
+
+@pytest.mark.django_db
+def test_refused_start_with_graph_creates_no_tenant_and_spends_no_ip_quota():
+    from apps.tenants.models import Tenant, TryIpDay, TrySession
+
+    for _ in range(3):
+        _session(ip="192.0.2.30")
+    tenants, days = Tenant.objects.count(), list(TryIpDay.objects.values_list("count", flat=True))
+
+    assert _start(Client(), ip="192.0.2.30", graph=ANSWER_ONLY).status_code == 429
+    assert _start(Client(), ip="192.0.2.31", template="nope", graph=ANSWER_ONLY).status_code == 404
+    assert _start(Client(), ip="192.0.2.31", graph=ANSWER_ONLY, HTTP_ORIGIN="https://evil.example").status_code == 403
+
+    assert Tenant.objects.count() == tenants and TrySession.objects.count() == 3
+    assert list(TryIpDay.objects.values_list("count", flat=True)) == days
+
+
 # ── IP당 하루 3세션 ──────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
@@ -334,7 +388,8 @@ def test_ip_limit_resets_on_the_next_seoul_day():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_concurrent_session_starts_never_exceed_the_ip_limit():
+@pytest.mark.parametrize("graph", [None, ANSWER_ONLY], ids=["no-graph", "with-graph"])
+def test_concurrent_session_starts_never_exceed_the_ip_limit(graph):
     from apps.tenants.models import TrySession
 
     codes: list[int] = []
@@ -344,7 +399,7 @@ def test_concurrent_session_starts_never_exceed_the_ip_limit():
         from django.db import connection
 
         try:
-            code = _start(Client(), "shop_support", ip="192.0.2.99").status_code
+            code = _start(Client(), "shop_support", ip="192.0.2.99", graph=graph).status_code
             with lock:
                 codes.append(code)
         finally:
