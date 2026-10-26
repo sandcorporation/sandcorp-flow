@@ -279,3 +279,27 @@ async def archive_flow(ctx: ToolContext, args: FlowArgs) -> JSONObject:
 async def rollback_flow(ctx: ToolContext, args: FlowArgs) -> JSONObject:
     flow = await _service(lambda: services.rollback(_tenant_id(ctx), args.flow_id))
     return {"deployed": True, **_flow_row(flow)}
+
+
+async def _preview_restore_flow(ctx: ToolContext, args: FlowArgs) -> JSONObject:
+    flow = await _service(lambda: services.get_archived_flow(_tenant_id(ctx), args.flow_id))
+    return {
+        "action": "보관한 흐름을 되돌린다(흐름 목록에 다시 보인다. 같은 이름의 흐름이 그사이 생겼으면 실패한다)",
+        "id": str(flow.id),
+        "name": flow.name,
+        "archived_at": flow.archived_at.isoformat() if flow.archived_at else None,
+    }
+
+
+@register(
+    "restore_flow",
+    "보관한 흐름(archive_flow)을 되돌린다. 미리보기는 흐름 이름·보관 시각. 인자: flow_id. 실패: flow_not_found·duplicate_name.",
+    FlowArgs,
+    scope="flow.write",
+    permission=FLOW_EDIT,
+    writes=True,
+    preview=_preview_restore_flow,
+)
+async def restore_flow(ctx: ToolContext, args: FlowArgs) -> JSONObject:
+    flow = await _service(lambda: services.restore_flow(_tenant_id(ctx), args.flow_id))
+    return {"restored": True, "id": str(flow.id), "name": flow.name}

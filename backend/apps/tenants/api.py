@@ -19,6 +19,7 @@ from apps.tenants.members import (
     pending_invites, read_member_ticket,
 )
 from apps.tenants import withdrawal
+from apps.tenants.config_rules import topic_scope_error
 from apps.tenants.permissions import (
     AGENTS_MANAGE, FLOW_APPROVE, FLOW_PUBLIC_VIEW, PROVIDERS_MANAGE, WEBHOOK_MANAGE, require_permission,
 )
@@ -813,10 +814,9 @@ def update_config(request, body: TenantConfigIn):
 
     # 주제범위 제어를 켜려면 범위 설명이 있어야 한다(빈 채로 켜면 판정 기준이 없어 fail-open으로
     # 무력화됨 — 사용자에게 명시적으로 막아 안내한다, issue 199).
-    eff_scope_enabled = body.topic_scope_enabled if body.topic_scope_enabled is not None else config.topic_scope_enabled
-    eff_scope_desc = body.scope_description if body.scope_description is not None else config.scope_description
-    if eff_scope_enabled and not (eff_scope_desc or "").strip():
-        return 400, {"detail": "주제범위 제어를 켜려면 응대 범위 설명을 입력해야 합니다."}
+    scope_error = topic_scope_error(config, body.topic_scope_enabled, body.scope_description)
+    if scope_error:
+        return 400, {"detail": scope_error}
 
     for field in ("model_id", "system_prompt", "agent_display_name", "webhook_url", "webhook_type", "welcome_message", "brand_name", "hitl_enabled", "hitl_timezone", "hitl_schedule", "hitl_holidays", "require_identity_verification", "deploy_requires_approval", "public_flow_view", "topic_scope_enabled", "scope_description", "scope_refusal_message", "llm_provider_type", "llm_base_url", "extraction_model", "embed_provider_type", "embed_base_url", "embed_model", "embed_dim", "ocr_provider_type", "ocr_base_url", "ocr_model"):
         value = getattr(body, field)

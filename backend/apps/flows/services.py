@@ -203,12 +203,17 @@ def archive_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
     return flow
 
 
-def restore_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
-    """보관한 흐름을 되돌린다. 보관 사이 같은 이름의 흐름이 생겼으면 ``duplicate_name``."""
+def get_archived_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
+    """보관된 흐름 하나. 없거나 보관 상태가 아니면 ``FlowNotFound``."""
     try:
-        flow = Flow.objects.for_tenant(tenant_id).filter(archived_at__isnull=False).select_related("deployed_version").get(pk=flow_id)
+        return Flow.objects.for_tenant(tenant_id).filter(archived_at__isnull=False).select_related("deployed_version").get(pk=flow_id)
     except (Flow.DoesNotExist, DjangoValidationError, ValueError, TypeError) as exc:
         raise FlowNotFound(f"보관된 흐름 '{flow_id}'이 이 테넌트에 없습니다.") from exc
+
+
+def restore_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
+    """보관한 흐름을 되돌린다. 보관 사이 같은 이름의 흐름이 생겼으면 ``duplicate_name``."""
+    flow = get_archived_flow(tenant_id, flow_id)
     flow.archived_at = None
     try:
         with transaction.atomic():
