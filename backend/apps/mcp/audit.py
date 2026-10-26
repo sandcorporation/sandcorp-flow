@@ -53,17 +53,20 @@ def _begin(tool: str, token: AccessToken, issuer: str, arguments: JSON) -> int:
     return event.pk
 
 
-def _finish(event_id: int, result_code: str, tenant_id: uuid.UUID | None) -> None:
+def _finish(event_id: int, result_code: str, tenant_id: uuid.UUID | None, stage: str | None) -> None:
     with transaction.atomic():
-        McpAuditEvent.objects.filter(pk=event_id).update(result_code=result_code[:64], tenant_id=tenant_id)
+        McpAuditEvent.objects.filter(pk=event_id).update(
+            result_code=result_code[:64], tenant_id=tenant_id, confirm_stage=stage
+        )
 
 
 async def begin(tool: str, token: AccessToken, issuer: str, arguments: JSON) -> int:
     return await sync_to_async(_begin)(tool, token, issuer, arguments)
 
 
-async def finish(event_id: int, result_code: str, membership: Membership | None) -> None:
-    await sync_to_async(_finish)(event_id, result_code, membership.tenant_id if membership else None)
+async def finish(event_id: int, result_code: str, membership: Membership | None, stage: str | None = None) -> None:
+    """`stage`는 2단계 도구의 단계(`preview`/`confirm`, #209). 보통 쓰기 도구는 None."""
+    await sync_to_async(_finish)(event_id, result_code, membership.tenant_id if membership else None, stage)
 
 
 # ── 읽기 ─────────────────────────────────────────────────────────────────────

@@ -10,10 +10,10 @@ import json
 import logging
 from dataclasses import dataclass
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from apps.mcp import tools as _tools  # noqa: F401  도구 등록(import 부작용)
-from apps.mcp import audit
+from apps.mcp import audit, confirm
 from apps.mcp.access import TenantArgs, caller_memberships, require_tool_permission, resolve_membership
 from apps.mcp.models import McpAuditEvent
 from apps.mcp.registry import JSONObject, Tool, ToolContext, ToolError, all_tools, get_tool
@@ -102,6 +102,7 @@ class _Outcome:
 
     code: str = McpAuditEvent.INTERNAL
     membership: Membership | None = None
+    stage: str | None = None  # 2단계 도구의 단계(preview/confirm, #209)
 
 
 async def _call(request_id: RequestId, params: dict[str, JSON], *, token: AccessToken, issuer: str) -> JSONObject:
@@ -113,18 +114,25 @@ async def _call(request_id: RequestId, params: dict[str, JSON], *, token: Access
     if not tool.writes:
         return await _run(request_id, tool, arguments, token=token, issuer=issuer, outcome=_Outcome())
 
+    outcome = _Outcome()
+    recorded = arguments
+    if tool.confirm:  # 단계는 토큰을 실었는지로 정한다(검사에서 막혀도). 토큰 값은 기록하지 않는다.
+        given = isinstance(arguments, dict) and arguments.get(confirm.CONFIRM_FIELD) is not None
+        outcome.stage = McpAuditEvent.CONFIRM if given else McpAuditEvent.PREVIEW
+        if given and isinstance(arguments, dict):
+            recorded = {**arguments, confirm.CONFIRM_FIELD: "[redacted]"}
+
     # 쓰기 도구: 부르기 전에 기록한다. 기록이 안 되면 실행하지 않는다(#208 — 기록 없는 쓰기를 만들지 않는다).
     try:
-        event_id = await audit.begin(tool.name, token, issuer, arguments)
+        event_id = await audit.begin(tool.name, token, issuer, recorded)
     except Exception:
         logger.exception("MCP audit write failed; %s was not run", tool.name)
         return error_response(request_id, INTERNAL_ERROR, "internal error")
-    outcome = _Outcome()
     try:
         return await _run(request_id, tool, arguments, token=token, issuer=issuer, outcome=outcome)
     finally:
         try:
-            await audit.finish(event_id, outcome.code, outcome.membership)
+            await audit.finish(event_id, outcome.code, outcome.membership, outcome.stage)
         except Exception:  # 결과는 이미 정해졌다 — 행은 started로 남는다
             logger.exception("MCP audit result write failed for %s (event %s)", tool.name, event_id)
 
@@ -157,7 +165,7 @@ async def _run(
             ctx = ToolContext(token=token, issuer=issuer, memberships=memberships, membership=membership)
         elif tool.writes or tool.permission is not None:  # 쓰기·권한 도구는 언제나 테넌트 도구다(등록 실수)
             raise RuntimeError(f"tool {tool.name} must take TenantArgs")
-        output = await tool.handler(ctx, args)
+        output = await (_two_step(tool, ctx, args) if tool.confirm else tool.handler(ctx, args))
     except ToolError as exc:
         outcome.code = exc.code
         return _result(request_id, _tool_error(exc))
@@ -167,6 +175,20 @@ async def _run(
     outcome.code = McpAuditEvent.OK
     text = json.dumps(output, ensure_ascii=False)
     return _result(request_id, {"content": [{"type": "text", "text": text}], "structuredContent": output, "isError": False})
+
+
+async def _two_step(tool: Tool, ctx: ToolContext, args: BaseModel) -> JSONObject:
+    """2단계 도구(#209): 토큰이 없으면 미리보기 + 토큰, 있으면 검사 → 소비 → 실행. 권한·스코프 검사는 이미 지났다."""
+    assert tool.preview is not None
+    membership = ctx.require_membership()
+    binding = confirm.binding_for(tool.name, str(membership.tenant_id), ctx.token.sub, args)
+    given = getattr(args, confirm.CONFIRM_FIELD, None)
+    if not isinstance(given, str):
+        preview = await tool.preview(ctx, args)
+        issued = confirm.issue(binding)
+        return {"confirm_required": True, "preview": preview, "confirm_token": issued.token, "expires_in": issued.expires_in}
+    await confirm.spend(confirm.verify(given, binding))
+    return await tool.handler(ctx, args)
 
 
 async def _membership_or_none(token: AccessToken, issuer: str, tenant: JSON) -> Membership | None:

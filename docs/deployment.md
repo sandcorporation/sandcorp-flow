@@ -287,7 +287,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     6. 오늘 이 네트워크의 체험 3개를 다 쓴 뒤 `/try?template=home`: 편집기는 열리고, 설정을 바꾸면 「저장하지 못했습니다: 오늘 이 네트워크에서…」인데 화면 값은 유지된다.
     7. 두 탭에서 같은 `/try?template=home`을 열어 한쪽을 먼저 저장 → 다른 쪽에서 저장해도 두 번째 체험이 안 생기고 이 탭 편집이 반영된다. 쿠키를 지우고 저장하면 첫 화면으로 튕기지 않고 안내가 뜬다.
 16. [ ] **MCP 쓰기 감사 로그(#208)** — 배포 직후 한 번. 마이그레이션 `mcp.0001`은 새 표(`mcp_audit_event`)만 만든다(기존 표·데이터 그대로).
-    1. **정리 cron**: 호스트 root crontab에 하루 한 번(예: 매일 04:30) `docker compose -f docker-compose.prod.oracle.yml exec -T api python manage.py prune_mcp_audit >> /var/log/sandcorp-flow-cron.log 2>&1`. `MCP_AUDIT_RETENTION_DAYS`(기본 180)보다 오래된 행을 지운다. 출력 `pruned N MCP audit event(s)`.
+    1. **정리 cron**: 호스트 root crontab에 하루 한 번(예: 매일 04:30) `docker compose -f docker-compose.prod.oracle.yml exec -T api python manage.py prune_mcp_audit >> /var/log/sandcorp-flow-cron.log 2>&1`. `MCP_AUDIT_RETENTION_DAYS`(기본 180)보다 오래된 행을 지운다. 출력 `pruned N MCP audit event(s), M spent confirm token(s)`(뒤쪽은 #209의 만료 지난 2단계 토큰 소비 기록 — 마이그레이션 `mcp.0002`가 새 표 `mcp_confirm_use`만 만든다).
     2. **기록 확인**: claude.ai 커넥터로 Admin 계정이 `create_flow`(또는 `save_version`)를 한 번 부른 뒤 `list_audit_events`를 부르면 맨 위에 그 호출(`result_code` `ok`, 내 `user_sub`·`client_id`)이 보인다. `GET /api/tenant/audit-events/`(Admin 세션)도 같은 줄. Member 계정은 둘 다 거부(`admin_required`·403).
     3. 기존 커넥터는 다시 연결할 필요가 없다(스코프·보호 리소스 메타데이터 그대로 — `flow.deploy`·`flow.admin`은 #210).
 
