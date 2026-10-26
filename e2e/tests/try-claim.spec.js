@@ -27,8 +27,8 @@ const noOverflow = async (page) => {
   expect(wide).toEqual([])
 }
 
-/** 「이 흐름으로 가입」: 세션이 있으면 링크, 아직 없으면(#195) 세션을 먼저 만드는 버튼 — #198 에서 다시 본다. */
-const signupControl = (page) => page.getByRole('link', { name: '이 흐름으로 가입' }).or(page.getByRole('button', { name: '이 흐름으로 가입' }))
+/** 「이 흐름으로 가입」: 세션이 없으면 중간 페이지(/try/signup)로, 있으면 곧바로 로그인으로 가는 링크(#198). */
+const signupControl = (page) => page.getByRole('link', { name: '이 흐름으로 가입' })
 
 /** 「이 흐름으로 가입」 → (sandcorp-auth·콜백 대역) → /try/claim. */
 async function signUpVia(page, onLoginRoute) {
@@ -46,12 +46,15 @@ async function startTry(page, width) {
 }
 
 for (const [label, width, scheme] of [['1600-light', 1600, 'light'], ['390-dark', 390, 'dark']]) {
-  test(`새 가입자: 고쳐 보기 → 가입 → 새 테넌트 → 옮긴 흐름이 초안으로(${label})`, async ({ page, context }) => {
+  test(`새 가입자: 편집 없이 가입(세션 없음 → /try/signup 이 세션을 만든다) → 새 테넌트 → 옮긴 흐름이 초안으로(${label})`, async ({ page, context }) => {
     test.setTimeout(120_000)
     await page.addInitScript((th) => localStorage.setItem('admin_theme', th), scheme)
     await startTry(page, width)
     const link = signupControl(page)
     await expect(link).toBeVisible()
+    await expect(link).toHaveAttribute('href', '/admin-ui/try/signup?template=shop')
+    await expect(link).toHaveAttribute('rel', 'nofollow')
+    expect(await page.evaluate(async () => (await (await fetch('/api/try/session/')).json()))).toBeNull() // 가입을 누르기 전엔 세션이 없다
     if (width < 600) await noOverflow(page)
     await shot(page, `signup-head-${label}`, { x: 0, y: 0, width, height: 120 })
 
@@ -85,6 +88,26 @@ for (const [label, width, scheme] of [['1600-light', 1600, 'light'], ['390-dark'
     expect(await page.evaluate(async () => (await (await fetch('/api/try/session/', { credentials: 'include' })).json()))).toBeNull()
   })
 }
+
+test('고친 뒤 가입: 첫 쓰기로 세션이 생긴 뒤에는 중간 페이지 없이 곧바로 로그인으로, 고친 이름이 옮겨진다', async ({ page, context }) => {
+  test.setTimeout(120_000)
+  await startTry(page, 1600)
+  const second = page.locator('.react-flow__node').nth(1)
+  await second.click()
+  const name = page.locator('aside[aria-label="노드 설정"] #node-name')
+  await name.fill('E2E 고친 노드')
+  await name.blur()
+  await expect(page.getByText('초안 저장됨')).toBeVisible()
+  await expect(signupControl(page)).toHaveAttribute('href', /\/api\/auth\/authorize\/member\?then=try_claim$/)
+  const ticket = await takeOnboardingTicket()
+  await signUpVia(page, () => context.addCookies([
+    { name: 'member_ticket', value: ticket, domain: new URL(ADMIN_URL).hostname, path: '/api/auth/member' },
+  ]))
+  await page.getByLabel('조직 이름').fill(`E2E 고친뒤 ${Date.now().toString(36)}`)
+  await page.getByRole('button', { name: '만들고 흐름 옮기기' }).click()
+  await expect(page).toHaveURL(/\/admin-ui\/tenant\/flows\/[0-9a-f-]+\?claimed=1$/)
+  await expect(page.getByText('E2E 고친 노드').first()).toBeVisible()
+})
 
 test('기존 Admin 테넌트에 추가: 「기존 테넌트에 추가」를 골라 그 테넌트 편집기로', async ({ page }) => {
   test.setTimeout(120_000)

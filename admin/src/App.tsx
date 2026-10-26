@@ -5,6 +5,7 @@ import OperatorLogin from './pages/OperatorLogin'
 import OperatorTenants from './pages/OperatorTenants'
 import TenantLogin from './pages/TenantLogin'
 import TryPage from './pages/TryPage'
+import TrySignupPage from './pages/TrySignupPage'
 import TryClaimPage from './pages/TryClaimPage'
 import TryFlowPage from './pages/TryFlowPage'
 import PublicFlowPage from './pages/PublicFlowPage'
@@ -133,6 +134,8 @@ export default function App() {
       <Route path="/try" element={<TryPage />} />
       <Route path="/try/flow/:id" element={<TryFlowPage />} />
       {/* 「이 흐름으로 가입」(#42): 고객 로그인 뒤 체험 사본을 내 테넌트로 옮긴다 */}
+      {/* 세션 없이 「이 흐름으로 가입」(#198): 세션을 만든 뒤 로그인으로 — 색인 제외 */}
+      <Route path="/try/signup" element={<TrySignupPage />} />
       <Route path="/try/claim" element={<TryClaimPage onLogin={handleTenantLogin} />} />
       <Route path="/try/view/:id" element={<TryFlowPage view />} />
       {/* 공개 흐름 보기(#39): 테넌트가 켠 공개 흐름의 배포 버전, 읽기 전용(:id = 테넌트 slug) */}

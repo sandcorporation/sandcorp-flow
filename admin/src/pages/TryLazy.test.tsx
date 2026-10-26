@@ -218,37 +218,35 @@ describe('방문 즉시 편집기 — 첫 저장 거절(#196)', () => {
   })
 })
 
-describe('방문 즉시 편집기 — 「이 흐름으로 가입」(세션 없을 때 임시 처리, #198 에서 바뀜)', () => {
-  it('일반 화면: 세션이 없으면 누를 때 세션을 먼저 만들고 옮기기 로그인으로 간다', async () => {
-    const original = window.location
-    const assign = vi.fn()
-    Object.defineProperty(window, 'location', { configurable: true, value: { ...original, assign } })
-    try {
-      const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
-      renderAt('/try?template=home')
-      await userEvent.click(await screen.findByRole('button', { name: '이 흐름으로 가입' }))
-      await waitFor(() => expect(assign).toHaveBeenCalledWith(expect.stringContaining('then=try_claim')))
-      expect(posts(fake)).toHaveLength(1)
-    } finally {
-      Object.defineProperty(window, 'location', { configurable: true, value: original })
-    }
-  })
-
-  it('임베드: 세션이 없으면 가입 링크를 막고 먼저 고쳐 보라고 안내한다 — 세션을 만들지 않는다', async () => {
+describe('방문 즉시 편집기 — 「이 흐름으로 가입」(세션 없이, #198)', () => {
+  it('일반 화면: 세션이 없으면 가입 링크는 중간 페이지로 가고(nofollow), 보기만 해서는 세션을 만들지 않는다', async () => {
     const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
-    renderAt('/try?embed=1&template=home')
-    expect(await screen.findByText('N-02')).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: '이 흐름으로 가입' })).toBeNull()
-    expect(screen.getByText(/고치면 가입/)).toBeInTheDocument()
+    renderAt('/try?template=home')
+    const link = await screen.findByRole('link', { name: '이 흐름으로 가입' })
+    expect(link.getAttribute('href')).toBe('/try/signup?template=home')
+    expect(link).not.toHaveAttribute('target')
+    expect(link.getAttribute('rel')).toBe('nofollow')
     expect(posts(fake)).toHaveLength(0)
   })
 
-  it('임베드: 첫 저장으로 세션이 생기면 가입 링크가 새 탭으로 열린다', async () => {
+  it('임베드: 세션이 없어도 가입 링크가 새 탭 중간 페이지로 열린다(noopener nofollow)', async () => {
+    const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
+    renderAt('/try?embed=1&template=home')
+    const link = await screen.findByRole('link', { name: '이 흐름으로 가입' })
+    expect(link.getAttribute('href')).toBe('/try/signup?template=home')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link.getAttribute('rel')).toBe('noopener nofollow')
+    expect(screen.queryByText(/고치면 가입/)).toBeNull()
+    expect(posts(fake)).toHaveLength(0)
+  })
+
+  it('임베드: 첫 저장으로 세션이 생기면 가입 링크가 옮기기 로그인으로 바로 열린다(nofollow)', async () => {
     fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
     renderAt('/try?embed=1&template=home')
     await rename('답변', '새 답변')
-    const link = await screen.findByRole('link', { name: '이 흐름으로 가입' })
+    await waitFor(async () => expect((await screen.findByRole('link', { name: '이 흐름으로 가입' })).getAttribute('href')).toContain('then=try_claim'))
+    const link = screen.getByRole('link', { name: '이 흐름으로 가입' })
     expect(link).toHaveAttribute('target', '_blank')
-    expect(link.getAttribute('href')).toContain('then=try_claim')
+    expect(link.getAttribute('rel')).toBe('noopener nofollow')
   })
 })

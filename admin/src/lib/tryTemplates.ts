@@ -19,12 +19,17 @@ export const TRY_ERRORS: Record<string, string> = {
   try_ip_limit: '오늘 이 네트워크에서 만들 수 있는 체험을 모두 만들었어요. 내일 다시 찾아 주세요.',
 }
 
+/** 체험 시작 실패를 사람이 읽을 사유로. */
+export function tryFailureText(e: unknown): string {
+  const body = e instanceof HttpError ? (e.body as { detail?: string; code?: string } | undefined) : undefined
+  return body?.detail || (body?.code && TRY_ERRORS[body.code]) || '체험을 시작하지 못했습니다. 잠시 뒤 다시 시도하세요.'
+}
+
 /** 「고쳐 보기」: 세션(쿠키)과 사본을 만들고 흐름 id 를 돌려준다. 실패하면 사람이 읽을 사유를 던진다. */
 export async function startTry(template: string): Promise<string> {
   try {
     return (await appsTenantsTryApiTryStart({ template })).data.flow_id
   } catch (e) {
-    const body = e instanceof HttpError ? (e.body as { detail?: string; code?: string } | undefined) : undefined
-    throw new Error(body?.detail || (body?.code && TRY_ERRORS[body.code]) || '체험을 시작하지 못했습니다. 잠시 뒤 다시 시도하세요.')
+    throw new Error(tryFailureText(e))
   }
 }

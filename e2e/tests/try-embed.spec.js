@@ -23,8 +23,10 @@ test('임베드 편집기: SPA 이동·새로고침에도 유지, 가입 링크�
   await page.goto(`${ADMIN_URL}/admin-ui/try?embed=1&template=home`)
   await expect(page.locator('.react-flow__node').first()).toBeVisible()
   await expect(page.getByRole('banner')).toHaveCount(0)
-  // 세션 없는 동안 가입은 막고 안내만(#198 이 중간 페이지로 바꾼다). 다른 탭의 첫 쓰기로 세션이 생긴 셈 치고 다시 연다.
-  await expect(page.getByText('흐름을 한 번 고치면 가입할 수 있어요')).toBeVisible()
+  // 세션 없는 동안 가입 링크는 새 탭 중간 페이지(#198). 다른 탭의 첫 쓰기로 세션이 생긴 셈 치고 다시 연다.
+  const pre = page.getByRole('link', { name: '이 흐름으로 가입' })
+  await expect(pre).toHaveAttribute('href', '/admin-ui/try/signup?template=home')
+  await expect(pre).toHaveAttribute('target', '_blank')
   await page.evaluate(async () => { await fetch('/api/try/sessions/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template: 'sandcorp_home' }) }) })
   await page.reload()
   await expect(page).toHaveURL(/\/try\?embed=1&template=home$/)
