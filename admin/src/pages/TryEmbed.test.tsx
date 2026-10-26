@@ -52,15 +52,14 @@ describe('임베드 — 템플릿 고르기', () => {
     expect(screen.queryByText('Sandcorp Flow 체험')).toBeNull()
   })
 
-  it('template=home 이면 홈 카드가 골라진 첫 화면(「고쳐 보기 시작」 한 번)이고 세션을 자동으로 만들지 않는다', async () => {
+  it('template=home 이면 홈 편집기가 곧바로 열리고 세션을 만들지 않는다(#195 — 「고쳐 보기 시작」 없음)', async () => {
     const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
     renderAt('/try?embed=1&template=home')
-    const start = await screen.findByRole('button', { name: '고쳐 보기 시작' })
-    expect(screen.getAllByRole('button', { name: /고쳐 보기/ })).toHaveLength(1)
+    expect(await screen.findByText('N-01')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /고쳐 보기/ })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Sandcorp Flow 체험' })).toBeNull()
     await waitFor(async () => expect((await fake.statuses()).some((c) => c.path === '/api/try/session/')).toBe(true))
     expect(fake.calls.filter((c) => c.method === 'POST' && c.path === '/api/try/sessions/')).toHaveLength(0)
-    await userEvent.click(start)
-    await waitFor(() => expect(fake.calls.filter((c) => c.method === 'POST' && c.path === '/api/try/sessions/')).toHaveLength(1))
   })
 
   it('쿼리 없는 임베드는 템플릿 고르기 그대로다', async () => {

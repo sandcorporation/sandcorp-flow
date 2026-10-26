@@ -6,12 +6,13 @@ import { appsFlowsApiFlowsGet, appsFlowsApiFlowsGetVersion, appsFlowsApiFlowsNod
 import { appsTenantsApiGetConfig } from '../generated/endpoints/tenant/tenant'
 import { appsTenantsApiMemberMe } from '../generated/endpoints/tenant-members/tenant-members'
 import type { PublicFlowOut } from '../generated/model'
-import { appsTenantsTryApiTryFlowGet, appsTenantsTryApiTryNodeSchema, appsTenantsTryApiTryPatchDraft, appsTenantsTryApiTryTemplateDetail } from '../generated/endpoints/try/try'
-import type { DraftPatchIn, FlowDetailOut } from '../generated/model'
-import type { FlowError, FlowGraph } from './flowGraph'
+import { appsTenantsTryApiTryFlowGet, appsTenantsTryApiTryNodeSchema, appsTenantsTryApiTryPatchDraft, appsTenantsTryApiTrySessionGet, appsTenantsTryApiTryStart, appsTenantsTryApiTryTemplateDetail } from '../generated/endpoints/try/try'
+import type { DraftPatchIn, FlowDetailOut, TrySessionOut, TryTemplateDetailOut } from '../generated/model'
+import { applyOps, type FlowError, type FlowGraph, type PatchOp } from './flowGraph'
 import type { SseEvent } from './testTrace'
 import { streamTestTurn } from './testStream'
 import { useIsAdmin } from './useAgentRole'
+import { HttpError } from '../mutator'
 
 export type NodeSchemas = Record<string, { config: object }>
 
@@ -95,18 +96,22 @@ export const tryBackend: FlowEditorBackend = {
   draftStatus: true,
 }
 
+/** 템플릿 원본 → 편집기가 읽는 흐름 응답 모양(초안 = 템플릿 그래프, 버전 없음). */
+function templateFlow(t: TryTemplateDetailOut, graph: FlowGraph): FlowDetailOut {
+  return {
+    flow: { id: t.id, name: t.name, is_public: false, deployed_version: null, updated_at: '', has_pending_request: false },
+    draft: { graph, errors: [], valid: true },
+    versions: [],
+    pending_request: null,
+  } as unknown as FlowDetailOut
+}
+
 /** 「흐름 보기」: 세션 없이 템플릿의 그래프만 읽는다. 편집·시험 대화 없음. */
 export const tryViewBackend: FlowEditorBackend = {
   ...tryBackend,
   loadFlow: async (templateId) => {
     const t = (await appsTenantsTryApiTryTemplateDetail(templateId)).data
-    const graph = t.graph as unknown as FlowGraph
-    return {
-      flow: { id: t.id, name: t.name, is_public: false, deployed_version: null, updated_at: '', has_pending_request: false },
-      draft: { graph, errors: [], valid: true },
-      versions: [],
-      pending_request: null,
-    } as unknown as FlowDetailOut
+    return templateFlow(t, t.graph as unknown as FlowGraph)
   },
   patchDraft: async () => ({ errors: [] }),
   useCanEdit: () => false,
@@ -114,6 +119,73 @@ export const tryViewBackend: FlowEditorBackend = {
   testChat: false,
   readOnlyNotice: '읽기 전용 — 템플릿 원본입니다',
   draftStatus: false,
+}
+
+/** 위치만 바꾸는 연산 묶음인가 — 노드 끌기만으로는 체험을 시작하지 않는다(#194 Q2). */
+const positionOnly = (ops: PatchOp[]): boolean =>
+  ops.length > 0 && ops.every((o) => o.op === 'upsert_node' && Object.keys(o).every((k) => k === 'op' || k === 'id' || k === 'position'))
+
+export interface LazyTryBackend extends FlowEditorBackend {
+  /** 세션(과 사본)이 없으면 한 번만 만들고 사본 흐름 id 를 돌려준다. 세션 전 위치 이동도 이때 사본에 들어간다. */
+  ensureSession(): Promise<string>
+}
+
+/**
+ * 방문 즉시 편집기(#195, ADR-0032 초안): `/try?template=…` 는 세션 없이 템플릿 그래프로 편집기를 연다.
+ * 세션은 「첫 쓰기」(위치만이 아닌 초안 저장·시험 대화·가입)에서 `POST /sessions/` 로 한 번 만들고(single-flight),
+ * 그 뒤 연산은 기존 PATCH 로 보낸다(①a — 백엔드 변경 없음). 편집기 저장 큐가 직렬이라 큐 안의 생성은 저절로 한 번이고,
+ * 큐 밖(가입)은 같은 `creating` 약속을 나눠 쓴다. 세션 전의 위치 이동은 `held` 에 두었다가 생성 직후 같은 순서로 보낸다.
+ * 편집기는 경로 id 없이 쓰므로(`/try?template=`) 넘어오는 id 는 무시하고 여기 든 사본 id 를 쓴다.
+ */
+export function lazyTryBackend(template: string, hooks: { onSession?: (s: TrySessionOut) => void; onUnknown?: () => void } = {}): LazyTryBackend {
+  let flowId: string | null = null
+  let creating: Promise<string> | null = null
+  let tpl: TryTemplateDetailOut | null = null
+  const held: PatchOp[] = [] // 세션 전 위치 이동 — 지역 그래프(템플릿 + held)의 차이
+
+  const patch = async (id: string, ops: PatchOp[]) => {
+    const r = await appsTenantsTryApiTryPatchDraft(id, { ops } as unknown as DraftPatchIn)
+    return { errors: r.data.errors as FlowError[] }
+  }
+  const create = (): Promise<string> => (creating ??= (async () => {
+    const s = (await appsTenantsTryApiTryStart({ template })).data
+    flowId = s.flow_id
+    hooks.onSession?.(s)
+    return s.flow_id
+  })().catch((e: unknown) => { creating = null; throw e })) // 거절되면 다음 쓰기가 다시 시도한다
+  const ensureSession = async (): Promise<string> => {
+    const id = flowId ?? await create()
+    if (held.length) await patch(id, held.splice(0))
+    return id
+  }
+
+  return {
+    ...tryBackend,
+    ensureSession,
+    loadFlow: async () => {
+      if (!flowId) {
+        // 새로고침: 같은 템플릿의 세션이 살아 있으면 서버 사본이 원본이다. 없거나 다른 템플릿이면 템플릿을 연다(세션 없음은 200 null).
+        const s = (await appsTenantsTryApiTrySessionGet()).data
+        if (s && s.template === template && !flowId) { flowId = s.flow_id; hooks.onSession?.(s) }
+      }
+      if (flowId) return tryBackend.loadFlow(flowId)
+      try {
+        tpl ??= (await appsTenantsTryApiTryTemplateDetail(template)).data
+      } catch (e) {
+        if (e instanceof HttpError && e.status === 404) hooks.onUnknown?.()
+        throw e
+      }
+      return templateFlow(tpl, applyOps(tpl.graph as unknown as FlowGraph, held))
+    },
+    patchDraft: async (_id, ops) => {
+      const list = ops as PatchOp[]
+      if (!flowId && positionOnly(list)) { held.push(...list); return { errors: [] } } // 템플릿은 검증을 통과한 그래프다
+      const id = flowId ?? await create()
+      return patch(id, [...held.splice(0), ...list])
+    },
+    streamTest: async (_flowId, message, sessionId, onEvent) =>
+      streamTestTurn(await ensureSession(), message, sessionId, onEvent, undefined, '/api/try'),
+  }
 }
 
 /** 공개 흐름 보기(#39): 이미 읽은 공개 응답(허용 목록 투영)을 그대로 보인다. 편집·시험 대화·판단 기록·버전 없음. */

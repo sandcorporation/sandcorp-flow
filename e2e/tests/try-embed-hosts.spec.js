@@ -41,14 +41,12 @@ async function openParent(page, { hello = true } = {}) {
 const iframeHeight = (page) => page.evaluate(() => document.getElementById('flow-try').getBoundingClientRect().height)
 const sessionOf = (frame) => frame.evaluate(async () => (await fetch('/api/try/session/')).json())
 
-test('① iframe 안 고쳐 보기: 시작 → 노드 바꾸기 → 시험 대화 → iframe 새로고침 뒤 같은 세션', async ({ page }) => {
+test('① iframe 안 고쳐 보기: 곧바로 편집기(세션 없음) → 노드 바꾸기(세션 생김) → 시험 대화 → iframe 새로고침 뒤 같은 세션', async ({ page }) => {
   test.setTimeout(180_000)
   const frame = await openParent(page)
-  await frame.getByRole('button', { name: '고쳐 보기 시작' }).click()
   await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
   await expect(frame.getByRole('banner')).toHaveCount(0)
-  const before = await sessionOf(page.frame({ url: /flow\.flowtest\.test/ }))
-  expect(before?.flow_id).toBeTruthy()
+  expect(await sessionOf(page.frame({ url: /flow\.flowtest\.test/ }))).toBeNull() // 방문만으로는 세션을 만들지 않는다(#195)
 
   const aside = frame.locator('aside[aria-label="노드 설정"]')
   await frame.locator('[data-node-id="general"]').click()
@@ -59,6 +57,8 @@ test('① iframe 안 고쳐 보기: 시작 → 노드 바꾸기 → 시험 대�
   await cfg.fill(JSON.stringify(parsed))
   await aside.getByRole('button', { name: '설정 적용' }).click()
   await expect(frame.getByText('초안 저장됨')).toBeVisible()
+  const before = await sessionOf(page.frame({ url: /flow\.flowtest\.test/ }))
+  expect(before?.flow_id).toBeTruthy()
 
   await aside.getByRole('tab', { name: '시험 대화' }).click()
   await aside.getByLabel('시험 메시지').fill('안녕하세요')
@@ -81,8 +81,18 @@ test('② 「이 흐름으로 가입」은 새 탭(최상위 flow 호스트)으�
   await context.route(/\/api\/auth\/authorize\/member/, (route) =>
     route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>auth stub</title>' }))
   const frame = await openParent(page)
-  await frame.getByRole('button', { name: '고쳐 보기 시작' }).click()
   await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
+  // 세션 없는 임베드는 가입을 막는다(#195 임시 — #198 이 중간 페이지로 바꾼다). 노드 하나를 고쳐 세션을 만든다.
+  await expect(frame.getByRole('link', { name: '이 흐름으로 가입' })).toHaveCount(0)
+  const aside = frame.locator('aside[aria-label="노드 설정"]')
+  await frame.locator('[data-node-id="general"]').click()
+  await aside.getByRole('tab', { name: '고급' }).click()
+  const cfg = aside.locator('#node-config')
+  const parsed = JSON.parse(await cfg.inputValue())
+  parsed.instructions = '가입 전에 고침'
+  await cfg.fill(JSON.stringify(parsed))
+  await aside.getByRole('button', { name: '설정 적용' }).click()
+  await expect(frame.getByText('초안 저장됨')).toBeVisible()
   const inFrame = await sessionOf(page.frame({ url: /flow\.flowtest\.test/ }))
 
   const popupPromise = context.waitForEvent('page')
@@ -98,7 +108,7 @@ test('② 「이 흐름으로 가입」은 새 탭(최상위 flow 호스트)으�
 
 test('③ 부모가 hello 뒤 height 를 받아 iframe 높이가 바뀐다', async ({ page }) => {
   const frame = await openParent(page)
-  await expect(frame.getByRole('button', { name: '고쳐 보기 시작' })).toBeVisible()
+  await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
   expect(await iframeHeight(page)).not.toBe(300)
   const heights = await page.evaluate(() => window.__heights)
   expect(heights.length).toBeGreaterThan(0)
@@ -107,7 +117,7 @@ test('③ 부모가 hello 뒤 height 를 받아 iframe 높이가 바뀐다', asy
 
 test('③\' hello 를 안 보내면 높이는 오지 않고 iframe 은 처음 높이 그대로', async ({ page }) => {
   const frame = await openParent(page, { hello: false })
-  await expect(frame.getByRole('button', { name: '고쳐 보기 시작' })).toBeVisible()
+  await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
   await page.waitForTimeout(1000)
   expect(await page.evaluate(() => window.__heights.length)).toBe(0)
   expect(await iframeHeight(page)).toBe(300)

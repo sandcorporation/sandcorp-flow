@@ -273,7 +273,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
 14. [ ] **「이 흐름으로 가입」 옮기기(#42)** — 배포 직후 한 번, 실제 sandcorp-auth 왕복으로 확인. sandcorp-auth 등록 변경은 **필요 없다**
     (돌아오는 주소는 기존 콜백 `/api/auth/callback` 그대로 — 옮기기 표시는 서명된 시도 쿠키에 담긴다). env도 새로 넣을 것 없음
     (`AUTH_TRY_CLAIM_REDIRECT` 기본 `/admin-ui/try/claim`).
-    1. 로그아웃한 브라우저에서 `https://flow.sandcorp.co.kr/admin-ui/try?template=shop` → 「고쳐 보기」 → 노드 하나 고치기 → 머리줄 「이 흐름으로 가입」.
+    1. 로그아웃한 브라우저에서 `https://flow.sandcorp.co.kr/admin-ui/try?template=shop` → 곧바로 편집기(아직 세션 없음) → 노드 하나 고치기(첫 저장에 세션) → 머리줄 「이 흐름으로 가입」.
     2. sandcorp-auth 로그인 → `/admin-ui/try/claim`에 착지. (새 계정) 조직 이름 → 「만들고 흐름 옮기기」 / (Admin 조직이 있는 계정) 「기존 테넌트에 추가」.
     3. `/admin-ui/tenant/flows/<id>?claimed=1` 편집기에 「체험에서 옮긴 흐름이에요」 안내·고친 노드 그대로·배포 중 표시 없음, 흐름 목록에 기본 흐름 옆에 보임.
     4. 같은 브라우저에서 `/admin-ui/try/flow/<체험 흐름 id>`를 다시 열면 `/try?expired=1`로 돌아간다(체험 세션 삭제됨).

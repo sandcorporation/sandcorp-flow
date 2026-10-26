@@ -6,10 +6,11 @@ const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const noOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)
 
 for (const width of [390, 768, 1200]) {
-  test(`임베드 /try?embed=1&template=home @${width}: 머리줄 없음·홈 카드 첫 화면·가로 넘침 없음`, async ({ page }) => {
+  test(`임베드 /try?embed=1&template=home @${width}: 머리줄 없음·곧바로 홈 편집기·가로 넘침 없음`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 })
     await page.goto(`${ADMIN_URL}/admin-ui/try?embed=1&template=home`)
-    await expect(page.getByRole('button', { name: '고쳐 보기 시작' })).toBeVisible()
+    await expect(page.locator('.react-flow__node').first()).toBeVisible() // 방문 즉시 편집기(#195) — 버튼 없음
+    await expect(page.getByRole('button', { name: /고쳐 보기/ })).toHaveCount(0)
     await expect(page.getByRole('banner')).toHaveCount(0)
     await expect(page.getByText('Sandcorp Flow 체험')).toHaveCount(0)
     expect(await noOverflow(page)).toBe(true)
@@ -20,9 +21,13 @@ test('임베드 편집기: SPA 이동·새로고침에도 유지, 가입 링크�
   test.setTimeout(120_000)
   await page.setViewportSize({ width: 390, height: 700 })
   await page.goto(`${ADMIN_URL}/admin-ui/try?embed=1&template=home`)
-  await page.getByRole('button', { name: '고쳐 보기 시작' }).click()
-  await expect(page).toHaveURL(/\/try\/flow\//)
+  await expect(page.locator('.react-flow__node').first()).toBeVisible()
   await expect(page.getByRole('banner')).toHaveCount(0)
+  // 세션 없는 동안 가입은 막고 안내만(#198 이 중간 페이지로 바꾼다). 다른 탭의 첫 쓰기로 세션이 생긴 셈 치고 다시 연다.
+  await expect(page.getByText('흐름을 한 번 고치면 가입할 수 있어요')).toBeVisible()
+  await page.evaluate(async () => { await fetch('/api/try/sessions/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template: 'sandcorp_home' }) }) })
+  await page.reload()
+  await expect(page).toHaveURL(/\/try\?embed=1&template=home$/)
   const signup = page.getByRole('link', { name: '이 흐름으로 가입' })
   await expect(signup).toHaveAttribute('target', '_blank')
   await expect(signup).toHaveAttribute('rel', /noopener/)

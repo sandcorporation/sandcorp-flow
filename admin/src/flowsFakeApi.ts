@@ -42,6 +42,8 @@ export function fakeFlowsApi(opts: {
     session?: { flow_id: string; template: string; turns_remaining: number } | null | (() => { flow_id: string; template: string; turns_remaining: number } | null)
     /** POST sessions/ 의 상태(기본 201, 본문은 session). 429 면 {detail, code:'try_ip_limit'}. */
     startStatus?: number
+    /** 주면 POST sessions/ 응답을 이 약속이 풀릴 때까지 붙잡는다(생성 중에 편집이 더 들어오는 경우, #195). */
+    startGate?: () => Promise<void>
   }
 }) {
   const calls: Call[] = []
@@ -56,6 +58,7 @@ export function fakeFlowsApi(opts: {
   const versionOut = (v: FakeVersion) => ({ hash: `h${v.number}`, ...v, deployed: v.number === st.deployed })
   const newRequest = (version: number): FakeRequest => ({ id: `r${st.requests.length + 1}`, flow_id: 'f1', flow_name: '기본 흐름', version, status: 'pending', requested_by_name: opts.me?.name ?? '나', decided_by_name: null, decided_at: null, decision_note: '', created_at: '2026-10-02T09:00:00Z' })
   let turnNo = 0
+  let created: { flow_id: string; template: string; turns_remaining: number } | null = null // POST sessions/ 가 만든 세션(쿠키 흉내)
   const sse = (events: { event: string; data: object }[]) => {
     const text = events.map((e) => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`).join('')
     // 작은 조각으로 쪼개 보내 스트림 읽기가 조각 경계를 견디는지도 함께 본다.
@@ -75,7 +78,7 @@ export function fakeFlowsApi(opts: {
     }
     if (path.includes('/api/try/')) {
       const t = opts.try ?? {}
-      const sess = typeof t.session === 'function' ? t.session() : t.session
+      const sess = typeof t.session === 'function' ? t.session() : (t.session ?? created)
       if (method === 'GET' && path.endsWith('/api/try/templates/')) return json(200, t.templates ?? [])
       const td = path.match(/\/api\/try\/templates\/([^/]+)\/$/)
       if (method === 'GET' && td) {
@@ -84,8 +87,10 @@ export function fakeFlowsApi(opts: {
       }
       if (method === 'GET' && path.endsWith('/api/try/session/')) return json(200, sess ? { expires_at: '2026-10-26T09:00:00Z', ...sess } : null)
       if (method === 'POST' && path.endsWith('/api/try/sessions/')) {
+        if (t.startGate) await t.startGate()
         if (t.startStatus && t.startStatus !== 201) return json(t.startStatus, { detail: '오늘 이 네트워크에서 만들 수 있는 체험을 모두 만들었어요. 내일 다시 찾아 주세요.', code: 'try_ip_limit' })
-        return json(201, { expires_at: '2026-10-26T09:00:00Z', ...(sess ?? { flow_id: 'f1', template: body.template, turns_remaining: 20 }) })
+        created = sess ?? { flow_id: 'f1', template: body.template, turns_remaining: 20 }
+        return json(201, { expires_at: '2026-10-26T09:00:00Z', ...created })
       }
       if (method === 'GET' && path.endsWith('/api/try/node-schema/')) return json(200, { kinds: nodeSchema })
       if (!sess && !path.endsWith('/api/try/node-schema/')) return json(401, { detail: '체험 세션이 없습니다.', code: 'try_no_session' })
