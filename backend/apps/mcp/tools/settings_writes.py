@@ -77,7 +77,7 @@ def _apply(tenant: Tenant, changes: dict[str, object]) -> dict[str, JSON]:
 
 @register(
     "update_settings",
-    "테넌트 설정 일부를 고친다(준 칸만 바뀜, 안 준 칸은 그대로). 칸: system_prompt·agent_display_name·brand_name·welcome_message·"
+    "테넌트 설정 일부를 고친다(준 칸만 바뀜, 안 준 칸은 그대로). 문구 칸은 빈 문자열 \"\" 을 주면 비우고, 인자를 빼면 그대로 둔다. 칸: system_prompt·agent_display_name·brand_name·welcome_message·"
     "topic_scope_enabled·scope_description·scope_refusal_message·hitl_enabled·hitl_timezone·hitl_schedule·hitl_holidays·"
     "require_identity_verification. Provider·웹훅·slug·키·배포 승인·공개 보기는 이 도구로 못 고친다(invalid_arguments). "
     "주제 범위를 켜려면 범위 설명이 있어야 하고, 상담 시간 칸은 형식이 맞아야 한다(invalid_settings; 시간표는 {mon:{enabled,start:\"09:00\",end:\"18:00\"}}, 휴일은 \"YYYY-MM-DD\" 목록). 응답: {changed: {칸: {before, after}}}(같은 값은 빠짐).",

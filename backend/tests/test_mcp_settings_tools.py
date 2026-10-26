@@ -88,6 +88,38 @@ def test_unspecified_fields_stay_and_identical_call_changes_nothing(signer: Sign
 
 
 @pytest.mark.django_db
+def test_empty_string_clears_a_text_field_and_reports_before_after(signer: Signer) -> None:
+    tenant = tenant_as(Membership.ROLE_ADMIN)
+    tenant.config.welcome_message = "안녕하세요"
+    tenant.config.save()
+
+    out = ok(call(mcp_token(signer), "update_settings", {"welcome_message": ""}))
+
+    assert out == {"changed": {"welcome_message": {"before": "안녕하세요", "after": ""}}}
+    assert config_of(tenant).welcome_message == ""
+
+
+@pytest.mark.django_db
+def test_omitted_or_null_text_field_is_left_alone(signer: Signer) -> None:
+    tenant = tenant_as(Membership.ROLE_ADMIN)
+    tenant.config.welcome_message = "안녕하세요"
+    tenant.config.save()
+    token = mcp_token(signer)
+
+    assert ok(call(token, "update_settings", {"brand_name": "x"}))["changed"].keys() == {"brand_name"}
+    assert ok(call(token, "update_settings", {"welcome_message": None})) == {"changed": {}}
+    assert config_of(tenant).welcome_message == "안녕하세요"
+
+
+@pytest.mark.django_db
+def test_update_settings_description_tells_how_to_clear_a_text_field(signer: Signer) -> None:
+    tenant_as(Membership.ROLE_ADMIN)
+    tools = post(rpc("tools/list"), mcp_token(signer)).json()["result"]["tools"]
+    description = next(t["description"] for t in tools if t["name"] == "update_settings")
+    assert '빈 문자열 ""' in description and "인자를 빼면 그대로" in description
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("field", ["llm_api_key", "webhook_url", "slug", "llm_base_url", "deploy_requires_approval", "public_flow_view", "model_id", "tenant_key"])
 def test_fields_outside_the_allow_list_are_invalid_arguments(signer: Signer, field: str) -> None:
     tenant = tenant_as(Membership.ROLE_ADMIN)
