@@ -92,11 +92,9 @@ def _daily(qs) -> list[dict]:
              "has_unknown_cost": bool(_unknown(models.get(r["date"], ())))} for r in rows]
 
 
-@tenant_usage_router.get("/", response=TenantUsageOut)
-def tenant_usage(request, days: int = 30):
-    """인증된 테넌트의 토큰 사용량·비용(기간·call_type별·일별)."""
-    tid = request.auth.tenant.id
-    qs = TokenUsage.objects.filter(tenant_id=tid, date__gte=_since(days))
+def tenant_usage_report(tenant_id, days: int = 30) -> dict:
+    """테넌트의 토큰 사용량·비용(기간·call_type별·일별). 사용량 화면 API와 MCP `get_usage`가 같이 쓴다."""
+    qs = TokenUsage.objects.filter(tenant_id=tenant_id, date__gte=_since(days))
     by_call = list(qs.values("call_type").annotate(
         input_tokens=Sum("input_tokens"), output_tokens=Sum("output_tokens"),
         total_tokens=Sum("total_tokens"), request_count=Sum("request_count"),
@@ -110,6 +108,12 @@ def tenant_usage(request, days: int = 30):
         "by_call_type": by_call,
         "daily": _daily(qs),
     }
+
+
+@tenant_usage_router.get("/", response=TenantUsageOut)
+def tenant_usage(request, days: int = 30):
+    """인증된 테넌트의 토큰 사용량·비용(기간·call_type별·일별)."""
+    return tenant_usage_report(request.auth.tenant.id, days)
 
 
 @operator_usage_router.get("/", response=OperatorUsageOut)

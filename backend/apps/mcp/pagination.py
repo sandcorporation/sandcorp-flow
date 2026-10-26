@@ -24,3 +24,10 @@ def decode_cursor(cursor: str | None) -> int:
     if prefix != "o" or offset < 0:
         raise ToolError("invalid_cursor", "cursor는 앞 결과의 next_cursor 값이어야 합니다.")
     return offset
+
+
+def page_of[T](rows: list[T], cursor: str | None, limit: int) -> tuple[list[T], str | None]:
+    """이미 읽은 목록을 쪽으로 자른다 → (이번 쪽, 다음 쪽 cursor 또는 None)."""
+    offset = decode_cursor(cursor)
+    page = rows[offset : offset + limit]
+    return page, (encode_cursor(offset + limit) if len(rows) > offset + limit else None)

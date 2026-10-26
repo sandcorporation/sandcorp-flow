@@ -377,7 +377,11 @@ def flows_rollback(request, flow_id: str):
 
 @deploy_request_router.get("/", response=list[DeployRequestOut])
 def deploy_requests_list(request, status: Literal["pending", "approved", "rejected", "superseded"] | None = None):
-    tenant_id = _tenant_id(request.auth)
+    return deploy_request_rows(_tenant_id(request.auth), status)
+
+
+def deploy_request_rows(tenant_id: uuid.UUID, status: str | None = None) -> list[dict[str, object]]:
+    """테넌트의 배포 요청(최신순). 배포 요청 화면 API와 MCP `list_deploy_requests`가 같이 쓴다."""
     ids = [r.pk for r in services.list_deploy_requests(tenant_id, status=status)]
     reqs = DeployRequest.objects.select_related("flow", "version", "requested_by", "decided_by").filter(pk__in=ids)
     return [_request_out(r) for r in reqs.order_by("-created_at")]
