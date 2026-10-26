@@ -102,3 +102,24 @@ test('/try?template=home → 곧바로 편집기(세션 없음) → 노드 설�
   await expect(page).toHaveURL(/\/try\?expired=1/)
   await expect(page.getByText(/체험이 끝났거나 만료/)).toBeVisible()
 })
+
+test('첫 쓰기로 세션이 만들어지는 동안·직후 이어 친 이름이 화면과 새로고침 뒤에도 남는다(#196)', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 })
+  const sessionNow = () => page.evaluate(async () => (await fetch('/api/try/session/')).json())
+  await page.goto(`${ADMIN_URL}/admin-ui/try?template=home`)
+  await expect(page.locator('.react-flow__node').first()).toBeVisible()
+  await page.locator('[data-node-id="general"]').click()
+  const name = page.locator('aside[aria-label="노드 설정"]').getByLabel('이름')
+  await name.fill('')
+  await name.pressSequentially('가') // 첫 글자
+  await name.blur() // 첫 쓰기 — 세션 생성 시작
+  await name.focus()
+  await name.pressSequentially('나다라마', { delay: 120 }) // 생성 중·직후에도 이어 친다
+  await name.blur()
+  await expect(page.getByText('초안 저장됨')).toBeVisible()
+  await expect(name).toHaveValue('가나다라마')
+  await expect(page.locator('[data-node-id="general"]')).toContainText('가나다라마')
+  expect(await sessionNow()).not.toBeNull()
+  await page.reload()
+  await expect(page.locator('[data-node-id="general"]')).toContainText('가나다라마') // 서버 사본에도 전체가 있다
+})

@@ -31,28 +31,31 @@ describe('lazyTryBackend — 위치 이동만으로는 세션을 만들지 않�
     expect(moved.position).toEqual({ x: 500, y: 90 })
   })
 
-  it('이동 뒤 첫 진짜 쓰기가 세션을 만들고 이동과 쓰기를 순서대로 함께 저장한다', async () => {
+  it('이동 뒤 첫 진짜 쓰기가 세션을 만들고 이동과 쓰기를 담은 지역 그래프를 POST 에 싣는다(연산 PATCH 없음)', async () => {
     const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
     const b = lazyTryBackend('sandcorp_home')
     await b.loadFlow('')
     await b.patchDraft('', [MOVE])
     await b.patchDraft('', [RENAME])
     expect(posts(fake)).toHaveLength(1)
-    expect(fake.patches().flat()).toEqual([MOVE, RENAME])
+    const sent = posts(fake)[0].body.graph as FlowGraph
+    expect(sent.nodes.find((n) => n.id === 'ai1')!.position).toEqual({ x: 500, y: 90 })
+    expect(sent.nodes.find((n) => n.id === 'start')!.name).toBe('처음')
+    expect(fake.patches()).toHaveLength(0)
     await b.patchDraft('', [{ op: 'upsert_node', id: 'start', position: { x: 1, y: 2 } }]) // 세션이 생긴 뒤의 이동은 곧바로 저장
-    expect(fake.patches()).toHaveLength(2)
+    expect(fake.patches()).toHaveLength(1)
     expect(posts(fake)).toHaveLength(1)
   })
 
-  it('이동 뒤 시험 대화가 첫 쓰기면 세션을 만들고 이동을 먼저 저장한 뒤 턴을 돈다', async () => {
+  it('이동 뒤 시험 대화가 첫 쓰기면 이동이 담긴 그래프로 세션을 만든 뒤 턴을 돈다', async () => {
     const fake = fakeFlowsApi({ graph: GRAPH, testTurns: [[{ event: 'done', data: { ran: true, handoff: false, note: '', errors: [], session_id: 's1', code: null } }]], try: { templates: TEMPLATES, session: null } })
     const b = lazyTryBackend('sandcorp_home')
     await b.loadFlow('')
     await b.patchDraft('', [MOVE])
     await b.streamTest('', '안녕', null, noop)
     const order = fake.calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${c.path.replace(/^.*\/api\//, '/api/')}`)
-    expect(order).toEqual(['POST /api/try/sessions/', 'PATCH /api/try/flows/f1/draft/', 'POST /api/try/flows/f1/test/'])
-    expect(fake.patches()).toEqual([[MOVE]])
+    expect(order).toEqual(['POST /api/try/sessions/', 'POST /api/try/flows/f1/test/'])
+    expect((posts(fake)[0].body.graph as FlowGraph).nodes.find((n) => n.id === 'ai1')!.position).toEqual({ x: 500, y: 90 })
   })
 })
 
@@ -69,19 +72,38 @@ describe('lazyTryBackend — 세션 생성은 한 번(single-flight)', () => {
     await Promise.all([a, s])
     expect(posts(fake)).toHaveLength(1)
     expect(await s).toBe('f1')
-    expect(fake.patches()).toEqual([[RENAME]])
+    expect(fake.patches()).toHaveLength(0) // 이름 변경은 POST 의 그래프에 이미 들어 있다
   })
 
-  it('생성이 거절되면 다음 쓰기가 다시 시도한다(약속을 붙잡아 두지 않는다)', async () => {
+  it('생성이 거절되면 지역 그래프는 그대로 남고, 다음 쓰기는 연산 재생 없이 지금까지의 그래프로 다시 만든다', async () => {
     let status = 429
     const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null, get startStatus() { return status } } })
     const b = lazyTryBackend('sandcorp_home')
     await b.loadFlow('')
+    const first: PatchOp = { op: 'upsert_node', id: 'ai1', name: 'A' }
+    await expect(b.patchDraft('', [first])).rejects.toThrow()
+    const again = await b.loadFlow('') // 편집기는 실패 뒤 다시 읽는다 — 서버 초안이 아니라 지역 그래프가 와야 한다
+    expect((again.draft.graph as unknown as FlowGraph).nodes.find((n) => n.id === 'ai1')!.name).toBe('A')
+    status = 201
+    await b.patchDraft('', [{ op: 'upsert_node', id: 'start', name: 'B' }])
+    expect(posts(fake)).toHaveLength(2)
+    const sent = posts(fake)[1].body.graph as FlowGraph
+    expect(sent.nodes.map((n) => n.name)).toEqual(['B', 'A'])
+    expect(fake.patches()).toHaveLength(0)
+  })
+
+  it('거절 중에는 세션 전 문구(첫 저장 때 체험이 시작돼요)·화면 유지, 생성 뒤에는 둘 다 바뀐다', async () => {
+    let status = 429
+    fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null, get startStatus() { return status } } })
+    const b = lazyTryBackend('sandcorp_home')
+    await b.loadFlow('')
+    expect(b.savedLabel?.()).toBe('첫 저장 때 체험이 시작돼요')
     await expect(b.patchDraft('', [RENAME])).rejects.toThrow()
+    expect(b.keepsEditsOnFailure?.()).toBe(true)
     status = 201
     await b.patchDraft('', [RENAME])
-    expect(posts(fake)).toHaveLength(2)
-    expect(fake.patches()).toEqual([[RENAME]])
+    expect(b.savedLabel?.()).toBeNull()
+    expect(b.keepsEditsOnFailure?.()).toBe(false)
   })
 
   it('생성되면 알린다(머리줄 남은 턴·가입 링크)', async () => {

@@ -14,8 +14,8 @@ import type {
   FlowDetailOut,
   TestTurnIn,
   TryClaimOut,
-  TrySessionOut,
   TryStartIn,
+  TryStartOut,
   TryTemplateDetailOut,
   TryTemplateOut
 } from '../../model';
@@ -321,7 +321,7 @@ export const appsTenantsTryApiTrySessionGet = async ( options?: RequestInit): Pr
  * @summary Try Start
  */
 export type appsTenantsTryApiTryStartResponse201 = {
-  data: TrySessionOut
+  data: TryStartOut
   status: 201
 }
     

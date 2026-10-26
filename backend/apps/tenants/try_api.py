@@ -52,6 +52,7 @@ class TryTemplateDetailOut(Schema):
 
 class TryStartIn(Schema):
     template: str = Field(min_length=1, max_length=64)
+    graph: dict | None = Field(default=None, description="있으면 사본 초안을 이 그래프로 시작한다(PUT draft와 같은 검증). 없으면 템플릿 그대로.")
 
 
 class TrySessionOut(Schema):
@@ -59,6 +60,10 @@ class TrySessionOut(Schema):
     template: str
     expires_at: datetime
     turns_remaining: int
+
+
+class TryStartOut(TrySessionOut):
+    draft: DraftOut | None = None  # ``graph``를 실어 보냈을 때만 — 그 초안의 검증 결과
 
 
 # ── 쿠키·Origin ──────────────────────────────────────────────────────────────
@@ -109,11 +114,11 @@ def try_node_schema(request):
     return {"kinds": {k.value: {"config": m.model_json_schema()} for k, m in NODE_CONFIG_MODELS.items()}}
 
 
-@try_router.post("/sessions/", response={201: TrySessionOut})
+@try_router.post("/sessions/", response={201: TryStartOut})
 def try_start(request, body: TryStartIn, response: HttpResponse):
     """「고쳐 보기」 — 체험 테넌트(예제 사본)를 만들고 세션 쿠키를 준다. IP당 하루 ``TRY_SESSIONS_PER_IP_PER_DAY``."""
     _check_origin(request)
-    started = try_session.start(body.template, client_ip(request))
+    started = try_session.start(body.template, client_ip(request), graph=body.graph)
     response.set_cookie(
         try_session.COOKIE_NAME,
         started.raw_token,
@@ -128,6 +133,7 @@ def try_start(request, body: TryStartIn, response: HttpResponse):
         "template": started.template,
         "expires_at": started.expires_at,
         "turns_remaining": started.turns_remaining,
+        "draft": _draft_out(started.draft) if started.draft is not None else None,
     }
 
 

@@ -58,6 +58,7 @@ export function fakeFlowsApi(opts: {
   const versionOut = (v: FakeVersion) => ({ hash: `h${v.number}`, ...v, deployed: v.number === st.deployed })
   const newRequest = (version: number): FakeRequest => ({ id: `r${st.requests.length + 1}`, flow_id: 'f1', flow_name: '기본 흐름', version, status: 'pending', requested_by_name: opts.me?.name ?? '나', decided_by_name: null, decided_at: null, decision_note: '', created_at: '2026-10-02T09:00:00Z' })
   let turnNo = 0
+  let createdGraph: FlowGraph | null = null // POST sessions/ 가 실어 받은 그래프
   let created: { flow_id: string; template: string; turns_remaining: number } | null = null // POST sessions/ 가 만든 세션(쿠키 흉내)
   const sse = (events: { event: string; data: object }[]) => {
     const text = events.map((e) => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`).join('')
@@ -90,7 +91,8 @@ export function fakeFlowsApi(opts: {
         if (t.startGate) await t.startGate()
         if (t.startStatus && t.startStatus !== 201) return json(t.startStatus, { detail: '오늘 이 네트워크에서 만들 수 있는 체험을 모두 만들었어요. 내일 다시 찾아 주세요.', code: 'try_ip_limit' })
         created = sess ?? { flow_id: 'f1', template: body.template, turns_remaining: 20 }
-        return json(201, { expires_at: '2026-10-26T09:00:00Z', ...created })
+        if (body.graph) createdGraph = body.graph // 그래프를 실어 만들면 사본 초안이 그것이다(#196)
+        return json(201, { expires_at: '2026-10-26T09:00:00Z', ...created, draft: body.graph ? { graph: body.graph, errors: state.errors, valid: state.errors.length === 0 } : null })
       }
       if (method === 'GET' && path.endsWith('/api/try/node-schema/')) return json(200, { kinds: nodeSchema })
       if (!sess && !path.endsWith('/api/try/node-schema/')) return json(401, { detail: '체험 세션이 없습니다.', code: 'try_no_session' })
@@ -159,7 +161,7 @@ export function fakeFlowsApi(opts: {
       return json(200, r)
     }
     if (method === 'GET' && /\/flows\/[^/]+\/$/.test(path)) {
-      return json(200, { flow: flowOut(), draft: { graph: opts.graph, errors: state.errors, valid: state.errors.length === 0 }, versions: versions.map(versionOut), pending_request: st.pending })
+      return json(200, { flow: flowOut(), draft: { graph: (path.includes('/api/try/') && createdGraph) || opts.graph, errors: state.errors, valid: state.errors.length === 0 }, versions: versions.map(versionOut), pending_request: st.pending })
     }
     if (method === 'PATCH' && path.endsWith('/draft/')) {
       if (opts.patchStatus && opts.patchStatus !== 200) return json(opts.patchStatus, opts.patchBody ?? { detail: '실패', code: 'invalid_patch', index: 0 })

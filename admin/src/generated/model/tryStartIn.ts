@@ -4,8 +4,11 @@
  * Sandcorp Flow API
  * OpenAPI spec version: 1.0.0
  */
+import type { TryStartInGraph } from './tryStartInGraph';
 
 export interface TryStartIn {
+  /** 있으면 사본 초안을 이 그래프로 시작한다(PUT draft와 같은 검증). 없으면 템플릿 그대로. */
+  graph?: TryStartInGraph;
   /**
    * @minLength 1
    * @maxLength 64

@@ -51,9 +51,7 @@ function TryEditorShell({ backend, left, signup, onTrialChanged }: { backend: Fl
 
   const right = (
     <>
-      {left !== null
-        ? <span className="hmi-label flex items-center gap-1.5 !text-head-foreground" role="status"><span className={`lamp ${left > 0 ? 'lamp-ok' : 'lamp-alarm'}`} />남은 대화 {left}턴</span>
-        : <span className="hmi-label hidden !text-head-foreground sm:inline" role="status">첫 저장 때 체험이 시작돼요</span>}
+      {left !== null && <span className="hmi-label flex items-center gap-1.5 !text-head-foreground" role="status"><span className={`lamp ${left > 0 ? 'lamp-ok' : 'lamp-alarm'}`} />남은 대화 {left}턴</span>}
       {signup}
     </>
   )
