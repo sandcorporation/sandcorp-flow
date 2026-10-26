@@ -19,6 +19,8 @@ class NoArgs(BaseModel):
     "편집 가능 여부(can_edit, Admin만 true)를 돌려준다. 인자 없음. 멤버십이 없으면 빈 목록.",
     NoArgs,
     scope="flow.read",
+    permission=None,
+    idempotent=True,
 )
 async def list_tenants(ctx: ToolContext, args: NoArgs) -> JSONObject:
     memberships = await caller_memberships(ctx.token, ctx.issuer)

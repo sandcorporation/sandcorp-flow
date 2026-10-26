@@ -22,6 +22,7 @@ from apps.flows.models import Flow, FlowVersion
 from apps.flows.schema import JSON, FlowError
 from apps.flows.services import PatchOp
 from apps.mcp.access import TenantArgs
+from apps.tenants.permissions import FLOW_DEPLOY, FLOW_EDIT
 from apps.mcp.registry import JSONObject, ToolContext, ToolError, register
 
 
@@ -98,6 +99,8 @@ def _version_row(version: FlowVersion, deployed_id: uuid.UUID | None) -> JSONObj
     "테넌트의 흐름 목록: id·이름·공개 여부(위젯이 도는 흐름)·배포 중 버전 번호. 인자: tenant.",
     TenantArgs,
     scope="flow.read",
+    permission=None,
+    idempotent=True,
 )
 async def list_flows(ctx: ToolContext, args: TenantArgs) -> JSONObject:
     flows = await _service(lambda: services.list_flows(_tenant_id(ctx)))
@@ -110,6 +113,8 @@ async def list_flows(ctx: ToolContext, args: TenantArgs) -> JSONObject:
     "version을 주면 초안 대신 그 버전의 JSON. 인자: flow_id, version?. 실패: flow_not_found·version_not_found.",
     GetFlowArgs,
     scope="flow.read",
+    permission=None,
+    idempotent=True,
 )
 async def get_flow(ctx: ToolContext, args: GetFlowArgs) -> JSONObject:
     tenant_id = _tenant_id(ctx)
@@ -133,7 +138,9 @@ async def get_flow(ctx: ToolContext, args: GetFlowArgs) -> JSONObject:
     "빈 초안으로 새 흐름을 만든다(배포·공개 아님). 인자: name. 실패: duplicate_name.",
     CreateFlowArgs,
     scope="flow.write",
+    permission=FLOW_EDIT,
     writes=True,
+    destructive=False,
 )
 async def create_flow(ctx: ToolContext, args: CreateFlowArgs) -> JSONObject:
     flow = await _service(lambda: services.create_flow(_tenant_id(ctx), args.name))
@@ -149,6 +156,7 @@ async def create_flow(ctx: ToolContext, args: CreateFlowArgs) -> JSONObject:
     "실패(아무것도 안 바뀜): invalid_patch(ops[i] 사유), flow_not_found.",
     UpdateFlowArgs,
     scope="flow.write",
+    permission=FLOW_EDIT,
     writes=True,
 )
 async def update_flow(ctx: ToolContext, args: UpdateFlowArgs) -> JSONObject:
@@ -170,7 +178,10 @@ async def update_flow(ctx: ToolContext, args: UpdateFlowArgs) -> JSONObject:
     "초안이 검증을 통과하지 못하면 saved=false와 errors. 인자: flow_id, note(선택 메모, 200자 이내; 실패: note_too_long).",
     SaveVersionArgs,
     scope="flow.write",
+    permission=FLOW_EDIT,
     writes=True,
+    destructive=False,
+    idempotent=True,
 )
 async def save_version(ctx: ToolContext, args: SaveVersionArgs) -> JSONObject:
     user_id = ctx.require_membership().user_id
@@ -189,6 +200,7 @@ async def save_version(ctx: ToolContext, args: SaveVersionArgs) -> JSONObject:
     "인자: flow_id, version. 실패: version_not_found.",
     DeployArgs,
     scope="flow.write",
+    permission=FLOW_DEPLOY,
     writes=True,
 )
 async def deploy_version(ctx: ToolContext, args: DeployArgs) -> JSONObject:
@@ -218,7 +230,9 @@ async def deploy_version(ctx: ToolContext, args: DeployArgs) -> JSONObject:
     "실패: flow_not_found·session_not_found.",
     TestTurnArgs,
     scope="flow.write",
+    permission=FLOW_EDIT,
     writes=True,
+    destructive=False,
 )
 async def test_turn(ctx: ToolContext, args: TestTurnArgs) -> JSONObject:
     try:
@@ -243,6 +257,7 @@ async def test_turn(ctx: ToolContext, args: TestTurnArgs) -> JSONObject:
     "인자: flow_id. 실패: flow_not_found·flow_in_use.",
     FlowArgs,
     scope="flow.write",
+    permission=FLOW_EDIT,
     writes=True,
 )
 async def archive_flow(ctx: ToolContext, args: FlowArgs) -> JSONObject:

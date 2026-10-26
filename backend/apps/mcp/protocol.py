@@ -8,13 +8,17 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 
 from pydantic import ValidationError
 
 from apps.mcp import tools as _tools  # noqa: F401  도구 등록(import 부작용)
-from apps.mcp.access import TenantArgs, caller_memberships, require_editor, resolve_membership
+from apps.mcp import audit
+from apps.mcp.access import TenantArgs, caller_memberships, require_tool_permission, resolve_membership
+from apps.mcp.models import McpAuditEvent
 from apps.mcp.registry import JSONObject, Tool, ToolContext, ToolError, all_tools, get_tool
 from apps.flows.schema import JSON
+from apps.tenants.models import Membership
 from apps.tenants.resource_token import AccessToken, InsufficientScope
 
 logger = logging.getLogger(__name__)
@@ -88,8 +92,16 @@ def _describe(tool: Tool) -> JSONObject:
         "name": tool.name,
         "description": tool.description,
         "inputSchema": schema,
-        "annotations": {"readOnlyHint": not tool.writes},
+        "annotations": tool.annotations(),
     }
+
+
+@dataclass
+class _Outcome:
+    """감사 로그에 남길 결과. 기본은 internal — 예상 못 한 길로 빠져도 「성공」으로 남지 않게."""
+
+    code: str = McpAuditEvent.INTERNAL
+    membership: Membership | None = None
 
 
 async def _call(request_id: RequestId, params: dict[str, JSON], *, token: AccessToken, issuer: str) -> JSONObject:
@@ -98,14 +110,41 @@ async def _call(request_id: RequestId, params: dict[str, JSON], *, token: Access
     tool = get_tool(name) if isinstance(name, str) else None
     if tool is None:
         return error_response(request_id, INVALID_PARAMS, f"unknown tool: {name}")
+    if not tool.writes:
+        return await _run(request_id, tool, arguments, token=token, issuer=issuer, outcome=_Outcome())
+
+    # 쓰기 도구: 부르기 전에 기록한다. 기록이 안 되면 실행하지 않는다(#208 — 기록 없는 쓰기를 만들지 않는다).
+    try:
+        event_id = await audit.begin(tool.name, token, issuer, arguments)
+    except Exception:
+        logger.exception("MCP audit write failed; %s was not run", tool.name)
+        return error_response(request_id, INTERNAL_ERROR, "internal error")
+    outcome = _Outcome()
+    try:
+        return await _run(request_id, tool, arguments, token=token, issuer=issuer, outcome=outcome)
+    finally:
+        try:
+            await audit.finish(event_id, outcome.code, outcome.membership)
+        except Exception:  # 결과는 이미 정해졌다 — 행은 started로 남는다
+            logger.exception("MCP audit result write failed for %s (event %s)", tool.name, event_id)
+
+
+async def _run(
+    request_id: RequestId, tool: Tool, arguments: JSON, *, token: AccessToken, issuer: str, outcome: _Outcome
+) -> JSONObject:
     if not isinstance(arguments, dict):
+        outcome.code = "invalid_arguments"
         return error_response(request_id, INVALID_PARAMS, "arguments must be an object")
     if tool.scope not in token.scopes:  # 스코프는 상한(#74 결정 4) — 403으로 올려 클라이언트가 더 받게
+        outcome.code = "insufficient_scope"
+        if tool.writes:
+            outcome.membership = await _membership_or_none(token, issuer, arguments.get("tenant"))
         raise InsufficientScope(tool.scope)
 
     try:
         args = tool.args_model.model_validate(arguments)
     except ValidationError as exc:
+        outcome.code = "invalid_arguments"
         return _result(request_id, _tool_error(ToolError("invalid_arguments", _brief(exc))))
 
     try:
@@ -113,19 +152,29 @@ async def _call(request_id: RequestId, params: dict[str, JSON], *, token: Access
         if isinstance(args, TenantArgs):
             memberships = await caller_memberships(token, issuer)
             membership = resolve_membership(memberships, args.tenant)
-            if tool.writes:
-                require_editor(membership)
+            outcome.membership = membership
+            require_tool_permission(membership, tool.permission)  # 판정은 has_permission 한 곳(#208)
             ctx = ToolContext(token=token, issuer=issuer, memberships=memberships, membership=membership)
-        elif tool.writes:  # 쓰기 도구는 언제나 테넌트 도구다(등록 실수)
-            raise RuntimeError(f"write tool {tool.name} must take TenantArgs")
+        elif tool.writes or tool.permission is not None:  # 쓰기·권한 도구는 언제나 테넌트 도구다(등록 실수)
+            raise RuntimeError(f"tool {tool.name} must take TenantArgs")
         output = await tool.handler(ctx, args)
     except ToolError as exc:
+        outcome.code = exc.code
         return _result(request_id, _tool_error(exc))
     except Exception:
         logger.exception("MCP tool %s failed", tool.name)
         return error_response(request_id, INTERNAL_ERROR, "internal error")
+    outcome.code = McpAuditEvent.OK
     text = json.dumps(output, ensure_ascii=False)
     return _result(request_id, {"content": [{"type": "text", "text": text}], "structuredContent": output, "isError": False})
+
+
+async def _membership_or_none(token: AccessToken, issuer: str, tenant: JSON) -> Membership | None:
+    """감사 기록용 — 스코프에서 막힌 호출도 어느 테넌트였는지 남긴다. 못 풀면 None(사유는 묻지 않는다)."""
+    try:
+        return resolve_membership(await caller_memberships(token, issuer), tenant if isinstance(tenant, str) else None)
+    except ToolError:
+        return None
 
 
 def _tool_error(exc: ToolError) -> JSONObject:

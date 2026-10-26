@@ -18,6 +18,7 @@ from apps.mcp.access import TenantArgs
 from apps.mcp.registry import JSONObject, ToolContext
 from apps.tenants import resource_token
 from apps.tenants.models import Membership, Tenant, User
+from apps.tenants.permissions import FLOW_EDIT
 from resource_token_fakes import (
     ISSUER,
     MEMBER_SUB,
@@ -115,6 +116,6 @@ def write_tool() -> Iterator[str]:
         return {"tenant": ctx.membership.tenant.slug, "text": args.text}
 
     name = "test_echo_write"
-    registry.register(name, "시험용 쓰기 도구.", _EchoArgs, scope="flow.write", writes=True)(echo)
+    registry.register(name, "시험용 쓰기 도구.", _EchoArgs, scope="flow.write", permission=FLOW_EDIT, writes=True)(echo)
     yield name
     registry.unregister(name)
