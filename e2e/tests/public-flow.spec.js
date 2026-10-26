@@ -87,10 +87,11 @@ test.describe('공개 흐름 보기 — 실제 스택', () => {
     await shot(page, 'public-390-dark')
     await page.evaluate(() => localStorage.setItem('admin_theme', 'light'))
 
-    // 「고쳐 보기」 → /try?template=home(카드 선택됨)
+    // 「고쳐 보기」 → /try?template=home(곧바로 홈 편집기, #195)
     await page.getByRole('link', { name: '고쳐 보기' }).click()
     await expect(page).toHaveURL(/\/admin-ui\/try\?template=home$/)
-    await expect(page.locator('[data-template="sandcorp_home"][data-selected="true"]')).toBeVisible({ timeout: 15000 })
+    await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText('첫 저장 때 체험이 시작돼요')).toBeAttached() // 폰 폭에선 머리줄 안내를 숨긴다
   })
 
   test('공개 보기를 끈 조직은 없는 slug 와 같은 404 — 화면은 「공개된 흐름이 없습니다」', async ({ page, request }) => {

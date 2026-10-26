@@ -66,13 +66,13 @@ describe('TryPage — 템플릿 고르기', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/try/flow/f9')
   })
 
-  it('?template=home 같은 짧은 이름은 sandcorp_home 카드를 고른 것으로 표시한다', async () => {
-    fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
+  it('?template=home 같은 짧은 이름은 카드 없이 sandcorp_home 편집기를 곧바로 연다(#195)', async () => {
+    const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
     renderPage('/try?template=home')
-    const card = (await screen.findByRole('heading', { name: 'Sandcorp 홈 상담' })).closest('[data-template]')!
-    expect(card).toHaveAttribute('data-template', 'sandcorp_home')
-    expect(card).toHaveAttribute('data-selected', 'true')
-    expect(screen.getByRole('heading', { name: '쇼핑몰 고객 지원' }).closest('[data-template]')).toHaveAttribute('data-selected', 'false')
+    await waitFor(() => expect(fake.calls.some((c) => c.path.endsWith('/api/try/templates/sandcorp_home/'))).toBe(true))
+    expect(await screen.findByRole('heading', { name: 'Sandcorp 홈 상담' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '쇼핑몰 고객 지원' })).toBeNull()
+    expect(fake.calls.some((c) => c.path.endsWith('/api/try/templates/'))).toBe(false)
   })
 
   it('이 IP가 오늘 3세션을 다 썼으면(429 try_ip_limit) 사유를 그대로 알린다', async () => {

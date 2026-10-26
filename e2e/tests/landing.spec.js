@@ -32,14 +32,15 @@ test('랜딩: 체험 CTA·템플릿 링크·로그인 링크·문의 링크', as
   await shot(page, 'landing-dark-1280')
 })
 
-test('랜딩의 템플릿 링크가 실제 /try 화면에서 그 카드를 고른다', async ({ page }) => {
+test('랜딩의 템플릿 링크가 실제 /try 화면에서 그 템플릿 편집기를 곧바로 연다(#195)', async ({ page }) => {
   await page.goto(LANDING)
   const href = await page.getByRole('link', { name: /^쇼핑몰 고객 지원/ }).getAttribute('href')
   expect(href).toBe('/try?template=shop')
   // 운영에서는 같은 호스트의 nginx 가 /try → /admin-ui/try 로 301 한다(계약: scripts/test-nginx-metrics.sh).
   // e2e 는 nginx 없이 Vite 라 같은 규칙(/admin-ui 접두)을 직접 붙여 연다.
   await page.goto(`${ADMIN_URL}/admin-ui${href}`)
-  await expect(page.locator('[data-template="shop_support"]')).toHaveAttribute('data-selected', 'true')
+  await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('heading', { name: '쇼핑몰 배송·반품 상담' })).toBeVisible()
 })
 
 test('랜딩: 운영자 로그인 링크가 admin 의 Operator 로그인 화면으로 이어진다', async ({ page }) => {

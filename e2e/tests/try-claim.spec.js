@@ -27,20 +27,21 @@ const noOverflow = async (page) => {
   expect(wide).toEqual([])
 }
 
-/** 「이 흐름으로 가입」 링크 → (sandcorp-auth·콜백 대역) → /try/claim. */
+/** 「이 흐름으로 가입」: 세션이 있으면 링크, 아직 없으면(#195) 세션을 먼저 만드는 버튼 — #198 에서 다시 본다. */
+const signupControl = (page) => page.getByRole('link', { name: '이 흐름으로 가입' }).or(page.getByRole('button', { name: '이 흐름으로 가입' }))
+
+/** 「이 흐름으로 가입」 → (sandcorp-auth·콜백 대역) → /try/claim. */
 async function signUpVia(page, onLoginRoute) {
   await page.route(/\/api\/auth\/authorize\/member\?then=try_claim$/, (route) =>
     route.fulfill({ status: 302, headers: { location: `${ADMIN_URL}/admin-ui/try/claim` } }))
   if (onLoginRoute) await onLoginRoute()
-  await page.getByRole('link', { name: '이 흐름으로 가입' }).click()
+  await signupControl(page).click()
   await expect(page).toHaveURL(/\/admin-ui\/try\/claim$/)
 }
 
 async function startTry(page, width) {
   await page.setViewportSize({ width, height: width < 600 ? 844 : 900 })
-  await page.goto(`${ADMIN_URL}/admin-ui/try?template=shop_support`)
-  await page.locator('[data-template="shop_support"]').getByRole('button', { name: '고쳐 보기' }).click()
-  await expect(page).toHaveURL(/\/try\/flow\//)
+  await page.goto(`${ADMIN_URL}/admin-ui/try?template=shop_support`) // 방문 즉시 편집기(#195) — 아직 세션 없음
   await expect(page.locator('.react-flow__node').first()).toBeVisible()
 }
 
@@ -49,7 +50,7 @@ for (const [label, width, scheme] of [['1600-light', 1600, 'light'], ['390-dark'
     test.setTimeout(120_000)
     await page.addInitScript((th) => localStorage.setItem('admin_theme', th), scheme)
     await startTry(page, width)
-    const link = page.getByRole('link', { name: '이 흐름으로 가입' })
+    const link = signupControl(page)
     await expect(link).toBeVisible()
     if (width < 600) await noOverflow(page)
     await shot(page, `signup-head-${label}`, { x: 0, y: 0, width, height: 120 })

@@ -51,8 +51,6 @@ test.describe('폰 모드 — 실제 스택', () => {
     test.setTimeout(180_000)
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto(`${ADMIN_URL}/admin-ui/try?template=home`)
-    await page.locator('[data-template="sandcorp_home"]').getByRole('button', { name: '고쳐 보기' }).click()
-    await expect(page).toHaveURL(/\/try\/flow\//)
     const nodes = page.locator('.react-flow__node')
     await expect(nodes.first()).toBeVisible()
     await expect(page.getByRole('navigation', { name: '하단 탭' })).toBeVisible()

@@ -11,9 +11,7 @@ async function open(page, os, app) {
   await page.emulateMedia({ colorScheme: os })
   await page.addInitScript((v) => localStorage.setItem('admin_theme', v), app)
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto(`${ADMIN_URL}/admin-ui/try?template=home`)
-  await page.locator('[data-template="sandcorp_home"]').getByRole('button', { name: '고쳐 보기' }).click()
-  await expect(page).toHaveURL(/\/try\/flow\//)
+  await page.goto(`${ADMIN_URL}/admin-ui/try?template=home`) // 방문 즉시 편집기(#195)
   await expect(page.locator('.react-flow__node').first()).toBeVisible()
 }
 const shot = async (page, name) => {

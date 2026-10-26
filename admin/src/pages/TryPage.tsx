@@ -1,18 +1,28 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { appsTenantsTryApiTrySessionGet, appsTenantsTryApiTryTemplates } from '../generated/endpoints/try/try'
 import type { TrySessionOut, TryTemplateOut } from '../generated/model'
 import { BLURB, startTry, templateId } from '@/lib/tryTemplates'
-import { useEmbed } from '@/lib/embed'
 import TryShell from '../components/TryShell'
 import { Button, buttonVariants } from '../components/ui/button'
+import { LazyTryEditor } from './TryFlowPage'
 
-/** /try — 로그인 없이 템플릿을 고른다. 「흐름 보기」는 읽기 전용(세션 없음), 「고쳐 보기」는 사본을 만들어 편집기로. */
+/**
+ * /try — `?template=<짧은 이름|id>` 면 그 템플릿 편집기를 곧바로 연다(방문 즉시 편집기, #195 — 세션은 첫 쓰기에 생긴다).
+ * 없거나 모르는 템플릿이면 카드로 고른다: 「흐름 보기」는 읽기 전용(세션 없음), 「고쳐 보기」는 사본을 만들어 편집기로.
+ */
 export default function TryPage() {
-  const nav = useNavigate()
   const [params] = useSearchParams()
   const picked = templateId(params.get('template'))
-  const embed = useEmbed()
+  const [unknown, setUnknown] = useState<string | null>(null)
+  const onUnknown = useCallback(() => setUnknown(picked), [picked])
+  if (picked && unknown !== picked) return <LazyTryEditor key={picked} template={picked} onUnknown={onUnknown} />
+  return <TryPicker missing={unknown !== null && unknown === picked} />
+}
+
+function TryPicker({ missing }: { missing: boolean }) {
+  const nav = useNavigate()
+  const [params] = useSearchParams()
   const [templates, setTemplates] = useState<TryTemplateOut[] | null>(null)
   const [loadError, setLoadError] = useState('')
   const [session, setSession] = useState<TrySessionOut | null>(null)
@@ -29,9 +39,6 @@ export default function TryPage() {
     try { nav(`/try/flow/${await startTry(id)}`) } catch (e) { setError((e as Error).message); setBusy(null) }
   }
 
-  const heroOnly = embed && picked !== null && !!templates?.some((t) => t.id === picked)
-  const shown = heroOnly ? templates!.filter((t) => t.id === picked) : templates
-
   return (
     <TryShell fill>
       <div className="mx-auto w-full max-w-5xl space-y-5">
@@ -42,6 +49,7 @@ export default function TryPage() {
           </p>
         </div>
 
+        {missing && <p role="alert" className="border-l-2 border-alarm pl-2 text-sm">그 템플릿을 찾지 못했어요. 아래에서 골라 주세요.</p>}
         {params.get('expired') && <p role="status" className="border-l-2 border-line-soft pl-2 text-sm">체험이 끝났거나 만료됐어요. 템플릿을 골라 새로 시작하세요.</p>}
         {session && (
           <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 border border-ink bg-raised px-3 py-2 text-sm">
@@ -53,20 +61,15 @@ export default function TryPage() {
         {loadError && <p role="alert" className="text-sm text-destructive">{loadError}</p>}
         {!templates && !loadError && <div aria-busy="true" />}
 
-        {/* 임베드(#180) + 고른 템플릿: 방문만으로 세션을 만들지 않는다(IP 3세션/일·비용 한도). 골라진 카드 하나와 「고쳐 보기 시작」 한 번. */}
-        <div className={heroOnly ? 'grid gap-3' : 'grid gap-3 md:grid-cols-3'}>
-          {shown?.map((t) => (
-            <article
-              key={t.id} data-template={t.id} data-selected={String(t.id === picked)}
-              className={`flex min-w-0 flex-col gap-3 border bg-surface p-4 ${t.id === picked ? 'border-ink ring-2 ring-primary' : 'border-line-soft'}`}
-            >
+        <div className="grid gap-3 md:grid-cols-3">
+          {templates?.map((t) => (
+            <article key={t.id} data-template={t.id} className="flex min-w-0 flex-col gap-3 border border-line-soft bg-surface p-4">
               <h2 className="font-cond text-lg font-semibold text-ink">{t.name}</h2>
               <p className="text-sm text-muted-foreground break-keep">{BLURB[t.id] ?? ''}</p>
               {t.documents.length > 0 && <p className="hmi-label break-keep">지식 문서 · {t.documents.join(' · ')}</p>}
               <div className="mt-auto flex flex-wrap gap-2 pt-1">
-                <Button type="button" onClick={() => edit(t.id)} disabled={busy !== null}>{busy === t.id ? '여는 중…' : heroOnly ? '고쳐 보기 시작' : '고쳐 보기'}</Button>
+                <Button type="button" onClick={() => edit(t.id)} disabled={busy !== null}>{busy === t.id ? '여는 중…' : '고쳐 보기'}</Button>
                 <Link to={`/try/view/${t.id}`} className={buttonVariants({ variant: 'outline' })}>흐름 보기</Link>
-                {heroOnly && <Link to="/try" className={buttonVariants({ variant: 'ghost' })}>다른 템플릿 보기</Link>}
               </div>
             </article>
           ))}
