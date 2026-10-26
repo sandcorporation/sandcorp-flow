@@ -29,7 +29,8 @@ export function resetEmbedForTest(): void {
 }
 
 /** 바깥으로 나가는 링크 속성 — 임베드에서는 iframe 안을 떠나지 않고 새 탭으로 연다. */
-export const outboundProps = (embed: boolean): { target?: string; rel?: string } => (embed ? { target: '_blank', rel: 'noopener' } : {})
+/** 가입 링크의 속성(ADR-0032 Q4): 크롤러가 따라가 세션을 만들지 않게 nofollow, 임베드는 새 탭이라 noopener 도. */
+export const outboundProps = (embed: boolean): { target?: string; rel: string } => (embed ? { target: '_blank', rel: 'noopener nofollow' } : { rel: 'nofollow' })
 
 export const HELLO = 'sandcorp-flow:hello'
 export const HEIGHT = 'sandcorp-flow:height'

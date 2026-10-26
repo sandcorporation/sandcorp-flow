@@ -75,33 +75,28 @@ test('① iframe 안 고쳐 보기: 곧바로 편집기(세션 없음) → 노�
   await expect(aside.locator('#node-config')).toHaveValue(/임베드에서 고침/)
 })
 
-test('② 「이 흐름으로 가입」은 새 탭(최상위 flow 호스트)으로 열리고 그 탭의 세션이 같다', async ({ page, context }) => {
+test('② 세션 없는 iframe 에서 「이 흐름으로 가입」: 새 탭이 signup 을 거쳐 authorize 에 닿고, 그 뒤 iframe 의 세션이 새 탭과 같다', async ({ page, context }) => {
   test.setTimeout(120_000)
   // sandcorp-auth 왕복은 외부 경계 — 새 탭이 닿는 authorize 주소를 가로채 같은 호스트의 빈 문서로 대신한다
   await context.route(/\/api\/auth\/authorize\/member/, (route) =>
     route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>auth stub</title>' }))
   const frame = await openParent(page)
   await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
-  // 세션 없는 임베드는 가입을 막는다(#195 임시 — #198 이 중간 페이지로 바꾼다). 노드 하나를 고쳐 세션을 만든다.
-  await expect(frame.getByRole('link', { name: '이 흐름으로 가입' })).toHaveCount(0)
-  const aside = frame.locator('aside[aria-label="노드 설정"]')
-  await frame.locator('[data-node-id="general"]').click()
-  await aside.getByRole('tab', { name: '고급' }).click()
-  const cfg = aside.locator('#node-config')
-  const parsed = JSON.parse(await cfg.inputValue())
-  parsed.instructions = '가입 전에 고침'
-  await cfg.fill(JSON.stringify(parsed))
-  await aside.getByRole('button', { name: '설정 적용' }).click()
-  await expect(frame.getByText('초안 저장됨')).toBeVisible()
-  const inFrame = await sessionOf(page.frame({ url: /flow\.flowtest\.test/ }))
+  const inFrame = () => sessionOf(page.frame({ url: /flow\.flowtest\.test/ }))
+  expect(await inFrame()).toBeNull() // 아무것도 고치지 않았다 — 세션 없음(#195)
+  const link = frame.getByRole('link', { name: '이 흐름으로 가입' })
+  await expect(link).toHaveAttribute('target', '_blank')
+  await expect(link).toHaveAttribute('rel', 'noopener nofollow')
 
   const popupPromise = context.waitForEvent('page')
-  await frame.getByRole('link', { name: '이 흐름으로 가입' }).click()
+  await link.click()
   const popup = await popupPromise
-  await popup.waitForLoadState()
+  await popup.waitForURL(/\/api\/auth\/authorize\/member\?then=try_claim$/) // /try/signup 이 세션을 만든 뒤 로그인으로 replace
   expect(new URL(popup.url()).origin).toBe(FLOW) // 최상위 탭이 flow 호스트다(iframe 이 아니라)
   expect(await popup.evaluate(() => window.top === window && window.opener === null)).toBe(true)
-  expect(await sessionOf(popup)).toEqual(inFrame) // 쿠키 공유 — 같은 세션
+  const inPopup = await sessionOf(popup)
+  expect(inPopup?.flow_id).toBeTruthy()
+  expect(await inFrame()).toEqual(inPopup) // 쿠키 공유 — iframe 이 새 탭과 같은 세션을 본다
   // 부모는 그대로
   await expect(page).toHaveURL(`${PARENT}/`)
 })

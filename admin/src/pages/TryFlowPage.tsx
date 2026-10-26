@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { appsTenantsTryApiTrySessionGet } from '../generated/endpoints/try/try'
 import { FlowEditorBackendProvider, lazyTryBackend, tryBackend, tryViewBackend, type FlowEditorBackend } from '@/lib/flowEditorBackend'
-import { startTry, TRY_ERRORS } from '@/lib/tryTemplates'
+import { shortTemplate, startTry } from '@/lib/tryTemplates'
 import { claimLoginUrl } from '../api'
 import { outboundProps, useEmbed } from '@/lib/embed'
-import { HttpError, TRY_SESSION_LOST } from '../mutator'
+import { TRY_SESSION_LOST } from '../mutator'
 import { TRIAL_CHANGED } from '../components/TrialBanner'
 import FlowEditorPage from '../components/FlowEditorPage'
 import TryShell from '../components/TryShell'
@@ -13,30 +13,19 @@ import { Button } from '../components/ui/button'
 
 /**
  * 「이 흐름으로 가입」(#42): 고객 로그인(sandcorp-auth) 뒤 옮기기 화면(/try/claim)으로 돌아와 사본을 내 테넌트로 옮긴다.
- * 세션이 아직 없으면(방문 즉시 편집기, #195) `ensure` 로 세션을 먼저 만든 뒤 로그인으로 간다. 임베드는 새 탭을 동기적으로 열어야 해서
- * (비동기 뒤 window.open 은 팝업 차단) 세션 없이는 링크를 막고 안내만 한다 — #198 이 중간 페이지(/try/signup)로 바꾼다.
+ * 세션이 아직 없으면(#195) 중간 페이지(/try/signup, #198)로 간다 — 거기서 세션을 만든 뒤 로그인으로 넘어간다.
+ * 임베드는 새 탭을 동기적으로 열어야 하므로(비동기 뒤 window.open 은 팝업 차단) 링크 자체가 중간 페이지를 가리킨다.
  */
-function SignupLink({ ensure }: { ensure?: () => Promise<unknown> }) {
+function SignupLink({ template }: { template?: string }) {
   const embed = useEmbed() // 임베드(#180)에서는 iframe 을 떠나지 않고 새 탭으로
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  if (!ensure) return <Button asChild variant="head" size="sm"><a href={claimLoginUrl()} className="whitespace-nowrap" {...outboundProps(embed)}>이 흐름으로 가입</a></Button>
-  if (embed) return <span className="hmi-label !text-head-foreground" role="note">흐름을 한 번 고치면 가입할 수 있어요</span>
-  const go = async () => {
-    setBusy(true); setError('')
-    try { await ensure(); window.location.assign(claimLoginUrl()) } catch (e) { setError(tryFailure(e)); setBusy(false) }
-  }
+  const cls = 'whitespace-nowrap'
   return (
-    <>
-      {error && <span role="alert" className="text-xs">{error}</span>}
-      <Button variant="head" size="sm" className="whitespace-nowrap" onClick={go} disabled={busy}>이 흐름으로 가입</Button>
-    </>
+    <Button asChild variant="head" size="sm">
+      {template
+        ? <Link to={`/try/signup?template=${encodeURIComponent(shortTemplate(template))}`} className={cls} {...outboundProps(embed)}>이 흐름으로 가입</Link>
+        : <a href={claimLoginUrl()} className={cls} {...outboundProps(embed)}>이 흐름으로 가입</a>}
+    </Button>
   )
-}
-
-const tryFailure = (e: unknown): string => {
-  const body = e instanceof HttpError ? (e.body as { detail?: string; code?: string } | undefined) : undefined
-  return body?.detail || (body?.code && TRY_ERRORS[body.code]) || '체험을 시작하지 못했습니다. 잠시 뒤 다시 시도하세요.'
 }
 
 /** 체험 편집기의 겉틀: 머리줄(남은 대화·가입) + 편집기. 세션이 끊기면(401 try_no_session) 템플릿 고르기로 돌려보낸다. */
@@ -93,7 +82,7 @@ export function LazyTryEditor({ template, onUnknown }: { template: string; onUnk
     <TryEditorShell
       backend={backend} left={left} onTrialChanged={refresh} stayOnLost
       notice={note && <p role="status" data-testid="try-notice" className="mb-3 border-l-2 border-line-soft pl-2 text-sm">{note}</p>}
-      signup={<SignupLink ensure={left === null ? backend.ensureSession : undefined} />}
+      signup={<SignupLink template={left === null ? template : undefined} />}
     />
   )
 }

@@ -145,7 +145,7 @@ export interface LazyTryHooks {
 
 /** 세션 전 지역 그래프를 새로고침 너머로 지키는 자리(#197). 저장소 접근이 던지면(차단·비공개 창) 메모리만 쓴다. */
 const draftKey = (template: string) => `sandcorp-flow:try-draft:${template}`
-function readDraft(template: string): FlowGraph | null {
+export function readDraft(template: string): FlowGraph | null {
   try {
     const raw = sessionStorage.getItem(draftKey(template))
     const g = raw ? JSON.parse(raw) as Partial<FlowGraph> : null
