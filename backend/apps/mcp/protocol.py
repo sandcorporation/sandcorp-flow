@@ -17,14 +17,12 @@ from apps.mcp import audit, confirm
 from apps.mcp.access import TenantArgs, caller_memberships, require_tool_permission, resolve_membership
 from apps.mcp.models import McpAuditEvent
 from apps.mcp.registry import (
-    LEGACY_SCOPE_NOTICE,
     JSONObject,
     Tool,
     ToolContext,
     ToolError,
     all_tools,
     get_tool,
-    used_legacy_scope,
 )
 from apps.flows.schema import JSON
 from apps.tenants.models import Membership
@@ -119,7 +117,6 @@ class _Outcome:
     code: str = McpAuditEvent.INTERNAL
     membership: Membership | None = None
     stage: str | None = None  # 2단계 도구의 단계(preview/confirm, #209)
-    legacy_scope: bool = False  # #207: 옛 스코프(flow.write)로만 통과한 호출 — 호환 분기를 지울 때 같이 지운다
 
 
 async def _call(request_id: RequestId, params: dict[str, JSON], *, token: AccessToken, issuer: str) -> JSONObject:
@@ -149,7 +146,7 @@ async def _call(request_id: RequestId, params: dict[str, JSON], *, token: Access
         return await _run(request_id, tool, arguments, token=token, issuer=issuer, outcome=outcome)
     finally:
         try:
-            await audit.finish(event_id, outcome.code, outcome.membership, outcome.stage, outcome.legacy_scope)
+            await audit.finish(event_id, outcome.code, outcome.membership, outcome.stage)
         except Exception:  # 결과는 이미 정해졌다 — 행은 started로 남는다
             logger.exception("MCP audit result write failed for %s (event %s)", tool.name, event_id)
 
@@ -160,8 +157,7 @@ async def _run(
     if not isinstance(arguments, dict):
         outcome.code = "invalid_arguments"
         return error_response(request_id, INVALID_PARAMS, "arguments must be an object")
-    outcome.legacy_scope = used_legacy_scope(tool, token.scopes)  # #207
-    if tool.scope not in token.scopes and not outcome.legacy_scope:  # 스코프는 상한(#74 결정 4) — 403으로 올려 클라이언트가 더 받게
+    if tool.scope not in token.scopes:  # 스코프는 상한(#74 결정 4) — 403으로 올려 클라이언트가 더 받게
         outcome.code = "insufficient_scope"
         if tool.writes:
             outcome.membership = await _membership_or_none(token, issuer, arguments.get("tenant"))
@@ -191,8 +187,6 @@ async def _run(
         logger.exception("MCP tool %s failed", tool.name)
         return error_response(request_id, INTERNAL_ERROR, "internal error")
     outcome.code = McpAuditEvent.OK
-    if outcome.legacy_scope:
-        output = {**output, "notice": LEGACY_SCOPE_NOTICE}  # #207
     text = json.dumps(output, ensure_ascii=False)
     return _result(request_id, {"content": [{"type": "text", "text": text}], "structuredContent": output, "isError": False})
 
