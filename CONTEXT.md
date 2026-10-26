@@ -176,8 +176,12 @@ _Avoid_: 스코프로 역할 표현
 Flow API가 받는 sandcorp-auth 액세스 토큰(`aud` = Flow 리소스). 검증 규칙은 sandcorp-auth `docs/resource-server-token-validation.md`를 그대로 따른다. 관리 화면은 로그인 콜백에서 한 번 검증한 뒤 Flow 자기 세션(Access/Refresh)으로 돈다.
 
 **MCP Token**
-MCP 서버(`/mcp`)가 받는 Resource Token. `aud`가 API(`…/api`)와 다른 MCP 리소스(`…/mcp`)라 서로의 토큰은 통하지 않는다. 스코프 `flow.read`·`flow.write`는 상한이고, 무엇을 할 수 있는지는 Membership 역할이 정한다(편집·배포는 Tenant Admin만). 대표 토큰도 멤버십이 있는 테넌트만 다룬다 — Operator 권한은 MCP에 없다. MCP는 Flow 세션을 만들지 않고 요청마다 토큰을 검증한다.
+MCP 서버(`/mcp`)가 받는 Resource Token. `aud`가 API(`…/api`)와 다른 MCP 리소스(`…/mcp`)라 서로의 토큰은 통하지 않는다. 스코프 `flow.read`·`flow.write`는 상한이고, 무엇을 할 수 있는지는 Membership 역할이 정한다(도구마다 등록된 권한 비트 — 편집·배포는 Tenant Admin만). 대표 토큰도 멤버십이 있는 테넌트만 다룬다 — Operator 권한은 MCP에 없다. MCP는 Flow 세션을 만들지 않고 요청마다 토큰을 검증한다.
 _Avoid_: MCP 토큰으로 Operator 기능, 스코프로 역할 표현
+
+**MCP Audit Event**
+MCP로 부른 쓰기 도구 한 번의 기록(시각·테넌트·사용자·토큰 `sub`·`client_id`·`jti`·도구·인자·결과 코드). 성공·거부·실패 모두 남고, 기록이 안 되면 그 도구는 실행되지 않는다. 읽기 도구는 남지 않는다. 테넌트 Admin만 읽는다(`audit.read`). 보존 기간이 지나면 지운다.
+_Avoid_: 이벤트(Event Store의 도메인 이벤트와 다르다), 접근 로그
 
 ## Flow
 
