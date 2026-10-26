@@ -66,7 +66,7 @@ describe('임베드 — 템플릿 고르기', () => {
     fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
     renderAt('/try?embed=1')
     await screen.findByRole('heading', { name: 'Sandcorp 홈 상담' })
-    expect(screen.getAllByRole('button', { name: '고쳐 보기' })).toHaveLength(2)
+    expect(screen.getAllByRole('link', { name: '고쳐 보기' })).toHaveLength(2)
   })
 })
 
@@ -109,5 +109,16 @@ describe('임베드 — 체험 편집기', () => {
     await screen.findByTestId('flow-canvas')
     expect(document.querySelector('.min-h-screen, .h-screen, .md\\:h-screen')).toBeNull()
     expect(document.querySelector('[data-embed-grid]')?.className).toMatch(/lg:h-\[\d+px\]/)
+  })
+
+  it('임베드의 중간 폭(lg 미만, 격자가 한 줄로 쌓이는 폭)에서는 캔버스가 노드 목록보다 먼저 온다 — 일반 화면은 그대로(#199)', async () => {
+    setWidth(929)
+    fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: SESSION } })
+    const { unmount } = renderAt('/try/flow/f1?embed=1')
+    expect((await screen.findByTestId('flow-canvas')).className).toMatch(/order-first/)
+    unmount(); resetEmbedForTest()
+    fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: SESSION } })
+    renderAt('/try/flow/f1')
+    expect((await screen.findByTestId('flow-canvas')).className).not.toMatch(/order-first/)
   })
 })

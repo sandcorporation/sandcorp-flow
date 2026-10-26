@@ -110,7 +110,7 @@ function templateFlow(t: TryTemplateDetailOut, graph: FlowGraph): FlowDetailOut 
   } as unknown as FlowDetailOut
 }
 
-/** 「흐름 보기」: 세션 없이 템플릿의 그래프만 읽는다. 편집·시험 대화 없음. */
+/** 읽기 전용 백엔드의 바탕: 편집·시험 대화 없음. 공개 흐름 보기(#39)가 상속한다(체험 「흐름 보기」는 #199 에서 없앴다). */
 export const tryViewBackend: FlowEditorBackend = {
   ...tryBackend,
   loadFlow: async (templateId) => {

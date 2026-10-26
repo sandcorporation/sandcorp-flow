@@ -17,15 +17,24 @@ test('/try?template=home → 곧바로 편집기(세션 없음) → 노드 설�
   await page.setViewportSize({ width: 1600, height: 900 })
   const sessionNow = () => page.evaluate(async () => (await fetch('/api/try/session/')).json())
 
-  // 카드 고르기(bare /try)의 흐름 보기는 세션 없이 읽기 전용
+  // 카드 고르기(bare /try): 「흐름 보기」는 없고, 「고쳐 보기」는 이동만 한다(#199) — POST 없이 같은 템플릿 편집기
+  const posts = []
+  page.on('request', (r) => { if (r.method() === 'POST' && r.url().includes('/api/try/sessions/')) posts.push(r.url()) })
   await page.goto(`${ADMIN_URL}/admin-ui/try`)
   const card = page.locator('[data-template="sandcorp_home"]')
+  await expect(card.getByRole('link', { name: '고쳐 보기' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '흐름 보기' })).toHaveCount(0)
   await shot(page, 'try-picker-1600')
-  await card.getByRole('link', { name: '흐름 보기' }).click()
+  await card.getByRole('link', { name: '고쳐 보기' }).click()
+  await expect(page).toHaveURL(/\/try\?template=home$/)
   await expect(page.locator('.react-flow__node').first()).toBeVisible()
-  await expect(page.getByText(/읽기 전용/).first()).toBeVisible()
-  await expect(page.getByRole('tab', { name: '시험 대화' })).toHaveCount(0)
-  await shot(page, 'try-view-1600')
+  expect(await sessionNow()).toBeNull()
+  expect(posts).toEqual([])
+  // 예전 /try/view/:id 주소는 같은 템플릿 편집기로 replace
+  await page.goto(`${ADMIN_URL}/admin-ui/try/view/sandcorp_home`)
+  await expect(page).toHaveURL(/\/try\?template=home$/)
+  await expect(page.locator('.react-flow__node').first()).toBeVisible()
+  await expect(page.getByText(/읽기 전용/)).toHaveCount(0)
 
   // 방문 즉시 편집기(#195): 카드·버튼 없이 편집기, 세션은 아직 없다
   const statuses = []

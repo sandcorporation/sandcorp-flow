@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { appsTenantsTryApiTrySessionGet, appsTenantsTryApiTryTemplates } from '../generated/endpoints/try/try'
 import type { TrySessionOut, TryTemplateOut } from '../generated/model'
-import { BLURB, startTry, templateId } from '@/lib/tryTemplates'
+import { BLURB, shortTemplate, templateId } from '@/lib/tryTemplates'
 import TryShell from '../components/TryShell'
-import { Button, buttonVariants } from '../components/ui/button'
+import { buttonVariants } from '../components/ui/button'
 import { LazyTryEditor } from './TryFlowPage'
 
 /**
  * /try — `?template=<짧은 이름|id>` 면 그 템플릿 편집기를 곧바로 연다(방문 즉시 편집기, #195 — 세션은 첫 쓰기에 생긴다).
- * 없거나 모르는 템플릿이면 카드로 고른다: 「흐름 보기」는 읽기 전용(세션 없음), 「고쳐 보기」는 사본을 만들어 편집기로.
+ * 없거나 모르는 템플릿이면 카드로 고른다: 「고쳐 보기」는 `?template=` 편집기로 이동만 한다(세션은 첫 쓰기에, #199).
  */
 export default function TryPage() {
   const [params] = useSearchParams()
@@ -21,23 +21,15 @@ export default function TryPage() {
 }
 
 function TryPicker({ missing }: { missing: boolean }) {
-  const nav = useNavigate()
   const [params] = useSearchParams()
   const [templates, setTemplates] = useState<TryTemplateOut[] | null>(null)
   const [loadError, setLoadError] = useState('')
   const [session, setSession] = useState<TrySessionOut | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
-  const [error, setError] = useState('')
 
   useEffect(() => {
     appsTenantsTryApiTryTemplates().then((r) => setTemplates(r.data)).catch(() => setLoadError('템플릿을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'))
     appsTenantsTryApiTrySessionGet().then((r) => setSession(r.data)).catch(() => setSession(null)) // 세션 없음은 200 null(#163) — catch 는 네트워크 오류 몫
   }, [])
-
-  const edit = async (id: string) => {
-    setBusy(id); setError('')
-    try { nav(`/try/flow/${await startTry(id)}`) } catch (e) { setError((e as Error).message); setBusy(null) }
-  }
 
   return (
     <TryShell fill>
@@ -57,7 +49,6 @@ function TryPicker({ missing }: { missing: boolean }) {
             <Link to={`/try/flow/${session.flow_id}`} className={buttonVariants({ size: 'sm' }) + ' ml-auto'}>이어서 고쳐 보기</Link>
           </div>
         )}
-        {error && <p role="alert" className="border-l-2 border-alarm pl-2 text-sm">{error}</p>}
         {loadError && <p role="alert" className="text-sm text-destructive">{loadError}</p>}
         {!templates && !loadError && <div aria-busy="true" />}
 
@@ -68,8 +59,7 @@ function TryPicker({ missing }: { missing: boolean }) {
               <p className="text-sm text-muted-foreground break-keep">{BLURB[t.id] ?? ''}</p>
               {t.documents.length > 0 && <p className="hmi-label break-keep">지식 문서 · {t.documents.join(' · ')}</p>}
               <div className="mt-auto flex flex-wrap gap-2 pt-1">
-                <Button type="button" onClick={() => edit(t.id)} disabled={busy !== null}>{busy === t.id ? '여는 중…' : '고쳐 보기'}</Button>
-                <Link to={`/try/view/${t.id}`} className={buttonVariants({ variant: 'outline' })}>흐름 보기</Link>
+                <Link to={`/try?template=${encodeURIComponent(shortTemplate(t.id))}`} className={buttonVariants()}>고쳐 보기</Link>
               </div>
             </article>
           ))}

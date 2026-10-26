@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { appsTenantsTryApiTrySessionGet } from '../generated/endpoints/try/try'
-import { FlowEditorBackendProvider, lazyTryBackend, tryBackend, tryViewBackend, type FlowEditorBackend } from '@/lib/flowEditorBackend'
-import { shortTemplate, startTry } from '@/lib/tryTemplates'
+import { FlowEditorBackendProvider, lazyTryBackend, tryBackend, type FlowEditorBackend } from '@/lib/flowEditorBackend'
+import { shortTemplate } from '@/lib/tryTemplates'
 import { claimLoginUrl } from '../api'
 import { outboundProps, useEmbed } from '@/lib/embed'
 import { TRY_SESSION_LOST } from '../mutator'
@@ -87,31 +87,18 @@ export function LazyTryEditor({ template, onUnknown }: { template: string; onUnk
   )
 }
 
-/** /try/flow/:id(예전 고쳐 보기 주소 — 열린 탭·북마크 호환) · /try/view/:id(흐름 보기: 템플릿 원본, 읽기 전용). */
-export default function TryFlowPage({ view = false }: { view?: boolean }) {
-  const { id = '' } = useParams()
-  const nav = useNavigate()
+/** /try/flow/:id(예전 고쳐 보기 주소 — 열린 탭·북마크 호환). */
+export default function TryFlowPage() {
   const [left, setLeft] = useState<number | null>(null)
-  const [startError, setStartError] = useState('')
-  const [starting, setStarting] = useState(false)
-
   const refresh = useCallback(() => {
     appsTenantsTryApiTrySessionGet().then((r) => { if (r.data) setLeft(r.data.turns_remaining) }).catch(() => {})
   }, [])
-  useEffect(() => { if (!view) refresh() }, [view, refresh])
+  useEffect(() => { refresh() }, [refresh])
+  return <TryEditorShell backend={tryBackend} left={left} onTrialChanged={refresh} signup={<SignupLink />} />
+}
 
-  if (!view) return <TryEditorShell backend={tryBackend} left={left} onTrialChanged={refresh} signup={<SignupLink />} />
-
-  const edit = async () => {
-    setStarting(true); setStartError('')
-    try { nav(`/try/flow/${await startTry(id)}`) } catch (e) { setStartError((e as Error).message) } finally { setStarting(false) }
-  }
-  return (
-    <TryShell right={<Button variant="head" size="sm" onClick={edit} disabled={starting}>고쳐 보기</Button>} fill>
-      {startError && <p role="alert" className="mb-3 text-sm text-destructive">{startError}</p>}
-      <FlowEditorBackendProvider value={tryViewBackend}>
-        <FlowEditorPage />
-      </FlowEditorBackendProvider>
-    </TryShell>
-  )
+/** 예전 /try/view/:id(읽기 전용 흐름 보기, #199 에서 없앰) → 같은 템플릿의 편집기. */
+export function TryViewRedirect() {
+  const { id = '' } = useParams()
+  return <Navigate to={`/try?template=${encodeURIComponent(shortTemplate(id))}`} replace />
 }
