@@ -536,6 +536,14 @@ def _get_request(tenant_id: uuid.UUID, request_id: uuid.UUID | str) -> DeployReq
         raise FlowServiceError(f"배포 요청 '{request_id}'이 이 테넌트에 없습니다.", code="request_not_found") from exc
 
 
+def get_pending_deploy_request(tenant_id: uuid.UUID, request_id: uuid.UUID | str) -> DeployRequest:
+    """결정 전에 요청을 미리 본다(MCP 미리보기). 없으면 ``request_not_found``, 이미 처리됐으면 ``request_not_pending``."""
+    request = _get_request(tenant_id, request_id)
+    if request.status != DeployRequest.PENDING:
+        raise FlowServiceError("이미 처리됐거나 새 요청으로 대체된 배포 요청입니다.", code="request_not_pending")
+    return request
+
+
 def _decide(
     tenant_id: uuid.UUID,
     request_id: uuid.UUID | str,

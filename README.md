@@ -314,7 +314,7 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 
 ### MCP — claude.ai에서 흐름 다루기 (#74)
 - **연결**: claude.ai → 설정 → 커넥터 → 사용자 지정 커넥터 추가 → URL `https://flow.sandcorp.co.kr/mcp`. 커넥터가 `/.well-known/oauth-protected-resource/mcp`를 읽고 sandcorp-auth로 로그인시킨다(일반 사용자 member 토큰, `aud`=`AUTH_MCP_RESOURCE`, 스코프 `flow.read`·`flow.write`). auth 쪽 등록은 [docs/deployment.md](./docs/deployment.md) 「서버 쪽 할 일」 11번.
-- **스코프(#210)**: `flow.read`(읽기)·`flow.write`(편집·시험·저장·보관)·`flow.deploy`(`deploy_version`·`rollback_flow`)·`flow.admin`(관리 도구, 후속). 호환 기간에는 배포 도구가 `flow.write`만 가진 옛 토큰도 받고(감사 로그 `legacy_scope`, 응답 `notice`) 새 연결부터 `flow.deploy`를 받는다. `rollback_flow`는 배포 중 버전 바로 앞 번호를 다시 배포한다(2단계 없음, Admin).
+- **스코프(#210)**: `flow.read`(읽기)·`flow.write`(편집·시험·저장·보관)·`flow.deploy`(`deploy_version`·`rollback_flow`·`approve_deploy_request`·`reject_deploy_request`)·`flow.admin`(관리 도구, 후속). 호환 기간에는 배포 도구가 `flow.write`만 가진 옛 토큰도 받고(감사 로그 `legacy_scope`, 응답 `notice`) 새 연결부터 `flow.deploy`를 받는다. `rollback_flow`는 배포 중 버전 바로 앞 번호를 다시 배포한다(2단계 없음, Admin).
 - **권한**: 스코프는 상한이고 실제 판정은 멤버십 권한 비트 — 테넌트 **Admin만 편집·배포**, Member는 읽기(도구마다 `flow.edit`·`flow.deploy` 비트, HTTP 흐름 API와 같은 규칙). 테넌트가 「배포에 승인 필요」를 켰으면 `deploy_version`은 배포 대신 요청을 만들고 `approval_required=true`·`request_id`를 돌려준다(다른 Admin이 승인). 대표 계정도 멤버십이 있는 테넌트만 보인다(Operator 기능 없음).
 - **테넌트 고르기**: 테넌트 도구는 `tenant` 인자(slug **또는 테넌트 id(UUID)**)를 받고, 멤버십이 하나면 생략한다. slug는 공개 챗봇 URL용이라 없을 수 있어(null이 의도, #119) slug 없는 테넌트는 id로 고른다. 어느 쪽이든 내 활성 멤버십 안에서만 풀린다. `list_tenants`가 id·slug·이름·역할을 보여 준다.
 - **도구**(지금): `list_tenants`, `get_flow_schema`(흐름 JSON 규칙 — 흐름을 고치기 전에 한 번 읽는다), 흐름 도구(#76) `list_flows`·`get_flow`(초안·검증 결과·버전 목록, `version`으로 버전 JSON) — 여기까지 읽기, `create_flow`·`update_flow`·`save_version`·`deploy_version`·`test_turn`·`archive_flow`(흐름 보관 — 목록·조회에서 빠지고 위젯이 쓰는 공개 흐름은 `flow_in_use`로 거부, #126) — 쓰기(Admin). 문서·지식그래프·상담 읽기 도구는 #77.
@@ -341,6 +341,7 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
   | `update_settings` | `flow.write`, 권한 비트 없음(Member도) | 허용 12칸만(system_prompt·agent_display_name·brand_name·welcome_message·topic_scope_enabled·scope_description·scope_refusal_message·hitl_enabled·hitl_timezone·hitl_schedule·hitl_holidays·require_identity_verification), 그 밖은 `invalid_arguments`(`extra="forbid"`). 안 준 칸은 그대로. 응답 `{changed:{칸:{before,after}}}`(같은 값은 빠짐). 주제 범위·상담 시간 형식 검증은 HTTP `PATCH /config/`와 같은 함수(`apps/tenants/config_rules.py`)라 같은 문구(`invalid_settings`). 2단계 없음 |
   | `restore_flow` | `flow.write`, `flow.edit`, 2단계 | 보관한 흐름 복원. 미리보기 = 흐름 이름·보관 시각. 서비스 `restore_flow`는 HTTP `POST …/restore/`와 같음 |
   | `set_deploy_approval` | `flow.admin`, `flow.approve`(Admin), 2단계 | 「배포에 승인 필요」 켜기/끄기. 미리보기 = 현재→새 값 + 영향 한 줄, 이미 같으면 `no_change` |
+  | `approve_deploy_request` / `reject_deploy_request` | `flow.deploy`(호환 분기 없음), `flow.approve`(Admin), 2단계 | 대기 중 배포 요청 승인(그 버전 배포)·거절. 인자 `request_id`, `note?`(200자). 미리보기 = 흐름 이름·요청 버전·현재 배포 버전·요청자(이름/이메일)·요청 시각·상태. **내가 낸 요청은 승인 불가**(`self_approval`, 미리보기부터; 거절=철회는 가능, HTTP 동작은 그대로). 이미 결정됐으면 `request_not_pending`, 없거나 남의 테넌트면 `request_not_found` |
   | `set_public_flow_view` | `flow.admin`, `flow.public_view`(Admin), 2단계 | 공개 흐름 보기 켜기/끄기. 같은 미리보기 모양 |
 
   Provider·웹훅·slug·키는 이 도구들로 바꿀 수 없다. 모든 호출은 감사 로그에 남는다.
