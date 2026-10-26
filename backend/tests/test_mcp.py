@@ -202,6 +202,18 @@ def test_initialize_echoes_a_supported_version_and_offers_tools(signer: Signer) 
 
 
 @pytest.mark.django_db
+def test_initialize_instructions_state_scopes_two_step_rule_and_no_secrets(signer: Signer) -> None:
+    body = post(rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}}), mcp_token(signer)).json()
+
+    text = body["result"]["instructions"]
+    for scope in ("flow.read", "flow.write", "flow.deploy", "flow.admin"):
+        assert scope in text
+    assert "confirm_token" in text and "(2단계)" in text
+    assert "비밀" in text
+    assert "편집·배포는 Admin만 된다" not in text  # 옛 문구(Member 쓰기 도구가 생겨 사실이 아니다)
+
+
+@pytest.mark.django_db
 def test_initialize_with_unknown_version_answers_latest(signer: Signer) -> None:
     body = post(rpc("initialize", {"protocolVersion": "2020-01-01"}), mcp_token(signer)).json()
 

@@ -37,8 +37,15 @@ LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
 SERVER_INFO = {"name": "sandcorp-flow", "version": "0.1.0"}
 INSTRUCTIONS = (
     "Sandcorp Flow 상담 흐름 도구. 먼저 list_tenants로 내 테넌트와 역할을 보고, 흐름 JSON을 쓰기 전에 "
-    "get_flow_schema를 한 번 읽는다. 테넌트 도구는 tenant(slug 또는 id) 인자를 받는다(멤버십이 하나면 생략). "
-    "편집·배포는 Admin만 된다."
+    "get_flow_schema를 한 번 읽는다. 테넌트 도구는 tenant(slug 또는 id) 인자를 받는다(멤버십이 하나면 생략).\n"
+    "권한: 연결할 때 받는 스코프 4개(flow.read 읽기 · flow.write 편집·시험·설정·문서 URL · flow.deploy 배포·승인 · "
+    "flow.admin 팀·삭제·토글)는 상한이고, 실제로 되는지는 테넌트 역할이 정한다. 흐름 편집·배포·배포 승인·팀 관리·"
+    "감사 로그 조회는 Admin만, 설정 수정(update_settings)과 문서 URL 등록·재수집·삭제·그래프 재빌드·방문자 기억 삭제는 "
+    "Member도 된다. 스코프가 모자라면 커넥터를 다시 연결한다.\n"
+    "2단계: 설명 끝에 (2단계)가 붙은 도구는 처음 부르면 실행하지 않고 미리보기와 confirm_token을 돌려준다. "
+    "미리보기를 사용자에게 그대로 보이고 확인받은 뒤에만, 같은 인자에 confirm_token을 실어 다시 부른다"
+    "(5분 안, 한 번만). 사용자가 확인하지 않았으면 부르지 않는다.\n"
+    "비밀 값·API 키·Provider·웹훅·초대 링크는 다루지 않는다. 쓰기 호출은 모두 감사 로그에 남는다."
 )
 
 PARSE_ERROR = -32700
