@@ -23,6 +23,7 @@ MCP(claude.ai 커넥터)로 흐름 말고도 설정·지식·팀을 다루게 �
    - **거부 코드**(검사 순): `confirm_token_invalid`(위조·잘림) → `confirm_token_expired` → `confirm_token_wrong_user` → `confirm_token_mismatch`(도구·테넌트·인자 다름 — 토큰을 쓰지 않는다) → `confirm_token_used`.
    - **감사**: 토큰을 실었으면 `confirm`, 아니면 `preview` 단계로 남긴다(검사에서 막혀도). 토큰 값은 `[redacted]`로 바꿔 남긴다.
 8. **2단계 도구 규약은 레지스트리가 강제한다.** `writes=True`·테넌트 도구여야 하고, `destructiveHint=true`(`destructive=False`면 `ValueError`), 입력에 선택 칸 `confirm_token`을 더하며, 설명 끝에 「(2단계) 먼저 미리보기를 사용자에게 보이고 확인을 받은 뒤 confirm_token으로 다시 부른다.」를 붙인다.
+9. **스코프 4개와 배포 호환 분기(#210).** `flow.deploy`(배포·되돌리기)·`flow.admin`이 열렸다. `deploy_version`·`rollback_flow`는 `scope="flow.deploy", legacy_scope="flow.write"`로 등록해, 옛 토큰(`flow.write`만)도 통과시키되 감사 행 `legacy_scope=true`와 응답 `notice`를 남긴다. 일반 장치 대신 도구 한 칸(`Tool.legacy_scope`)과 판정 함수 하나(`used_legacy_scope`)뿐이라 걷을 때 `#207` 표기를 따라 지우면 된다. `rollback_flow`는 서비스 `rollback`을 재사용하고 2단계가 없다(긴급 복구).
 
 ## Alternatives
 - **기록 실패해도 실행(fail-open)**: 가용성은 높지만 「쓰기 도구는 반드시 기록」이 깨진다. 감사 표 쓰기는 같은 DB의 작은 insert라, 그것이 실패하면 도구 자체(같은 DB를 쓰는)도 대개 실패한다. 막아서 잃는 것이 거의 없다.
