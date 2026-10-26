@@ -16,7 +16,8 @@ const MOVE: PatchOp = { op: 'upsert_node', id: 'ai1', position: { x: 500, y: 90 
 const RENAME: PatchOp = { op: 'upsert_node', id: 'start', name: '처음' }
 const posts = (fake: ReturnType<typeof fakeFlowsApi>) => fake.calls.filter((c) => c.method === 'POST' && c.path.endsWith('/api/try/sessions/'))
 const noop = () => {}
-afterEach(() => { vi.unstubAllGlobals() })
+const DRAFT_KEY = 'sandcorp-flow:try-draft:sandcorp_home'
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); sessionStorage.clear() })
 
 describe('lazyTryBackend — 위치 이동만으로는 세션을 만들지 않는다(#194 Q2)', () => {
   it('위치만 바꾸는 연산은 서버에 보내지 않고 지역 그래프에 남긴다', async () => {
@@ -113,5 +114,123 @@ describe('lazyTryBackend — 세션 생성은 한 번(single-flight)', () => {
     await b.loadFlow('')
     await b.patchDraft('', [RENAME])
     expect(onSession).toHaveBeenCalledWith(expect.objectContaining({ flow_id: 'f1', turns_remaining: 20 }))
+  })
+})
+
+const SESSION = { flow_id: 'f1', template: 'sandcorp_home', turns_remaining: 20 }
+const nameOf = (g: FlowGraph, id: string) => g.nodes.find((n) => n.id === id)!.name
+
+describe('lazyTryBackend — 세션 전 편집은 새로고침을 넘는다(#197, sessionStorage)', () => {
+  it('위치 이동과 거절된 쓰기가 다시 마운트해도 남는다(세션·PATCH 없음)', async () => {
+    let status = 429
+    const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null, get startStatus() { return status } } })
+    const a = lazyTryBackend('sandcorp_home')
+    await a.loadFlow('')
+    await a.patchDraft('', [MOVE])
+    await expect(a.patchDraft('', [RENAME])).rejects.toThrow()
+    const b = lazyTryBackend('sandcorp_home') // 새로고침 = 새 백엔드
+    const g = (await b.loadFlow('')).draft.graph as unknown as FlowGraph
+    expect(g.nodes.find((n) => n.id === 'ai1')!.position).toEqual({ x: 500, y: 90 })
+    expect(nameOf(g, 'start')).toBe('처음')
+    expect(fake.patches()).toHaveLength(0)
+    status = 201 // 열린 뒤 다음 쓰기는 보관된 그래프로 세션을 만든다
+    await b.patchDraft('', [{ op: 'upsert_node', id: 'ai1', name: 'X' }])
+    const sent = posts(fake)[posts(fake).length - 1].body.graph as FlowGraph
+    expect(sent.nodes.find((n) => n.id === 'ai1')!.position).toEqual({ x: 500, y: 90 })
+    expect(nameOf(sent, 'start')).toBe('처음')
+  })
+
+  it('세션이 생기면 보관본을 지운다', async () => {
+    fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
+    const b = lazyTryBackend('sandcorp_home')
+    await b.loadFlow('')
+    await b.patchDraft('', [MOVE])
+    expect(sessionStorage.getItem(DRAFT_KEY)).not.toBeNull()
+    await b.patchDraft('', [RENAME])
+    expect(sessionStorage.getItem(DRAFT_KEY)).toBeNull()
+  })
+
+  it('템플릿마다 따로 보관한다', async () => {
+    fakeFlowsApi({ graph: GRAPH, try: { templates: [...TEMPLATES, { id: 'other', name: '다른', documents: [] }], session: null } })
+    const b = lazyTryBackend('sandcorp_home')
+    await b.loadFlow('')
+    await b.patchDraft('', [MOVE])
+    const o = lazyTryBackend('other')
+    const g = (await o.loadFlow('')).draft.graph as unknown as FlowGraph
+    expect(g.nodes.find((n) => n.id === 'ai1')!.position).toEqual({ x: 260, y: 0 })
+  })
+
+  it('저장소 접근이 던져도 메모리만으로 편집이 계속된다', async () => {
+    fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied') })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied') })
+    const b = lazyTryBackend('sandcorp_home')
+    await b.loadFlow('')
+    await b.patchDraft('', [MOVE])
+    const g = (await b.loadFlow('')).draft.graph as unknown as FlowGraph
+    expect(g.nodes.find((n) => n.id === 'ai1')!.position).toEqual({ x: 500, y: 90 })
+  })
+
+  it('보관본이 깨졌으면 템플릿으로 연다', async () => {
+    fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
+    sessionStorage.setItem(DRAFT_KEY, '{not json')
+    const g = (await lazyTryBackend('sandcorp_home').loadFlow('')).draft.graph as unknown as FlowGraph
+    expect(g.nodes).toHaveLength(2)
+  })
+})
+
+describe('lazyTryBackend — 생성 직전 확인(Q6)과 안내(#197)', () => {
+  it('생성 직전에 같은 템플릿 세션이 이미 있으면(다른 탭) POST 없이 그 세션을 쓰고 지역 그래프로 덮는다', async () => {
+    let session: typeof SESSION | null = null
+    const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: () => session } })
+    const onSession = vi.fn()
+    const b = lazyTryBackend('sandcorp_home', { onSession })
+    await b.loadFlow('')
+    session = SESSION // 다른 탭이 그 사이에 세션을 만들었다
+    await b.patchDraft('', [RENAME])
+    expect(posts(fake)).toHaveLength(0)
+    expect(fake.puts()).toHaveLength(1)
+    expect(nameOf(fake.puts()[0] as unknown as FlowGraph, 'start')).toBe('처음') // 지역 편집이 이긴다
+    expect(onSession).toHaveBeenCalledWith(expect.objectContaining({ flow_id: 'f1' }))
+    expect(sessionStorage.getItem(DRAFT_KEY)).toBeNull()
+    await b.patchDraft('', [{ op: 'upsert_node', id: 'ai1', name: 'Y' }]) // 이후는 보통의 PATCH
+    expect(fake.patches()).toHaveLength(1)
+  })
+
+  it('다른 템플릿의 세션이 진행 중이면 열 때 알리고, 첫 쓰기 전까지 POST 는 없다', async () => {
+    const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: { ...SESSION, template: 'other' } } })
+    const onOtherSession = vi.fn()
+    const b = lazyTryBackend('sandcorp_home', { onOtherSession })
+    await b.loadFlow('')
+    await b.patchDraft('', [MOVE])
+    expect(onOtherSession).toHaveBeenCalledWith('other')
+    expect(posts(fake)).toHaveLength(0)
+    await b.patchDraft('', [RENAME]) // 첫 쓰기: 새 체험으로 바뀐다(생성 직전 확인은 다른 템플릿이라 POST)
+    expect(posts(fake)).toHaveLength(1)
+  })
+})
+
+describe('lazyTryBackend — 편집 중 만료(Q5)', () => {
+  it('세션이 사라지면 안내하고 지역 모드로 돌아가 편집을 지키며, 다음 쓰기가 새 세션을 만든다', async () => {
+    let session: typeof SESSION | null = SESSION
+    const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: () => session } })
+    const onExpired = vi.fn()
+    const b = lazyTryBackend('sandcorp_home', { onExpired })
+    await b.loadFlow('')
+    expect(b.keepsEditsOnFailure?.()).toBe(false)
+    await b.patchDraft('', [RENAME]) // 서버 세션에 저장
+    session = null // 24시간이 지났다
+    await expect(b.patchDraft('', [{ op: 'upsert_node', id: 'ai1', name: 'Z' }])).rejects.toThrow()
+    expect(onExpired).toHaveBeenCalledTimes(1)
+    expect(b.keepsEditsOnFailure?.()).toBe(true)
+    expect(b.savedLabel?.()).toBe('첫 저장 때 체험이 시작돼요')
+    const g = (await b.loadFlow('')).draft.graph as unknown as FlowGraph // 편집기가 다시 읽어도 지금까지의 편집
+    expect(nameOf(g, 'ai1')).toBe('Z')
+    expect(nameOf(g, 'start')).toBe('처음')
+    await b.patchDraft('', [{ op: 'upsert_node', id: 'ai1', name: 'W' }])
+    expect(posts(fake)).toHaveLength(1)
+    const sent = posts(fake)[0].body.graph as FlowGraph
+    expect(nameOf(sent, 'ai1')).toBe('W')
+    expect(nameOf(sent, 'start')).toBe('처음')
   })
 })
