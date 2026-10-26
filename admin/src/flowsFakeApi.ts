@@ -163,6 +163,10 @@ export function fakeFlowsApi(opts: {
     if (method === 'GET' && /\/flows\/[^/]+\/$/.test(path)) {
       return json(200, { flow: flowOut(), draft: { graph: (path.includes('/api/try/') && createdGraph) || opts.graph, errors: state.errors, valid: state.errors.length === 0 }, versions: versions.map(versionOut), pending_request: st.pending })
     }
+    if (method === 'PUT' && path.endsWith('/draft/')) {
+      createdGraph = body.graph // 통째 교체(#197: 이미 있던 세션의 사본을 지역 그래프로 덮는다)
+      return json(200, { graph: body.graph, errors: state.errors, valid: state.errors.length === 0 })
+    }
     if (method === 'PATCH' && path.endsWith('/draft/')) {
       if (opts.patchStatus && opts.patchStatus !== 200) return json(opts.patchStatus, opts.patchBody ?? { detail: '실패', code: 'invalid_patch', index: 0 })
       return json(200, { graph: opts.graph, errors: state.errors, valid: state.errors.length === 0 })
@@ -172,5 +176,5 @@ export function fakeFlowsApi(opts: {
     return json(404, { detail: 'no' })
   })
   vi.stubGlobal('fetch', fn)
-  return { calls, fetch: fn, /** 지금까지 받은 응답의 {경로, 상태}. */ statuses: async () => Promise.all(fn.mock.results.map(async (r, i) => ({ path: calls[i].path, status: (await r.value as Response).status }))), patches: () => calls.filter((c) => c.method === 'PATCH' && c.path.endsWith('/draft/')).map((c) => c.body.ops) }
+  return { calls, fetch: fn, /** 지금까지 받은 응답의 {경로, 상태}. */ statuses: async () => Promise.all(fn.mock.results.map(async (r, i) => ({ path: calls[i].path, status: (await r.value as Response).status }))), puts: () => calls.filter((c) => c.method === 'PUT' && c.path.endsWith('/draft/')).map((c) => c.body.graph), patches: () => calls.filter((c) => c.method === 'PATCH' && c.path.endsWith('/draft/')).map((c) => c.body.ops) }
 }

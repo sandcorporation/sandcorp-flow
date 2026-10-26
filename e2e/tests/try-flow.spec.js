@@ -123,3 +123,64 @@ test('첫 쓰기로 세션이 만들어지는 동안·직후 이어 친 이름�
   await page.reload()
   await expect(page.locator('[data-node-id="general"]')).toContainText('가나다라마') // 서버 사본에도 전체가 있다
 })
+
+test('세션 전에 옮긴 노드 위치가 새로고침 뒤에도 남고 세션은 만들어지지 않는다(#197)', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 })
+  const sessionNow = () => page.evaluate(async () => (await fetch('/api/try/session/')).json())
+  await page.goto(`${ADMIN_URL}/admin-ui/try?template=home`)
+  const node = page.locator('[data-node-id="general"]')
+  await expect(node).toBeVisible()
+  await page.waitForTimeout(1200) // 화면 맞춤 애니메이션이 끝난 뒤에 잰다
+  const other = page.locator('[data-node-id="start"]')
+  const rel = async () => { const a = await page.locator('[data-node-id="general"]').boundingBox(); const b = await other.boundingBox(); return { dx: (a.x - b.x) / a.width, dy: (a.y - b.y) / a.width } } // 다시 열면 화면 맞춤이 달라 이웃 노드와의 상대 위치로 잰다
+  const relBefore = await rel()
+  const dist = async () => { const r = await rel(); return Math.abs(r.dx - relBefore.dx) + Math.abs(r.dy - relBefore.dy) }
+  for (let attempt = 0; attempt < 4 && (await dist()) < 0.08; attempt++) { // 끌기 시작이 간혹 씹혀 몇 번 다시 시도한다
+    const box = await node.boundingBox()
+    await page.mouse.move(box.x + 20, box.y + 12)
+    await page.waitForTimeout(100)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 20 + 90, box.y + 12 + 70, { steps: 12 })
+    await page.mouse.up()
+    await page.waitForTimeout(200)
+  }
+  expect(await dist()).toBeGreaterThan(0.08)
+  await page.waitForTimeout(300)
+  const relMoved = await rel()
+  expect(await sessionNow()).toBeNull() // 끌기만으로는 체험을 시작하지 않는다
+  await page.reload()
+  await expect(page.locator('[data-node-id="general"]')).toBeVisible()
+  await page.waitForTimeout(1500)
+  const relAfter = await rel()
+  expect(Math.abs(relAfter.dx - relMoved.dx)).toBeLessThan(0.05)
+  expect(Math.abs(relAfter.dy - relMoved.dy)).toBeLessThan(0.05)
+  expect(await sessionNow()).toBeNull()
+})
+
+test('편집 중 세션이 만료돼도 첫 화면으로 튕기지 않고 안내 + 편집 유지, 다음 쓰기가 새 세션을 만든다(#197)', async ({ page, context }) => {
+  await page.setViewportSize({ width: 1600, height: 900 })
+  const sessionNow = () => page.evaluate(async () => (await fetch('/api/try/session/')).json())
+  await page.goto(`${ADMIN_URL}/admin-ui/try?template=home`)
+  await expect(page.locator('.react-flow__node').first()).toBeVisible()
+  await page.locator('[data-node-id="general"]').click()
+  const name = page.locator('aside[aria-label="노드 설정"]').getByLabel('이름')
+  await name.fill('첫이름')
+  await name.blur()
+  await expect(page.getByText('초안 저장됨')).toBeVisible()
+  expect(await sessionNow()).not.toBeNull()
+
+  await context.clearCookies() // 24시간 만료 흉내: 세션 쿠키가 사라졌다
+  await name.fill('둘째이름')
+  await name.blur()
+  await expect(page.getByTestId('try-notice')).toContainText('체험 시간이 지나')
+  await expect(page).toHaveURL(/\/try\?template=home$/) // 첫 화면(?expired=1)으로 튕기지 않는다
+  await expect(page.locator('[data-node-id="general"]')).toContainText('둘째이름')
+
+  await name.fill('셋째이름') // 다음 쓰기: 새 세션
+  await name.blur()
+  await expect(page.getByText('초안 저장됨')).toBeVisible()
+  await expect(page.getByTestId('try-notice')).toHaveCount(0)
+  expect(await sessionNow()).not.toBeNull()
+  await page.reload()
+  await expect(page.locator('[data-node-id="general"]')).toContainText('셋째이름')
+})

@@ -6,8 +6,8 @@ import { appsFlowsApiFlowsGet, appsFlowsApiFlowsGetVersion, appsFlowsApiFlowsNod
 import { appsTenantsApiGetConfig } from '../generated/endpoints/tenant/tenant'
 import { appsTenantsApiMemberMe } from '../generated/endpoints/tenant-members/tenant-members'
 import type { PublicFlowOut } from '../generated/model'
-import { appsTenantsTryApiTryFlowGet, appsTenantsTryApiTryNodeSchema, appsTenantsTryApiTryPatchDraft, appsTenantsTryApiTrySessionGet, appsTenantsTryApiTryStart, appsTenantsTryApiTryTemplateDetail } from '../generated/endpoints/try/try'
-import type { DraftPatchIn, FlowDetailOut, TrySessionOut, TryStartInGraph, TryTemplateDetailOut } from '../generated/model'
+import { appsTenantsTryApiTryFlowGet, appsTenantsTryApiTryNodeSchema, appsTenantsTryApiTryPatchDraft, appsTenantsTryApiTryPutDraft, appsTenantsTryApiTrySessionGet, appsTenantsTryApiTryStart, appsTenantsTryApiTryTemplateDetail } from '../generated/endpoints/try/try'
+import type { DraftPatchIn, DraftPutInGraph, FlowDetailOut, TrySessionOut, TryStartInGraph, TryTemplateDetailOut } from '../generated/model'
 import { applyOps, type FlowError, type FlowGraph, type PatchOp } from './flowGraph'
 import type { SseEvent } from './testTrace'
 import { streamTestTurn } from './testStream'
@@ -134,60 +134,123 @@ export interface LazyTryBackend extends FlowEditorBackend {
   ensureSession(): Promise<string>
 }
 
+export interface LazyTryHooks {
+  onSession?: (s: TrySessionOut) => void
+  onUnknown?: () => void
+  /** 다른 템플릿의 체험이 진행 중이다 — 여기서 고치면 그 체험이 새 체험으로 바뀐다(#197). */
+  onOtherSession?: (otherTemplate: string) => void
+  /** 편집 중 세션이 사라졌다(24시간 만료 등). 지역 모드로 돌아갔고 다음 쓰기가 새 세션을 만든다(#197, Q5). */
+  onExpired?: () => void
+}
+
+/** 세션 전 지역 그래프를 새로고침 너머로 지키는 자리(#197). 저장소 접근이 던지면(차단·비공개 창) 메모리만 쓴다. */
+const draftKey = (template: string) => `sandcorp-flow:try-draft:${template}`
+function readDraft(template: string): FlowGraph | null {
+  try {
+    const raw = sessionStorage.getItem(draftKey(template))
+    const g = raw ? JSON.parse(raw) as Partial<FlowGraph> : null
+    return g && Array.isArray(g.nodes) && Array.isArray(g.edges) ? g as FlowGraph : null
+  } catch { return null }
+}
+function writeDraft(template: string, g: FlowGraph | null): void {
+  try {
+    if (g) sessionStorage.setItem(draftKey(template), JSON.stringify(g))
+    else sessionStorage.removeItem(draftKey(template))
+  } catch { /* 메모리만 */ }
+}
+
+/** 서버 세션이 없어졌다는 응답인가(쿠키 없음·만료 401, 사본 404). */
+const sessionGone = (e: unknown): boolean =>
+  e instanceof HttpError && (e.status === 404 || (e.status === 401 && (e.body as { code?: string } | undefined)?.code === 'try_no_session'))
+
 /**
- * 방문 즉시 편집기(#195·#196, ADR-0032 초안): `/try?template=…` 는 세션 없이 템플릿 그래프로 편집기를 연다.
+ * 방문 즉시 편집기(#195~#197, ADR-0032 초안): `/try?template=…` 는 세션 없이 템플릿 그래프로 편집기를 연다.
  * 세션은 「첫 쓰기」(위치만이 아닌 초안 저장·시험 대화·가입)에서 `POST /sessions/ {template, graph}` 로 한 번 만든다(single-flight).
  * 세션 전의 편집은 **지역 그래프**(`local` = 템플릿 + 지금까지의 연산)에 쌓이고, 생성은 그 지역 그래프를 통째로 싣는다(①b) —
- * 위치 이동도 거기 담긴다(Q2). 생성이 거절되면(IP 한도 등) 지역 그래프는 그대로라 화면이 되돌아가지 않고, 다음 쓰기가 같은
- * 그래프로 다시 시도한다(연산 재생 없음). 생성 중에 들어온 연산은 `pending` 에 남아 생성 직후 PATCH 로 따라간다.
+ * 위치 이동도 거기 담긴다(Q2). 지역 그래프는 sessionStorage 에도 보관해 새로고침 뒤 그것으로 연다(세션이 생기면 지운다).
+ * 생성이 거절되면(IP 한도 등) 지역 그래프는 그대로라 화면이 되돌아가지 않고, 다음 쓰기가 같은 그래프로 다시 시도한다(연산 재생 없음).
+ * 생성 직전에 `GET /session/` 으로 한 번 확인한다(Q6): 같은 템플릿의 세션이 이미 있으면(다른 탭) POST 없이 그것을 쓰고
+ * 지역 그래프로 사본 초안을 덮는다(내가 방금 고친 편집이 이긴다). 편집 중 세션이 사라지면(Q5) 지역 모드로 돌아가 안내만 하고 다음 쓰기에 새로 만든다.
+ * 생성 중에 들어온 연산은 `pending` 에 남아 생성 직후 PATCH 로 따라간다.
  * 편집기는 경로 id 없이 쓰므로(`/try?template=`) 넘어오는 id 는 무시하고 여기 든 사본 id 를 쓴다.
  */
-export function lazyTryBackend(template: string, hooks: { onSession?: (s: TrySessionOut) => void; onUnknown?: () => void } = {}): LazyTryBackend {
+export function lazyTryBackend(template: string, hooks: LazyTryHooks = {}): LazyTryBackend {
   let flowId: string | null = null
   let creating: Promise<string> | null = null
-  let local: FlowGraph | null = null // 세션 전 지역 그래프(템플릿 + 연산)
+  let local: FlowGraph | null = null // 지역 그래프(템플릿 + 연산). 세션이 있는 동안에도 따라가 두어 만료 때 그대로 지역 모드로 돌아간다
+  let name = ''
   const pending: PatchOp[] = [] // 지역 그래프에는 들어갔지만 서버 초안에는 아직 안 간 연산
   let lastErrors: FlowError[] = []
 
+  const setLocal = (g: FlowGraph) => { local = g; if (!flowId) writeDraft(template, g) }
   const patch = async (id: string, ops: PatchOp[]) => {
     const r = await appsTenantsTryApiTryPatchDraft(id, { ops } as unknown as DraftPatchIn)
     return { errors: r.data.errors as FlowError[] }
   }
   const create = (): Promise<string> => (creating ??= (async () => {
     const sent = pending.length // 이 그래프에 이미 담긴 연산 수(생성 중에 더 쌓일 수 있다)
+    const existing = (await appsTenantsTryApiTrySessionGet().catch(() => null))?.data
+    if (existing && existing.template === template) {
+      // 다른 탭이 먼저 만들었다 — 새로 만들지 않고(IP 한도 낭비·두 사본 방지) 그 사본을 내 지역 그래프로 덮는다.
+      const r = await appsTenantsTryApiTryPutDraft(existing.flow_id, { graph: local as unknown as DraftPutInGraph })
+      flowId = existing.flow_id
+      lastErrors = (r.data.errors ?? []) as FlowError[]
+      pending.splice(0, sent)
+      writeDraft(template, null)
+      hooks.onSession?.(existing)
+      return existing.flow_id
+    }
     const s = (await appsTenantsTryApiTryStart({ template, graph: local as unknown as TryStartInGraph })).data
     flowId = s.flow_id
     pending.splice(0, sent)
     lastErrors = (s.draft?.errors ?? []) as FlowError[]
+    writeDraft(template, null)
     hooks.onSession?.(s)
     return s.flow_id
   })().catch((e: unknown) => { creating = null; throw e })) // 거절되면 다음 쓰기가 같은 지역 그래프로 다시 시도한다
-  const ensureSession = async (): Promise<string> => {
-    if (!flowId) await loadLocal() // 시험 대화·가입이 첫 쓰기여도 보낼 지역 그래프(템플릿)가 있어야 한다
-    const id = flowId ?? await create()
-    if (pending.length) lastErrors = (await patch(id, pending.splice(0))).errors
-    return id
+  /** 세션이 사라졌다: 지역 모드로 돌아가 편집(= local)을 지키고 안내한다. 다음 쓰기가 새 세션을 만든다. */
+  const expire = () => {
+    if (!flowId) return
+    flowId = null; creating = null; pending.length = 0
+    if (local) writeDraft(template, local)
+    hooks.onExpired?.()
   }
   const loadLocal = async (): Promise<FlowGraph> => {
     if (!local) {
       const tpl = (await appsTenantsTryApiTryTemplateDetail(template)).data
-      local = tpl.graph as unknown as FlowGraph
       name = tpl.name
+      local = readDraft(template) ?? (tpl.graph as unknown as FlowGraph) // 새로고침 전에 고치던 그래프가 있으면 그것으로
     }
     return local
   }
-  let name = ''
+  const ensureSession = async (): Promise<string> => {
+    if (!flowId) await loadLocal() // 시험 대화·가입이 첫 쓰기여도 보낼 지역 그래프(템플릿)가 있어야 한다
+    try {
+      const id = flowId ?? await create()
+      if (pending.length) lastErrors = (await patch(id, pending.splice(0))).errors
+      return id
+    } catch (e) { if (sessionGone(e)) expire(); throw e }
+  }
 
   return {
     ...tryBackend,
     ensureSession,
     loadFlow: async () => {
       if (!flowId) {
-        // 새로고침: 같은 템플릿의 세션이 살아 있으면 서버 사본이 원본이다. 없거나 다른 템플릿이면 템플릿을 연다(세션 없음은 200 null).
+        // 새로고침: 같은 템플릿의 세션이 살아 있고 보관된 지역 편집이 없으면 서버 사본이 원본이다. 보관본이 있으면 그것이 이기고(첫 쓰기가 사본을 덮는다)
+        // 없거나 다른 템플릿이면 템플릿을 연다(세션 없음은 200 null). 다른 템플릿의 진행 중 체험은 알린다.
         const s = (await appsTenantsTryApiTrySessionGet()).data
-        if (s && s.template === template && !flowId) { flowId = s.flow_id; hooks.onSession?.(s) }
+        if (s && s.template === template) { if (!readDraft(template) && !flowId) { flowId = s.flow_id; hooks.onSession?.(s) } }
+        else if (s) hooks.onOtherSession?.(s.template)
       }
-      if (flowId) return tryBackend.loadFlow(flowId)
+      if (flowId) {
+        try {
+          const f = await tryBackend.loadFlow(flowId)
+          local = f.draft.graph as unknown as FlowGraph
+          name = f.flow.name
+          return f
+        } catch (e) { if (!sessionGone(e)) throw e; expire() }
+      }
       try {
         const graph = await loadLocal()
         return templateFlow({ id: template, name } as TryTemplateDetailOut, graph)
@@ -198,16 +261,16 @@ export function lazyTryBackend(template: string, hooks: { onSession?: (s: TrySes
     },
     patchDraft: async (_id, ops) => {
       const list = ops as PatchOp[]
-      if (!flowId) {
-        local = applyOps(await loadLocal(), list)
-        pending.push(...list)
-        if (positionOnly(list)) return { errors: [] } // 템플릿은 검증을 통과한 그래프다
-      } else pending.push(...list)
+      try { setLocal(applyOps(await loadLocal(), list)) } catch (e) { if (!flowId) throw e } // 세션이 있으면 서버가 원본이라 지역 사본은 거들 뿐
+      pending.push(...list)
+      if (!flowId && positionOnly(list)) return { errors: [] } // 템플릿은 검증을 통과한 그래프다
       await ensureSession()
       return { errors: lastErrors }
     },
-    streamTest: async (_flowId, message, sessionId, onEvent) =>
-      streamTestTurn(await ensureSession(), message, sessionId, onEvent, undefined, '/api/try'),
+    streamTest: async (_flowId, message, sessionId, onEvent) => {
+      const id = await ensureSession()
+      try { await streamTestTurn(id, message, sessionId, onEvent, undefined, '/api/try') } catch (e) { if (sessionGone(e)) expire(); throw e }
+    },
     savedLabel: () => (flowId ? null : '첫 저장 때 체험이 시작돼요'),
     keepsEditsOnFailure: () => !flowId,
   }

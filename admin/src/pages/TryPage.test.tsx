@@ -75,6 +75,13 @@ describe('TryPage — 템플릿 고르기', () => {
     expect(fake.calls.some((c) => c.path.endsWith('/api/try/templates/'))).toBe(false)
   })
 
+  it('다른 템플릿의 체험이 진행 중이면 편집기에서 「새 체험으로 바뀝니다」를 알리고 세션은 만들지 않는다(#197)', async () => {
+    const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: { flow_id: 'f7', template: 'shop_support', turns_remaining: 12 } } })
+    renderPage('/try?template=home')
+    expect(await screen.findByTestId('try-notice')).toHaveTextContent('새 체험으로 바뀝니다')
+    expect(fake.calls.filter((c) => c.method === 'POST')).toHaveLength(0)
+  })
+
   it('이 IP가 오늘 3세션을 다 썼으면(429 try_ip_limit) 사유를 그대로 알린다', async () => {
     fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null, startStatus: 429 } })
     renderPage()

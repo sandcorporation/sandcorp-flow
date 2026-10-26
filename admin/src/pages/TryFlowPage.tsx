@@ -40,14 +40,14 @@ const tryFailure = (e: unknown): string => {
 }
 
 /** 체험 편집기의 겉틀: 머리줄(남은 대화·가입) + 편집기. 세션이 끊기면(401 try_no_session) 템플릿 고르기로 돌려보낸다. */
-function TryEditorShell({ backend, left, signup, onTrialChanged }: { backend: FlowEditorBackend; left: number | null; signup: ReactNode; onTrialChanged: () => void }) {
+function TryEditorShell({ backend, left, signup, onTrialChanged, notice, stayOnLost }: { backend: FlowEditorBackend; left: number | null; signup: ReactNode; onTrialChanged: () => void; notice?: ReactNode; stayOnLost?: boolean }) {
   const nav = useNavigate()
   useEffect(() => {
     const lost = () => nav('/try?expired=1', { replace: true })
     window.addEventListener(TRIAL_CHANGED, onTrialChanged) // 시험 대화 턴이 끝날 때마다
-    window.addEventListener(TRY_SESSION_LOST, lost) // 쿠키가 없거나 만료
+    if (!stayOnLost) window.addEventListener(TRY_SESSION_LOST, lost) // 쿠키가 없거나 만료 — 새 편집기(#197)는 튕기지 않고 지역 모드로 안내한다
     return () => { window.removeEventListener(TRIAL_CHANGED, onTrialChanged); window.removeEventListener(TRY_SESSION_LOST, lost) }
-  }, [onTrialChanged, nav])
+  }, [onTrialChanged, nav, stayOnLost])
 
   const right = (
     <>
@@ -57,6 +57,7 @@ function TryEditorShell({ backend, left, signup, onTrialChanged }: { backend: Fl
   )
   return (
     <TryShell right={right} fill>
+      {notice}
       <FlowEditorBackendProvider value={backend}>
         <FlowEditorPage />
       </FlowEditorBackendProvider>
@@ -70,14 +71,31 @@ function TryEditorShell({ backend, left, signup, onTrialChanged }: { backend: Fl
  */
 export function LazyTryEditor({ template, onUnknown }: { template: string; onUnknown: () => void }) {
   const [left, setLeft] = useState<number | null>(null)
+  const [notice, setNotice] = useState<'other' | 'expired' | null>(null)
   const backend = useMemo(
-    () => lazyTryBackend(template, { onSession: (s) => setLeft(s.turns_remaining), onUnknown }),
+    () => lazyTryBackend(template, {
+      onSession: (s) => { setLeft(s.turns_remaining); setNotice(null) },
+      onUnknown,
+      onOtherSession: () => setNotice((n) => n ?? 'other'),
+      onExpired: () => { setLeft(null); setNotice('expired') },
+    }),
     [template, onUnknown],
   )
   const refresh = useCallback(() => {
     appsTenantsTryApiTrySessionGet().then((r) => { if (r.data?.template === template) setLeft(r.data.turns_remaining) }).catch(() => {})
   }, [template])
-  return <TryEditorShell backend={backend} left={left} onTrialChanged={refresh} signup={<SignupLink ensure={left === null ? backend.ensureSession : undefined} />} />
+  const note = notice === 'expired'
+    ? '체험 시간이 지나 세션이 끝났어요. 지금까지 고친 내용은 이 화면에 그대로 있고, 다음에 저장하거나 시험하면 새 체험으로 이어서 시작해요.'
+    : notice === 'other'
+      ? '다른 템플릿으로 진행 중인 체험이 있어요. 여기서 고치면 새 체험으로 바뀝니다.'
+      : ''
+  return (
+    <TryEditorShell
+      backend={backend} left={left} onTrialChanged={refresh} stayOnLost
+      notice={note && <p role="status" data-testid="try-notice" className="mb-3 border-l-2 border-line-soft pl-2 text-sm">{note}</p>}
+      signup={<SignupLink ensure={left === null ? backend.ensureSession : undefined} />}
+    />
+  )
 }
 
 /** /try/flow/:id(예전 고쳐 보기 주소 — 열린 탭·북마크 호환) · /try/view/:id(흐름 보기: 템플릿 원본, 읽기 전용). */
