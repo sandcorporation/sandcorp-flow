@@ -243,11 +243,11 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
 
     확인: Provider 없는 시험 조직의 위젯에서 한 마디 → 답이 오고 관리 화면 상단 「체험 중 — 남은 대화」가 1 줄어든다.
 11. [ ] **MCP 서버 등록**(#74·#75) — 등록 전에는 운영 `/mcp`가 401만 내는 게 정상이다.
-    1. **리소스**: sandcorp-auth에 Flow MCP 리소스 `https://flow.sandcorp.co.kr/mcp`(끝 `/` 없음)를 API 리소스(`…/api`)와 **따로** 등록하고 스코프 `flow.read`(읽기 도구)·`flow.write`(편집·버전 저장·배포·시험 실행)를 둔다.
-    2. **일반 사용자 스코프 허용**: auth의 「일반 사용자(member)가 받을 수 있는 스코프」(지금 `login`·`openid`·`profile`·`email`)에 `flow.read`·`flow.write`를 더한다. 빠지면 멤버 토큰에 스코프가 없어 `/mcp`가 403이다. 실제 편집 판정은 Flow 역할(테넌트 Admin만)이다.
+    1. **리소스**: sandcorp-auth에 Flow MCP 리소스 `https://flow.sandcorp.co.kr/mcp`(끝 `/` 없음)를 API 리소스(`…/api`)와 **따로** 등록하고 스코프 `flow.read`(읽기 도구)·`flow.write`(편집·버전 저장·시험 실행)·`flow.deploy`(배포·되돌리기)·`flow.admin`(관리 도구, 후속 티켓)을 둔다(`flow.deploy`·`flow.admin`은 #210에서 추가 — 16번).
+    2. **일반 사용자 스코프 허용**: auth의 「일반 사용자(member)가 받을 수 있는 스코프」(지금 `login`·`openid`·`profile`·`email`)에 `flow.read`·`flow.write`·`flow.deploy`·`flow.admin`을 더한다. 빠지면 멤버 토큰에 스코프가 없어 `/mcp`가 403이다. 실제 편집 판정은 Flow 역할(테넌트 Admin만)이다.
     3. **claude.ai 클라이언트**: claude.ai 커넥터는 CIMD(Client ID Metadata Document)로 접속한다. 그 클라이언트가 위 리소스·스코프를 받을 수 있게 하고 「일반 사용자 허용」(`allows_members`)을 켠다.
     4. **운영 `.env`**: `AUTH_MCP_RESOURCE`(기본 `https://flow.sandcorp.co.kr/mcp`)는 기본값이면 적지 않는다.
-    5. **확인**: `curl -s https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource/mcp`가 `resource`=`https://flow.sandcorp.co.kr/mcp`, `scopes_supported`=`["flow.read","flow.write"]`인 JSON, `curl -si -X POST https://flow.sandcorp.co.kr/mcp`가 401 + `WWW-Authenticate: Bearer resource_metadata="https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource/mcp"`. 그다음 claude.ai → 설정 → 커넥터에 `https://flow.sandcorp.co.kr/mcp`를 더해 로그인하고 `list_tenants`가 내 테넌트를 돌려주는지 본다.
+    5. **확인**: `curl -s https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource/mcp`가 `resource`=`https://flow.sandcorp.co.kr/mcp`, `scopes_supported`=`["flow.read","flow.write","flow.deploy","flow.admin"]`인 JSON, `curl -si -X POST https://flow.sandcorp.co.kr/mcp`가 401 + `WWW-Authenticate: Bearer resource_metadata="https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource/mcp"`. 그다음 claude.ai → 설정 → 커넥터에 `https://flow.sandcorp.co.kr/mcp`를 더해 로그인하고 `list_tenants`가 내 테넌트를 돌려주는지 본다.
 
 12. [x] **Try Session 체험 도서관·정리**(#134, ADR-0030) — 10번 플랫폼 키가 들어간 뒤.
     1. **도서관 적재(1회, 예제 문서가 바뀌면 `--force`)**: `docker compose -f docker-compose.prod.oracle.yml exec api python manage.py seed_try_library`.
@@ -289,7 +289,17 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
 16. [ ] **MCP 쓰기 감사 로그(#208)** — 배포 직후 한 번. 마이그레이션 `mcp.0001`은 새 표(`mcp_audit_event`)만 만든다(기존 표·데이터 그대로).
     1. **정리 cron**: 호스트 root crontab에 하루 한 번(예: 매일 04:30) `docker compose -f docker-compose.prod.oracle.yml exec -T api python manage.py prune_mcp_audit >> /var/log/sandcorp-flow-cron.log 2>&1`. `MCP_AUDIT_RETENTION_DAYS`(기본 180)보다 오래된 행을 지운다. 출력 `pruned N MCP audit event(s), M spent confirm token(s)`(뒤쪽은 #209의 만료 지난 2단계 토큰 소비 기록 — 마이그레이션 `mcp.0002`가 새 표 `mcp_confirm_use`만 만든다).
     2. **기록 확인**: claude.ai 커넥터로 Admin 계정이 `create_flow`(또는 `save_version`)를 한 번 부른 뒤 `list_audit_events`를 부르면 맨 위에 그 호출(`result_code` `ok`, 내 `user_sub`·`client_id`)이 보인다. `GET /api/tenant/audit-events/`(Admin 세션)도 같은 줄. Member 계정은 둘 다 거부(`admin_required`·403).
-    3. 기존 커넥터는 다시 연결할 필요가 없다(스코프·보호 리소스 메타데이터 그대로 — `flow.deploy`·`flow.admin`은 #210).
+    3. 기존 커넥터는 다시 연결할 필요가 없다(스코프·보호 리소스 메타데이터 그대로 — 스코프 4개는 17번, #210).
+17. [ ] **MCP 스코프 4개 + `deploy_version` 호환 전환(#210, 우산 #207)** — 순서가 있다. DB 마이그레이션 `mcp.0003`은 `mcp_audit_event`에 `legacy_scope`(bool, 기본 false) 칸만 더한다(기존 행·표 그대로).
+    1. **(끝남)** auth 리소스 7(`https://flow.sandcorp.co.kr/mcp`)에 `flow.deploy`(id 16)·`flow.admin`(id 17)을 등록하고 members에게 허용했다(`scopes list`에서 4개 모두 members=on).
+    2. **배포(이 PR 병합)**: `scopes_supported`가 4개로 늘고, `deploy_version`·새 도구 `rollback_flow`는 `flow.deploy`를 요구한다. 호환 기간이라 `flow.write`만 가진 옛 토큰도 통과하되 감사 로그 `legacy_scope=true`로 남고 응답에 `notice`(「커넥터를 다시 연결하면 새 권한을 받습니다」)가 붙는다. 다른 도구의 스코프는 그대로(`flow.read`/`flow.write`)다. 새로 연결한 커넥터가 4개를 요청한다.
+    3. **운영 확인(대장, claude.ai)**:
+        1. `curl -s https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource/mcp`의 `scopes_supported`가 4개.
+        2. **재연결 전 토큰(가능하면)**: 아직 안 끊은 기존 커넥터로 Admin 계정이 `deploy_version`(이미 배포 중인 번호를 다시 배포해도 된다)을 부르면 성공하고 응답에 `notice`가 있다.
+        3. claude.ai 커넥터를 끊고 다시 연결한다. 동의 화면/토큰의 스코프가 `flow.read flow.write flow.deploy flow.admin` 4개인지 본다. 같은 연결로 `deploy_version`을 부르면 `notice` 없이 성공한다(legacy 아님). step-up(403 `WWW-Authenticate scope="flow.deploy"` 뒤 다시 인가)을 claude.ai가 하는지도 이때 본다 — 안 해도 호환 분기가 있어 배포는 막히지 않는다.
+        4. `rollback_flow`: 배포 번호가 2 이상인 흐름에서 부르면 바로 앞 번호가 배포된다(확인 단계 없음). Member 계정은 `admin_required`.
+        5. `list_audit_events`(Admin)에서 위 호출이 보인다: ②는 `tool=deploy_version`·`legacy_scope=true`, ③은 `legacy_scope=false`, ④는 `tool=rollback_flow`. (#208에서 못 본 `list_audit_events` 조회 확인을 겸한다.)
+    4. **호환 분기 걷기(후속 티켓, 날짜는 대장 결정)**: `list_audit_events`/DB에서 `legacy_scope=true`가 더는 안 생기면 `#207` 표기가 붙은 곳(`registry.py` 호환 절·`Tool.legacy_scope`, 두 도구의 `legacy_scope=`, `protocol.py`, `McpAuditEvent.legacy_scope`, `tests/test_mcp_deploy_scopes.py`)을 지운다. 확인 쿼리: `SELECT count(*), max(created_at) FROM mcp_audit_event WHERE legacy_scope;`
 
 ### portfolio(sandcorp.co.kr)가 쓰는 Flow 주소(#39, #165)
 

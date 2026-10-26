@@ -29,6 +29,7 @@ class AuditEventOut(Schema):
     arguments: JSON
     result_code: str
     confirm_stage: str | None
+    legacy_scope: bool
 
 
 class AuditPageOut(Schema):

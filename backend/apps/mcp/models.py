@@ -30,6 +30,8 @@ class McpAuditEvent(models.Model):
     arguments = models.JSONField(default=dict)  # 길이 상한을 넘으면 {"_truncated": true, "preview": "…"}
     result_code = models.CharField(max_length=64, default=STARTED)  # ok / ToolError code / internal / started
     confirm_stage = models.CharField(max_length=16, null=True, blank=True, choices=STAGE_CHOICES)  # 2단계(T2 #209)
+    # #207 호환 기간: 옛 스코프(flow.write)로만 통과한 배포 호출. 이 표시가 더는 없으면 호환 분기를 지운다.
+    legacy_scope = models.BooleanField(default=False)
 
     class Meta:
         db_table = "mcp_audit_event"

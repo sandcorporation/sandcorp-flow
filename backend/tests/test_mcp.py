@@ -45,7 +45,7 @@ def test_mcp_metadata_names_the_mcp_resource_and_flow_scopes() -> None:
     assert response.json() == {
         "resource": MCP,
         "authorization_servers": [ISSUER],
-        "scopes_supported": ["flow.read", "flow.write"],
+        "scopes_supported": ["flow.read", "flow.write", "flow.deploy", "flow.admin"],
         "bearer_methods_supported": ["header"],
     }
 

@@ -14,6 +14,7 @@ export interface AuditEventOut {
   created_at: string;
   id: number;
   jti: string;
+  legacy_scope: boolean;
   result_code: string;
   tool: string;
   user_sub: string;
