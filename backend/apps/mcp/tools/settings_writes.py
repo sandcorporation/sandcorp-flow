@@ -16,7 +16,7 @@ from pydantic import ConfigDict, Field
 from apps.flows.schema import JSON
 from apps.mcp.access import TenantArgs
 from apps.mcp.registry import JSONObject, ToolContext, ToolError, register
-from apps.tenants.config_rules import topic_scope_error
+from apps.tenants.config_rules import hours_changes_error, topic_scope_error
 from apps.tenants.models import Tenant, TenantConfig
 from apps.tenants.permissions import FLOW_APPROVE, FLOW_PUBLIC_VIEW
 
@@ -63,6 +63,11 @@ def _apply(tenant: Tenant, changes: dict[str, object]) -> dict[str, JSON]:
     )
     if error:
         raise ToolError("invalid_settings", error)
+    hours_problem = hours_changes_error(
+        changes.get("hitl_timezone"), changes.get("hitl_schedule"), changes.get("hitl_holidays")
+    )
+    if hours_problem:
+        raise ToolError("invalid_settings", hours_problem)
     if diff:
         for field in diff:
             setattr(config, field, changes[field])
@@ -75,7 +80,7 @@ def _apply(tenant: Tenant, changes: dict[str, object]) -> dict[str, JSON]:
     "테넌트 설정 일부를 고친다(준 칸만 바뀜, 안 준 칸은 그대로). 칸: system_prompt·agent_display_name·brand_name·welcome_message·"
     "topic_scope_enabled·scope_description·scope_refusal_message·hitl_enabled·hitl_timezone·hitl_schedule·hitl_holidays·"
     "require_identity_verification. Provider·웹훅·slug·키·배포 승인·공개 보기는 이 도구로 못 고친다(invalid_arguments). "
-    "주제 범위를 켜려면 범위 설명이 있어야 한다(invalid_settings). 응답: {changed: {칸: {before, after}}}(같은 값은 빠짐).",
+    "주제 범위를 켜려면 범위 설명이 있어야 하고, 상담 시간 칸은 형식이 맞아야 한다(invalid_settings; 시간표는 {mon:{enabled,start:\"09:00\",end:\"18:00\"}}, 휴일은 \"YYYY-MM-DD\" 목록). 응답: {changed: {칸: {before, after}}}(같은 값은 빠짐).",
     UpdateSettingsArgs,
     scope="flow.write",
     permission=None,

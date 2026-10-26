@@ -14,6 +14,7 @@ import PricingSection from './PricingSection'
 import SecretsSection from './SecretsSection'
 import EmbedGuideCard from './EmbedGuideCard'
 import { useIsAdmin } from '../lib/useAgentRole'
+import { HttpError } from '../mutator'
 
 type DaySchedule = { enabled?: boolean; start?: string; end?: string }
 const WEEKDAYS: [string, string][] = [
@@ -144,7 +145,13 @@ export default function ConfigTab() {
       await updateTenantConfig(config)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
-    } catch { setSaveError('저장 실패 — Provider 연결 검증에 실패했을 수 있습니다(Base URL / API Key 확인)') }
+    } catch (e) {
+      // 서버가 400으로 이유를 주면(상담 시간 형식 등) 그대로 보여 준다. 그 밖에는 Provider 연결 안내.
+      const detail = e instanceof HttpError && e.status === 400 ? (e.body as { detail?: unknown } | undefined)?.detail : undefined
+      setSaveError(typeof detail === 'string' && detail
+        ? `저장 실패 — ${detail}`
+        : '저장 실패 — Provider 연결 검증에 실패했을 수 있습니다(Base URL / API Key 확인)')
+    }
   }
   const handleResetKey = async () => {
     if (!resetConfirm) { setResetConfirm(true); return }
