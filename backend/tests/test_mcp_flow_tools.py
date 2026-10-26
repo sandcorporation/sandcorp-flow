@@ -70,7 +70,7 @@ def new_flow(token: str, name: str = "상담", ops: list[dict] | None = None) ->
 @pytest.mark.django_db
 def test_admin_edits_saves_and_deploys(signer: Signer) -> None:
     admin()
-    token = mcp_token(signer)
+    token = mcp_token(signer, scope="flow.read flow.write flow.deploy")
     flow_id = new_flow(token, ops=SIMPLE_OPS)
 
     saved = ok(call(token, "save_version", {"flow_id": flow_id}))
@@ -106,7 +106,7 @@ def test_member_reads_but_every_write_tool_is_refused(signer: Signer) -> None:
     from apps.flows import services
 
     flow = services.create_flow(tenant.id, "상담")
-    token = mcp_token(signer)
+    token = mcp_token(signer, scope="flow.read flow.write flow.deploy")
 
     assert [f["id"] for f in ok(call(token, "list_flows"))["flows"]] == [str(flow.id)]
     assert ok(call(token, "get_flow", {"flow_id": str(flow.id)}))["name"] == "상담"
@@ -178,7 +178,7 @@ def test_unapplicable_op_is_a_tool_error_and_changes_nothing(signer: Signer) -> 
 @pytest.mark.django_db(transaction=True)
 def test_example_flow_built_by_patches_deploys_then_trimmed_runs(signer: Signer, fake_chat_llm) -> None:
     admin()
-    token = mcp_token(signer)
+    token = mcp_token(signer, scope="flow.read flow.write flow.deploy")
     example = json.loads(EXAMPLE.read_text())
 
     # ① 빈 흐름에서 패치만으로 예제 ①을 그린다 → 스키마는 통과, 버전 저장도 된다.
