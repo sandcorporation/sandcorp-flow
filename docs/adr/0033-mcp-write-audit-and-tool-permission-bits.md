@@ -31,7 +31,7 @@ MCP(claude.ai 커넥터)로 흐름 말고도 설정·지식·팀을 다루게 �
     |---|---|
     | `flow.read` | 읽기 19개 전부: `list_tenants`·`get_flow_schema`·`list_flows`·`get_flow`·`list_documents`·`search_knowledge`·`list_sessions`·`get_session`(Member), #211의 10개 `get_settings`·`list_members`·`list_secrets`·`list_allowed_domains`·`get_usage`·`get_session_trace`·`list_visitors`·`get_visitor_memory`(Member), `list_invites`(`agents.manage`)·`list_deploy_requests`(`flow.approve`), `list_audit_events`(`audit.read`) |
     | `flow.write` | `create_flow`·`update_flow`·`save_version`·`test_turn`·`archive_flow`(`flow.edit`), `restore_flow`(`flow.edit`, ○), `update_settings`(**Member도**), `add_document_url`·`refetch_document`(**Member도**, ○) |
-    | `flow.deploy` | `deploy_version`·`rollback_flow`(`flow.deploy`, 호환 기간에는 `flow.write`도 받음), `approve_deploy_request`·`reject_deploy_request`(`flow.approve`, ○) |
+    | `flow.deploy` | `deploy_version`·`rollback_flow`(`flow.deploy`; 호환 기간은 #220에서 끝남 — `flow.write`만으로는 403), `approve_deploy_request`·`reject_deploy_request`(`flow.approve`, ○) |
     | `flow.admin` | `set_deploy_approval`(`flow.approve`, ○)·`set_public_flow_view`(`flow.public_view`, ○), `change_member_role`·`deactivate_member`·`cancel_invite`(`agents.manage`, ○), `delete_document`·`rebuild_graph`·`delete_visitor_memory`(**Member도**, ○) |
 
     - **Member에게 열린 쓰기**는 `update_settings`·`add_document_url`·`refetch_document`·`delete_document`·`rebuild_graph`·`delete_visitor_memory` 여섯이다. 화면(HTTP)에서 Member가 이미 하던 일이라 권한을 넓히지 않았고(사용자 결정 3), 삭제·재빌드·기억 삭제는 MCP에서 2단계 확인만 더했다. 다만 스코프가 `flow.admin`이라 그 스코프를 받은 연결에서만 된다.

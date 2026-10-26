@@ -176,11 +176,11 @@ _Avoid_: 스코프로 역할 표현
 Flow API가 받는 sandcorp-auth 액세스 토큰(`aud` = Flow 리소스). 검증 규칙은 sandcorp-auth `docs/resource-server-token-validation.md`를 그대로 따른다. 관리 화면은 로그인 콜백에서 한 번 검증한 뒤 Flow 자기 세션(Access/Refresh)으로 돈다.
 
 **MCP Token**
-MCP 서버(`/mcp`)가 받는 Resource Token. `aud`가 API(`…/api`)와 다른 MCP 리소스(`…/mcp`)라 서로의 토큰은 통하지 않는다. 스코프는 4개(`flow.read`·`flow.write`·`flow.deploy`·`flow.admin`, 연결할 때 받는다)이고 **상한**일 뿐이다 — 무엇을 할 수 있는지는 Membership 역할이 정한다(도구마다 등록된 권한 비트: 흐름 편집·배포·승인·팀 관리는 Tenant Admin만, 설정 수정과 문서·방문자 기억 쓰기는 Member도). 스코프가 모자라면 커넥터를 다시 연결한다. 호환 기간에는 `deploy_version`·`rollback_flow`가 옛 스코프(`flow.write`)도 받는다(#220에서 제거). 대표 토큰도 멤버십이 있는 테넌트만 다룬다 — Operator 권한은 MCP에 없다. MCP는 Flow 세션을 만들지 않고 요청마다 토큰을 검증한다.
+MCP 서버(`/mcp`)가 받는 Resource Token. `aud`가 API(`…/api`)와 다른 MCP 리소스(`…/mcp`)라 서로의 토큰은 통하지 않는다. 스코프는 4개(`flow.read`·`flow.write`·`flow.deploy`·`flow.admin`, 연결할 때 받는다)이고 **상한**일 뿐이다 — 무엇을 할 수 있는지는 Membership 역할이 정한다(도구마다 등록된 권한 비트: 흐름 편집·배포·승인·팀 관리는 Tenant Admin만, 설정 수정과 문서·방문자 기억 쓰기는 Member도). 스코프가 모자라면 커넥터를 다시 연결한다. `deploy_version`·`rollback_flow`의 옛 스코프(`flow.write`) 호환 기간은 끝났다(#220) — 옛 연결은 403이고 재연결로 푼다. 대표 토큰도 멤버십이 있는 테넌트만 다룬다 — Operator 권한은 MCP에 없다. MCP는 Flow 세션을 만들지 않고 요청마다 토큰을 검증한다.
 _Avoid_: MCP 토큰으로 Operator 기능, 스코프로 역할 표현
 
 **MCP Audit Event**(감사 로그)
-MCP로 부른 쓰기 도구 한 번의 기록(시각·테넌트·사용자·토큰 `sub`·`client_id`·`jti`·도구·인자·결과 코드). 성공·거부·실패 모두 남고, 기록이 안 되면 그 도구는 실행되지 않는다. 읽기 도구는 남지 않는다. 테넌트 Admin만 읽는다(`audit.read`). 보존 180일(`MCP_AUDIT_RETENTION_DAYS`)이 지나면 지운다. 2단계 도구는 미리보기·확정 단계도 남는다(토큰 값은 가린다). 호환 스코프로 통과한 호출은 `legacy_scope`로 표시한다. 결과 기록만 실패하면 행이 `started`(결과 모름)로 남는다. ADR-0033.
+MCP로 부른 쓰기 도구 한 번의 기록(시각·테넌트·사용자·토큰 `sub`·`client_id`·`jti`·도구·인자·결과 코드). 성공·거부·실패 모두 남고, 기록이 안 되면 그 도구는 실행되지 않는다. 읽기 도구는 남지 않는다. 테넌트 Admin만 읽는다(`audit.read`). 보존 180일(`MCP_AUDIT_RETENTION_DAYS`)이 지나면 지운다. 2단계 도구는 미리보기·확정 단계도 남는다(토큰 값은 가린다). `legacy_scope` 칸은 호환 기간(끝남, #220)의 지난 기록용이라 이후 늘 false다. 결과 기록만 실패하면 행이 `started`(결과 모름)로 남는다. ADR-0033.
 _Avoid_: 이벤트(Event Store의 도메인 이벤트와 다르다), 접근 로그, 읽기 도구도 남는다고 말하기
 
 **2단계 확인(MCP)**

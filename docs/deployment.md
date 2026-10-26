@@ -308,9 +308,9 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     | 14 | 팀 도구 미리보기(확정하지 않는다) | `change_member_role`·`deactivate_member`·`cancel_invite`를 미리보기까지만. 자기 강등·자기 비활성화는 `warning`, 마지막 Admin은 `last_admin`, `cancel_invite` 응답에 토큰·링크 없음 | 새 대화에서 확인 |
     | 15 | 설정 화면 HITL 저장(#223) | 관리 화면 설정에서 상담 시간대를 잘못된 값(`Asia/Seoul2`)으로 저장 → 400 문구가 저장 실패로 보이고, 올바른 IANA 이름·시간표는 저장된다 | 화면에서 확인 |
 
-    - **호환 분기 걷기(#220)**: 5·6의 확인 뒤 `SELECT count(*), max(created_at) FROM mcp_audit_event WHERE legacy_scope;`에서 새 행이 더는 안 생기면 `#207` 표기가 붙은 곳(`registry.py` 호환 절·`Tool.legacy_scope`, 두 도구의 `legacy_scope=`, `protocol.py`, `McpAuditEvent.legacy_scope`, `tests/test_mcp_deploy_scopes.py`)을 지운다. 날짜는 대장이 정한다.
+    - **호환 분기 걷기(#220) — 끝남**: `registry.py` 호환 절·`Tool.legacy_scope`, 두 도구의 `legacy_scope=`, `protocol.py` 분기·`notice`를 지웠다. 이제 `flow.write`만 가진 옛 커넥터의 `deploy_version`·`rollback_flow`는 403(`scope="flow.deploy"`)이고 재연결로 푼다. 감사 표 `legacy_scope` 칸은 지난 기록 보존용으로 남기며 늘 false다(칸 삭제 마이그레이션 없음). 5번 행(legacy 성공)은 더는 재현되지 않는다.
     - **되돌리기**: 11·10에서 바꾼 값은 원래대로 되돌린다. 감사 행은 보존 180일 뒤 `prune_mcp_audit`가 지운다. `started`로 남은 행은 「결과 모름」이다(`MCP audit result write failed` 로그와 함께 본다).
-17. [ ] **MCP 스코프 전환 순서(#210, 참고)**: 위 16번의 4~6은 이 순서를 따른다 — (1) auth에 `flow.deploy`·`flow.admin` 등록 → (2) 배포로 `scopes_supported` 4개·`deploy_version` 호환 분기 → (3) 커넥터 재연결 → (4) `legacy_scope=true`가 안 생기면 분기 걷기(#220). 새 스코프 도구(`flow.admin` 도구·`approve/reject_deploy_request`)는 옛 연결에서 403 `insufficient_scope`이고 재연결로 풀린다.
+17. [ ] **MCP 스코프 전환 순서(#210, 참고)**: 위 16번의 4~6은 이 순서를 따른다 — (1) auth에 `flow.deploy`·`flow.admin` 등록 → (2) 배포로 `scopes_supported` 4개·`deploy_version` 호환 분기 → (3) 커넥터 재연결 → (4) 분기 걷기(#220, 끝남). 새 스코프 도구(`flow.admin` 도구·`approve/reject_deploy_request`)는 옛 연결에서 403 `insufficient_scope`이고 재연결로 풀린다.
 
 ### portfolio(sandcorp.co.kr)가 쓰는 Flow 주소(#39, #165)
 

@@ -200,7 +200,6 @@ async def save_version(ctx: ToolContext, args: SaveVersionArgs) -> JSONObject:
     "인자: flow_id, version. 실패: version_not_found.",
     DeployArgs,
     scope="flow.deploy",
-    legacy_scope="flow.write",  # #207 호환 기간
     permission=FLOW_DEPLOY,
     writes=True,
 )
@@ -272,7 +271,6 @@ async def archive_flow(ctx: ToolContext, args: FlowArgs) -> JSONObject:
     "배포 중인 버전이 없거나 앞선 버전이 없으면 version_not_found. 인자: flow_id.",
     FlowArgs,
     scope="flow.deploy",
-    legacy_scope="flow.write",  # #207 호환 기간
     permission=FLOW_DEPLOY,
     writes=True,
 )

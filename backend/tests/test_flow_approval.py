@@ -179,7 +179,7 @@ def test_mcp_deploy_version_follows_the_approval_option(signer: Signer) -> None:
     member_of(tenant, Membership.ROLE_ADMIN)
     flow = versioned(tenant)
     require_approval(tenant)
-    token = mcp_token(signer)
+    token = mcp_token(signer, scope="flow.read flow.write flow.deploy")
 
     result = ok(call(token, "deploy_version", {"flow_id": str(flow.id), "version": 1}))
 
