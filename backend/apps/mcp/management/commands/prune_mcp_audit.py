@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 
 from apps.mcp.audit import prune_audit_events
+from apps.mcp.confirm import prune_spent
 
 
 class Command(BaseCommand):
@@ -8,4 +9,5 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         deleted = prune_audit_events()
-        self.stdout.write(self.style.SUCCESS(f"pruned {deleted} MCP audit event(s)"))
+        spent = prune_spent()  # 만료 지난 2단계 확인 토큰 소비 기록(#209)
+        self.stdout.write(self.style.SUCCESS(f"pruned {deleted} MCP audit event(s), {spent} spent confirm token(s)"))

@@ -34,3 +34,16 @@ class McpAuditEvent(models.Model):
     class Meta:
         db_table = "mcp_audit_event"
         indexes = [models.Index(fields=["tenant", "-id"], name="mcp_audit_tenant_id_desc")]
+
+
+class McpConfirmUse(models.Model):
+    """쓴 2단계 확인 토큰(#209). jti가 기본 키라 같은 토큰을 두 번 넣으면 DB가 막는다 — 워커가 여럿이어도 한 번만.
+
+    토큰이 만료되면 이 행도 필요 없다(만료가 먼저 거부한다). `prune_mcp_audit`가 만료 지난 행을 지운다.
+    """
+
+    jti = models.CharField(max_length=64, primary_key=True)
+    expires_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = "mcp_confirm_use"
