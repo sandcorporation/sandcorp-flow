@@ -238,13 +238,13 @@ READ_TOOLS = {
 def test_existing_tools_keep_their_scopes_and_get_permission_bits() -> None:
     for name, (permission, _, _) in WRITE_HINTS.items():
         tool = registry.get_tool(name)
-        assert tool is not None and tool.writes and tool.scope == "flow.write", name
+        assert tool is not None and tool.writes and tool.scope == ("flow.deploy" if name == "deploy_version" else "flow.write"), name  # #210
         assert tool.permission == permission, name
     for name, permission in READ_TOOLS.items():
         tool = registry.get_tool(name)
         assert tool is not None and not tool.writes and tool.scope == "flow.read", name
         assert tool.permission == permission, name
-    assert registry.MCP_SCOPES == ["flow.read", "flow.write"]
+    assert registry.MCP_SCOPES == ["flow.read", "flow.write", "flow.deploy", "flow.admin"]
 
 
 @pytest.mark.django_db

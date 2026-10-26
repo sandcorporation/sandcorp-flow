@@ -33,7 +33,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -45,8 +45,18 @@ from apps.tenants.resource_token import AccessToken
 
 type JSONObject = dict[str, JSON]
 Scope = Literal["flow.read", "flow.write", "flow.deploy", "flow.admin"]
-# 보호 리소스 메타데이터가 알리는 스코프. `flow.deploy`·`flow.admin`은 auth 등록 뒤 T3(#210)에서 연다.
-MCP_SCOPES: list[str] = ["flow.read", "flow.write"]
+# 보호 리소스 메타데이터가 알리는 스코프(auth 리소스 7에 4개 모두 등록됨, #210).
+MCP_SCOPES: list[str] = ["flow.read", "flow.write", "flow.deploy", "flow.admin"]
+
+# ── #207 호환 기간: 배포 도구가 flow.deploy 대신 flow.write도 받는다. 지울 때: 이 절·Tool.legacy_scope·register 인자·
+#    두 도구의 legacy_scope=·protocol의 호출 두 곳·McpAuditEvent.legacy_scope(마이그레이션으로 칸 삭제)·시험 파일. ──
+LEGACY_SCOPE_NOTICE = "이 호출은 옛 권한(flow.write)으로 처리했습니다. 커넥터를 다시 연결하면 새 권한을 받습니다(flow.deploy)."
+
+
+def used_legacy_scope(tool: Tool, granted: Collection[str]) -> bool:
+    """`tool.scope`는 없고 호환용 `legacy_scope`만 있는 토큰이면 True."""
+    return tool.legacy_scope is not None and tool.scope not in granted and tool.legacy_scope in granted
+
 
 CONFIRM_FIELD = "confirm_token"
 DESCRIPTION_SUFFIX = "(2단계) 먼저 미리보기를 사용자에게 보이고 확인을 받은 뒤 confirm_token으로 다시 부른다."
@@ -91,6 +101,7 @@ class Tool:
     idempotent: bool
     handler: ToolHandler
     preview: ToolHandler | None = None  # 있으면 2단계 도구(#209)
+    legacy_scope: Scope | None = None  # #207 호환 기간: `scope`가 없어도 이 스코프가 있으면 통과(+ legacy 표시). 지울 때 이 칸째 지운다.
 
     @property
     def confirm(self) -> bool:
@@ -114,6 +125,7 @@ def register[A: BaseModel](
     destructive: bool | None = None,
     idempotent: bool = False,
     preview: Callable[[ToolContext, A], Awaitable[JSONObject]] | None = None,
+    legacy_scope: Scope | None = None,  # #207 — 배포 도구만. 호환 분기를 지울 때 인자째 지운다.
 ) -> Callable[[Callable[[ToolContext, A], Awaitable[JSONObject]]], Callable[[ToolContext, A], Awaitable[JSONObject]]]:
     """도구를 등록한다. 이름이 겹치면 import 때 `ValueError`.
 
@@ -165,7 +177,8 @@ def register[A: BaseModel](
             preview_handler = run_preview
 
         _TOOLS[name] = Tool(
-            name, description, model, scope, writes, permission, is_destructive, idempotent, handler, preview_handler
+            name, description, model, scope, writes, permission, is_destructive, idempotent, handler, preview_handler,
+            legacy_scope,
         )
         return fn
 

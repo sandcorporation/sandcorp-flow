@@ -199,7 +199,8 @@ async def save_version(ctx: ToolContext, args: SaveVersionArgs) -> JSONObject:
     "테넌트가 「배포에 승인 필요」를 켰으면 배포 대신 요청을 만들어 deployed=false, approval_required=true, request_id를 돌려준다. "
     "인자: flow_id, version. 실패: version_not_found.",
     DeployArgs,
-    scope="flow.write",
+    scope="flow.deploy",
+    legacy_scope="flow.write",  # #207 호환 기간
     permission=FLOW_DEPLOY,
     writes=True,
 )
@@ -263,3 +264,18 @@ async def test_turn(ctx: ToolContext, args: TestTurnArgs) -> JSONObject:
 async def archive_flow(ctx: ToolContext, args: FlowArgs) -> JSONObject:
     flow = await _service(lambda: services.archive_flow(_tenant_id(ctx), args.flow_id))
     return {"archived": True, "id": str(flow.id), "name": flow.name}
+
+
+@register(
+    "rollback_flow",
+    "배포 중 버전 바로 앞 번호의 버전을 다시 배포한다(긴급 복구라 확인 단계·배포 승인 규칙을 타지 않는다). "
+    "배포 중인 버전이 없거나 앞선 버전이 없으면 version_not_found. 인자: flow_id.",
+    FlowArgs,
+    scope="flow.deploy",
+    legacy_scope="flow.write",  # #207 호환 기간
+    permission=FLOW_DEPLOY,
+    writes=True,
+)
+async def rollback_flow(ctx: ToolContext, args: FlowArgs) -> JSONObject:
+    flow = await _service(lambda: services.rollback(_tenant_id(ctx), args.flow_id))
+    return {"deployed": True, **_flow_row(flow)}
