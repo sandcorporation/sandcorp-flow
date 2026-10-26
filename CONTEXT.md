@@ -176,16 +176,16 @@ _Avoid_: 스코프로 역할 표현
 Flow API가 받는 sandcorp-auth 액세스 토큰(`aud` = Flow 리소스). 검증 규칙은 sandcorp-auth `docs/resource-server-token-validation.md`를 그대로 따른다. 관리 화면은 로그인 콜백에서 한 번 검증한 뒤 Flow 자기 세션(Access/Refresh)으로 돈다.
 
 **MCP Token**
-MCP 서버(`/mcp`)가 받는 Resource Token. `aud`가 API(`…/api`)와 다른 MCP 리소스(`…/mcp`)라 서로의 토큰은 통하지 않는다. 스코프 `flow.read`·`flow.write`·`flow.deploy`·`flow.admin`은 상한이고, 무엇을 할 수 있는지는 Membership 역할이 정한다(도구마다 등록된 권한 비트 — 편집·배포는 Tenant Admin만). 대표 토큰도 멤버십이 있는 테넌트만 다룬다 — Operator 권한은 MCP에 없다. MCP는 Flow 세션을 만들지 않고 요청마다 토큰을 검증한다.
+MCP 서버(`/mcp`)가 받는 Resource Token. `aud`가 API(`…/api`)와 다른 MCP 리소스(`…/mcp`)라 서로의 토큰은 통하지 않는다. 스코프는 4개(`flow.read`·`flow.write`·`flow.deploy`·`flow.admin`, 연결할 때 받는다)이고 **상한**일 뿐이다 — 무엇을 할 수 있는지는 Membership 역할이 정한다(도구마다 등록된 권한 비트: 흐름 편집·배포·승인·팀 관리는 Tenant Admin만, 설정 수정과 문서·방문자 기억 쓰기는 Member도). 스코프가 모자라면 커넥터를 다시 연결한다. 호환 기간에는 `deploy_version`·`rollback_flow`가 옛 스코프(`flow.write`)도 받는다(#220에서 제거). 대표 토큰도 멤버십이 있는 테넌트만 다룬다 — Operator 권한은 MCP에 없다. MCP는 Flow 세션을 만들지 않고 요청마다 토큰을 검증한다.
 _Avoid_: MCP 토큰으로 Operator 기능, 스코프로 역할 표현
 
-**MCP Audit Event**
-MCP로 부른 쓰기 도구 한 번의 기록(시각·테넌트·사용자·토큰 `sub`·`client_id`·`jti`·도구·인자·결과 코드). 성공·거부·실패 모두 남고, 기록이 안 되면 그 도구는 실행되지 않는다. 읽기 도구는 남지 않는다. 테넌트 Admin만 읽는다(`audit.read`). 보존 기간이 지나면 지운다. 2단계 도구는 미리보기·확정 단계도 남는다.
+**MCP Audit Event**(감사 로그)
+MCP로 부른 쓰기 도구 한 번의 기록(시각·테넌트·사용자·토큰 `sub`·`client_id`·`jti`·도구·인자·결과 코드). 성공·거부·실패 모두 남고, 기록이 안 되면 그 도구는 실행되지 않는다. 읽기 도구는 남지 않는다. 테넌트 Admin만 읽는다(`audit.read`). 보존 180일(`MCP_AUDIT_RETENTION_DAYS`)이 지나면 지운다. 2단계 도구는 미리보기·확정 단계도 남는다(토큰 값은 가린다). 호환 스코프로 통과한 호출은 `legacy_scope`로 표시한다. 결과 기록만 실패하면 행이 `started`(결과 모름)로 남는다. ADR-0033.
+_Avoid_: 이벤트(Event Store의 도메인 이벤트와 다르다), 접근 로그, 읽기 도구도 남는다고 말하기
 
 **2단계 확인(MCP)**
-되돌리기 어려운 MCP 쓰기 도구의 호출 규약. 처음 부르면 실행하지 않고 미리보기와 `confirm_token`을 돌려주고, 같은 인자에 그 토큰을 실어 다시 부르면 실행한다. 토큰은 그 도구·테넌트·사용자·인자에만, 5분 동안, 한 번만 통한다. 모델이 미리보기를 사용자에게 보이게 유도할 뿐 사람의 확인을 강제하지 않는다 — 사람 쪽 관문은 클라이언트의 도구 승인 화면이다.
+되돌리기 어려운 MCP 쓰기 도구의 호출 규약. 처음 부르면 실행하지 않고 미리보기와 `confirm_token`을 돌려주고, 같은 인자에 그 토큰을 실어 다시 부르면 실행한다. 토큰은 그 도구·테넌트·사용자·인자에만, 5분 동안, 한 번만 통한다. 미리보기도 스코프·권한 검사를 지난 뒤에만 나온다. 비밀·Provider·웹훅·초대 만들기는 MCP 도구 자체가 없다. 모델이 미리보기를 사용자에게 보이게 유도할 뿐 사람의 확인을 강제하지 않는다 — 사람 쪽 관문은 클라이언트의 도구 승인 화면이다.
 _Avoid_: 2단계로 사람 승인을 보장한다고 말하기
-_Avoid_: 이벤트(Event Store의 도메인 이벤트와 다르다), 접근 로그
 
 ## Flow
 
