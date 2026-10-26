@@ -120,7 +120,8 @@ export default function FlowEditorPage() {
         const body = err instanceof HttpError ? (err.body as { detail?: string } | undefined) : undefined
         pending.current -= 1
         await load().catch(() => {})
-        setSave({ state: 'failed', message: `저장하지 못했습니다${body?.detail ? `: ${body.detail}` : '.'} 서버의 초안으로 다시 맞췄습니다.` })
+        const kept = backend.keepsEditsOnFailure?.() ?? false // 세션 전 첫 저장 거절 — 고친 내용은 화면에 그대로 있다(#196)
+        setSave({ state: 'failed', message: `저장하지 못했습니다${body?.detail ? `: ${body.detail}` : '.'} ${kept ? '고친 내용은 화면에 남아 있고, 다음에 고칠 때 다시 저장해 봅니다.' : '서버의 초안으로 다시 맞췄습니다.'}` })
       }
     })
   }, [id, load, readOnly, backend])
@@ -213,7 +214,7 @@ export default function FlowEditorPage() {
           <>
             <span className="hmi-label flex items-center gap-1.5" role="status">
               <span className={`lamp ${save.state === 'saving' ? 'lamp-run' : save.state === 'failed' ? 'lamp-alarm' : 'lamp-ok'}`} />
-              {save.state === 'saving' ? '저장 중' : save.state === 'failed' ? '저장 실패' : '초안 저장됨'}
+              {save.state === 'saving' ? '저장 중' : save.state === 'failed' ? '저장 실패' : backend.savedLabel?.() ?? '초안 저장됨'}
             </span>
             <span className="hmi-label">{errors.length === 0 ? '검증 통과' : `검증 오류 ${errors.length}건`}</span>
           </>

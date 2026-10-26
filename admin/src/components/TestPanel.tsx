@@ -51,7 +51,9 @@ export function useTestSession(flowId: string, beforeSend: () => Promise<void>) 
 
   const patchLast = (f: (t: TestTurn) => TestTurn) => setTurns((ts) => ts.map((t, i) => (i === ts.length - 1 ? f(t) : t)))
 
-  const send = useCallback(async (message: string) => {
+  /** 턴을 보낸다. 보내지 못했으면(저장·세션 생성 거절 포함) false — 입력창이 쓴 글을 되살린다. */
+  const send = useCallback(async (message: string): Promise<boolean> => {
+    let sent = true
     setBusy(true)
     const n = nextN.current++
     setTurns((ts) => [...ts, blank(n, message)])
@@ -79,14 +81,18 @@ export function useTestSession(flowId: string, beforeSend: () => Promise<void>) 
         patchLast((t) => ({ ...t, failure: why ? '' : notRunMessage(d.errors, d.note, trial) }))
       }
     } catch (err) {
+      sent = false
       const status = err instanceof HttpError ? err.status : 0
-      const failure = status === 403 ? '시험 대화를 돌릴 권한이 없습니다. 관리자에게 요청하세요.'
+      const detail = err instanceof HttpError ? (err.body as { detail?: string } | undefined)?.detail : undefined
+      const failure = status === 429 && detail ? `저장하지 못했습니다: ${detail} 쓴 글은 입력창에 남겨 뒀어요.`
+        : status === 403 ? '시험 대화를 돌릴 권한이 없습니다. 관리자에게 요청하세요.'
         : status === 404 ? '이 흐름을 찾지 못했습니다.' : '시험 대화를 보내지 못했습니다. 잠시 뒤 다시 시도하세요.'
       patchLast((t) => ({ ...t, failure }))
     } finally {
       patchLast((t) => ({ ...t, pending: false }))
       setBusy(false)
     }
+    return sent
   }, [flowId, beforeSend, backend])
 
   const reset = useCallback(() => { sessionRef.current = null; if (backend.restoreTraces) remember(flowId, null); nextN.current = 1; setTurns([]); setRefusal(null) }, [flowId, backend])
@@ -94,7 +100,7 @@ export function useTestSession(flowId: string, beforeSend: () => Promise<void>) 
 }
 
 export function TestChat({ turns, busy, send, reset, readOnly, refusal }: {
-  turns: TestTurn[]; busy: boolean; send: (m: string) => void; reset: () => void; readOnly: boolean; refusal?: TryRefusal | null
+  turns: TestTurn[]; busy: boolean; send: (m: string) => void | Promise<boolean>; reset: () => void; readOnly: boolean; refusal?: TryRefusal | null
 }) {
   const closed = refusal?.closed === true // 세션 턴을 다 쓴 뒤엔 더 보내지 않는다
   const [text, setText] = useState('')
@@ -102,7 +108,7 @@ export function TestChat({ turns, busy, send, reset, readOnly, refusal }: {
     const m = text.trim()
     if (!m || busy || readOnly || closed) return
     setText('')
-    send(m)
+    void Promise.resolve(send(m)).then((sent) => { if (sent === false) setText((cur) => cur || m) }) // 못 보냈으면 쓴 글을 돌려 둔다
   }
   return (
     <section className="space-y-2" aria-label="시험 대화">

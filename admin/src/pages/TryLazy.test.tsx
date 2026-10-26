@@ -97,16 +97,18 @@ describe('방문 즉시 편집기 — 진입은 아무것도 만들지 않는다
 })
 
 describe('방문 즉시 편집기 — 첫 쓰기에 세션', () => {
-  it('첫 노드 설정 변경이 세션을 한 번 만들고 그 연산을 새 사본 초안에 PATCH 한다', async () => {
+  it('첫 노드 설정 변경이 세션을 한 번 만들고, 고친 지역 그래프를 그 POST 에 실어 보낸다(연산 PATCH 없음)', async () => {
     const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
     renderAt('/try?template=home')
+    expect(await screen.findByText('첫 저장 때 체험이 시작돼요')).toBeInTheDocument() // 세션 전 머리줄 — 「초안 저장됨」이 아니다
+    expect(screen.queryByText('초안 저장됨')).toBeNull()
     await rename('답변', '새 답변')
-    await waitFor(() => expect(fake.patches()).toHaveLength(1))
+    await waitFor(() => expect(posts(fake)).toHaveLength(1))
     expect(posts(fake)).toHaveLength(1)
-    expect(posts(fake)[0].body).toEqual({ template: 'sandcorp_home' })
-    const patch = fake.calls.find((c) => c.method === 'PATCH')!
-    expect(patch.path).toMatch(/\/api\/try\/flows\/f1\/draft\/$/)
-    expect(patch.body.ops).toEqual([{ op: 'upsert_node', id: 'ai1', name: '새 답변' }])
+    const body = posts(fake)[0].body as { template: string; graph: FlowGraph }
+    expect(body.template).toBe('sandcorp_home')
+    expect(body.graph.nodes.find((n) => n.id === 'ai1')!.name).toBe('새 답변')
+    expect(fake.patches()).toHaveLength(0)
     expect(await screen.findByText('초안 저장됨')).toBeInTheDocument()
     expect(await screen.findByText(/남은 대화 20턴/)).toBeInTheDocument()
   })
@@ -121,9 +123,10 @@ describe('방문 즉시 편집기 — 첫 쓰기에 세션', () => {
     await rename('시작', '둘째')
     expect(screen.getByText('저장 중')).toBeInTheDocument()
     release()
-    await waitFor(() => expect(fake.patches()).toHaveLength(2))
+    await waitFor(() => expect(fake.patches()).toHaveLength(1))
     expect(posts(fake)).toHaveLength(1)
-    expect(fake.patches()).toEqual([[{ op: 'upsert_node', id: 'ai1', name: '첫째' }], [{ op: 'upsert_node', id: 'start', name: '둘째' }]])
+    expect((posts(fake)[0].body.graph as FlowGraph).nodes.find((n) => n.id === 'ai1')!.name).toBe('첫째')
+    expect(fake.patches()).toEqual([[{ op: 'upsert_node', id: 'start', name: '둘째' }]]) // POST 가 못 실은 연산만 뒤따른다
     expect(await screen.findByText('초안 저장됨')).toBeInTheDocument()
     expect(screen.getAllByText('첫째').length).toBeGreaterThan(0)
     expect(screen.getAllByText('둘째').length).toBeGreaterThan(0)
@@ -147,11 +150,71 @@ describe('방문 즉시 편집기 — 첫 쓰기에 세션', () => {
     const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null } })
     const first = renderAt('/try?template=home')
     await rename('답변', '새 답변')
-    await waitFor(() => expect(fake.patches()).toHaveLength(1))
+    await waitFor(() => expect(posts(fake)).toHaveLength(1))
+    await screen.findByText('초안 저장됨')
     first.unmount()
     renderAt('/try?template=home')
     await waitFor(() => expect(fake.calls.filter((c) => c.method === 'GET' && c.path.endsWith('/api/try/flows/f1/'))).toHaveLength(1))
     expect(posts(fake)).toHaveLength(1)
+  })
+})
+
+describe('방문 즉시 편집기 — 세션을 만드는 동안·직후 이어 친 입력은 유실되지 않는다(#196, 운영 관찰)', () => {
+  it('이름 칸: 첫 글자로 생성이 시작된 뒤 이어 친 글자가 입력칸·노드 제목·저장값에 모두 남는다', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null, startGate: () => gate } })
+    renderAt('/try?template=home')
+    fireEvent.click((await screen.findAllByText('답변')).map((el) => el.closest('[data-node-id]')).find(Boolean)!)
+    const name = await within(await screen.findByRole('complementary', { name: '노드 설정' })).findByLabelText('이름')
+    await userEvent.clear(name)
+    await userEvent.type(name, '가')
+    fireEvent.blur(name) // 첫 쓰기 — 세션 생성 시작(응답은 붙잡힌 상태)
+    await waitFor(() => expect(posts(fake)).toHaveLength(1))
+    await userEvent.type(name, '나다') // 생성 중 계속 타이핑
+    release()
+    await waitFor(() => expect(screen.getByText('저장 중')).toBeInTheDocument())
+    await userEvent.type(name, '라') // 생성 직후에도
+    fireEvent.blur(name)
+    await waitFor(() => expect(screen.getByText('초안 저장됨')).toBeInTheDocument())
+    expect(name).toHaveValue('가나다라')
+    expect(screen.getAllByText('가나다라').length).toBeGreaterThan(1) // 입력칸 밖 — 노드 카드·패널 제목
+    const patches = fake.patches(); const last = patches[patches.length - 1] ?? []
+    const sent = (posts(fake)[0].body.graph as FlowGraph).nodes.find((n) => n.id === 'ai1')!.name
+    expect(sent === '가나다라' || JSON.stringify(last).includes('가나다라')).toBe(true)
+  })
+})
+
+describe('방문 즉시 편집기 — 첫 저장 거절(#196)', () => {
+  it('첫 쓰기가 429 면 사유를 보이고 고친 화면은 되돌아가지 않는다 — 다음 쓰기는 지금까지의 그래프로 다시 만든다', async () => {
+    let status = 429
+    const fake = fakeFlowsApi({ graph: GRAPH, try: { templates: TEMPLATES, session: null, get startStatus() { return status } } })
+    renderAt('/try?template=home')
+    await rename('답변', '새 답변')
+    const alert = await screen.findByText(/저장하지 못했습니다: 오늘 이 네트워크에서/)
+    expect(alert.textContent).not.toContain('서버의 초안으로 다시 맞췄습니다')
+    expect(screen.getAllByText('새 답변').length).toBeGreaterThan(0) // 화면은 되돌아가지 않았다
+    expect(fake.patches()).toHaveLength(0)
+
+    status = 201
+    await rename('시작', '둘째')
+    await waitFor(() => expect(posts(fake)).toHaveLength(2))
+    const sent = posts(fake)[1].body.graph as FlowGraph
+    expect(sent.nodes.map((n) => n.name)).toEqual(['둘째', '새 답변']) // 첫째 편집도 같이 — 연산 재생이 아니다
+    expect(fake.patches()).toHaveLength(0)
+    expect(await screen.findByText('초안 저장됨')).toBeInTheDocument()
+    expect(screen.queryByText(/저장하지 못했습니다/)).toBeNull()
+  })
+
+  it('시험 대화가 429 로 거절되면 사유와 보낸 말이 남고 입력창에 글이 돌아온다', async () => {
+    fakeFlowsApi({ graph: GRAPH, testTurns: [RAN], try: { templates: TEMPLATES, session: null, startStatus: 429 } })
+    renderAt('/try?template=home')
+    await userEvent.click(await within(await screen.findByRole('complementary', { name: '노드 설정' })).findByRole('tab', { name: '시험 대화' }))
+    await userEvent.type(await screen.findByLabelText('시험 메시지'), '안녕하세요 질문')
+    await userEvent.click(screen.getByRole('button', { name: '보내기' }))
+    expect(await screen.findByText(/저장하지 못했습니다: 오늘 이 네트워크에서/)).toBeInTheDocument()
+    expect(screen.getAllByText('안녕하세요 질문').length).toBeGreaterThan(0) // 보낸 말풍선
+    await waitFor(() => expect(screen.getByLabelText('시험 메시지')).toHaveValue('안녕하세요 질문'))
   })
 })
 
