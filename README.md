@@ -76,7 +76,7 @@ local_search ─▶ call_llm ──(context_sufficient=False)──▶ source_se
 ```
 
 - **Local Search** — Entity 중심 근거. 질의로 resolved Entity를 찾고 그 이웃 관계를 구조화 근거로 모읍니다([ADR-0010](./docs/adr/0010-entity-resolution-mention-entity-context-equivalence.md)).
-- **원문 폴백(source_search)** — LLM이 "제공된 근거로 답할 수 없다"(`context_sufficient=False`)고 표시하면, 질의 임베딩으로 최근접 **Text Unit 원문**을 `vector_search`해 근거에 보강하고 한 번 더 호출합니다(top_k 캡). 추출이 버린 스펙·수치·표를 원문으로 회복합니다([ADR-0016](./docs/adr/0016-remove-global-search-keep-entity-resolution.md)). 그래프로 답한 경우엔 호출되지 않아 토큰을 통제합니다.
+- **원문 폴백(source_search)** — LLM이 "제공된 근거로 답할 수 없다"(`context_sufficient=False`)고 표시하면, 질의 임베딩으로 최근접 **Text Unit 원문**을 `vector_search`해 근거에 보강하고 한 번 더 호출합니다(top_k 캡). 원문에서 **새로 보탤 것을 못 찾으면 다시 묻지 않고** 첫 답을 냅니다 — 프롬프트가 같아 같은 요청을 두 번 보내는 낭비였습니다(#230). 추출이 버린 스펙·수치·표를 원문으로 회복합니다([ADR-0016](./docs/adr/0016-remove-global-search-keep-entity-resolution.md)). 그래프로 답한 경우엔 호출되지 않아 토큰을 통제합니다.
 - **Global Search는 제거됨** — 커뮤니티 요약이 이름-only로 공허하고 지원 봇 질의는 대부분 특정형이라, local+원문 폴백으로 대체했습니다(ADR-0016).
 
 ### 2.4 엔티티 의미 검색 (다국어 하이브리드)
