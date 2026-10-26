@@ -38,6 +38,8 @@ def _clip(text: str | None) -> str | None:
     "다음 쪽이 있으면 next_cursor가 문자열, 없으면 null.",
     ListDocumentsArgs,
     scope="flow.read",
+    permission=None,
+    idempotent=True,
 )
 async def list_documents(ctx: ToolContext, args: ListDocumentsArgs) -> JSONObject:
     tenant_id = ctx.require_membership().tenant.id
@@ -73,6 +75,8 @@ async def list_documents(ctx: ToolContext, args: ListDocumentsArgs) -> JSONObjec
     "인자: query, top_k?(기본 5, 최대 20). 맞는 것이 없으면 entities가 빈 목록.",
     SearchKnowledgeArgs,
     scope="flow.read",
+    permission=None,
+    idempotent=True,
 )
 async def search_knowledge(ctx: ToolContext, args: SearchKnowledgeArgs) -> JSONObject:
     tenant_id = ctx.require_membership().tenant.id

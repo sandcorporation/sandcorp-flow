@@ -66,6 +66,8 @@ def flow_schema() -> JSONObject:
     "흐름을 만들거나 고치기 전에 한 번 읽는다. 인자 없음.",
     NoArgs,
     scope="flow.read",
+    permission=None,
+    idempotent=True,
 )
 async def get_flow_schema(ctx: ToolContext, args: NoArgs) -> JSONObject:
     return flow_schema()

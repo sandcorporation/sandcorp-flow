@@ -407,4 +407,4 @@ def test_registry_rejects_duplicate_names() -> None:
         return {}
 
     with pytest.raises(ValueError):
-        registry.register("list_tenants", "중복", _Args, scope="flow.read")(noop)
+        registry.register("list_tenants", "중복", _Args, scope="flow.read", permission=None)(noop)

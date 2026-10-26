@@ -13,6 +13,7 @@ from apps.flows.services import FlowServiceError
 from apps.usage.api import tenant_usage_router, operator_usage_router
 from apps.tenants.try_api import try_router
 from apps.flows.public_api import public_router
+from apps.mcp.api import audit_router
 
 api = NinjaAPI(title="Sandcorp Flow API", version="1.0.0")
 
@@ -48,6 +49,7 @@ api.add_router("/tenant/visitors", memory_router)
 api.add_router("/tenant/sessions", session_router)
 api.add_router("/tenant/escalations", escalation_router)
 api.add_router("/tenant/usage", tenant_usage_router)
+api.add_router("/tenant/audit-events", audit_router)  # MCP 쓰기 감사 로그(#208)
 api.add_router("/operator/usage", operator_usage_router)
 api.add_router("/try", try_router)  # 공개(인증 없음) — 세션 쿠키로 자기 체험 테넌트만(#135)
 api.add_router("/public", public_router)  # 공개(인증 없음) — 공개 흐름 보기 읽기 전용(#39)

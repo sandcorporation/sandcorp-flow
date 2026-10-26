@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     "apps.events",
     "apps.usage",
     "apps.flows",
+    "apps.mcp",
 ]
 
 MIDDLEWARE = [
@@ -199,3 +200,6 @@ MEDIA_URL = "/media/"
 
 # 스캔 PDF의 vision OCR 비용 통제 — 한 문서에서 OCR할 최대 페이지 수(초과분은 생략).
 OCR_MAX_PAGES = int(os.environ.get("OCR_MAX_PAGES", "30"))
+
+# MCP 쓰기 감사 로그(#208) 보존 일수 — `prune_mcp_audit`(호스트 cron, 하루 한 번)가 이보다 오래된 행을 지운다.
+MCP_AUDIT_RETENTION_DAYS = int(os.environ.get("MCP_AUDIT_RETENTION_DAYS", "180"))

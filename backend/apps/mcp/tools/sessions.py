@@ -50,6 +50,8 @@ def _aware(value: datetime) -> datetime:
     "인자: since?(기본 7일 전)·until?·status?(all|escalated|active)·limit?·cursor?. 다음 쪽이 있으면 next_cursor.",
     ListSessionsArgs,
     scope="flow.read",
+    permission=None,
+    idempotent=True,
 )
 async def list_sessions(ctx: ToolContext, args: ListSessionsArgs) -> JSONObject:
     tenant_id = ctx.require_membership().tenant.id
@@ -85,6 +87,8 @@ async def list_sessions(ctx: ToolContext, args: ListSessionsArgs) -> JSONObject:
     "인자: session_id, limit?, cursor?. 실패: session_not_found(없거나 남의 테넌트·시험 세션).",
     GetSessionArgs,
     scope="flow.read",
+    permission=None,
+    idempotent=True,
 )
 async def get_session(ctx: ToolContext, args: GetSessionArgs) -> JSONObject:
     tenant_id = ctx.require_membership().tenant.id

@@ -32,6 +32,118 @@
         "title": "AdminInviteOut",
         "type": "object"
       },
+      "AuditEventOut": {
+        "properties": {
+          "arguments": {
+            "$ref": "#/components/schemas/JSON"
+          },
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "confirm_stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm Stage"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "jti": {
+            "title": "Jti",
+            "type": "string"
+          },
+          "result_code": {
+            "title": "Result Code",
+            "type": "string"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          },
+          "user_sub": {
+            "title": "User Sub",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "tool",
+          "user_sub",
+          "client_id",
+          "jti",
+          "arguments",
+          "result_code",
+          "confirm_stage"
+        ],
+        "title": "AuditEventOut",
+        "type": "object"
+      },
+      "AuditPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEventOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AuditPageOut",
+        "type": "object"
+      },
+      "AuditPageQuery": {
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "title": "AuditPageQuery",
+        "type": "object"
+      },
       "ChunkOut": {
         "properties": {
           "chunk_index": {
@@ -3721,6 +3833,62 @@
         "summary": "Delete Domain",
         "tags": [
           "tenant-allowed-domains"
+        ]
+      }
+    },
+    "/api/tenant/audit-events/": {
+      "get": {
+        "operationId": "apps_mcp_api_audit_events_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPageOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Audit Events List",
+        "tags": [
+          "audit"
         ]
       }
     },

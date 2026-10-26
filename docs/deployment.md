@@ -229,6 +229,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     | `PLATFORM_LLM_MODEL` | `gpt-4o-mini` | 체험 테넌트의 챗·자료 정리 모델. |
     | `PLATFORM_EMBED_MODEL` | `text-embedding-3-small` | 체험 테넌트의 임베딩. 본래 1536차원이지만 OpenAI `dimensions` 인자로 테넌트 `embed_dim`(기본 1024)에 맞춰 보낸다 — 인덱스 차원·「Provider 바꾸면 재임베딩」 규칙이 그대로다. |
     | `TRIAL_TURNS` | `200` | 새 조직이 받는 체험 턴(1턴 = 방문자 메시지 하나). 0009 마이그레이션 때 기존 조직도 이 값을 받는다. |
+    | `MCP_AUDIT_RETENTION_DAYS` | `180` | MCP 쓰기 감사 로그 보존 일수(#208). 지나면 `prune_mcp_audit`(하루 한 번 cron)가 지운다. |
     | `TRY_TENANT_TTL_HOURS` | `24` | Try Session 체험 테넌트의 수명(ADR-0030). 첫 쓰기(세션 생성)부터 잰다(ADR-0032). 지나면 `prune_try_tenants`가 테넌트째 지운다. |
     | `TRY_SESSION_TURNS` | `20` | Try Session(체험 테넌트)당 시험 대화 턴(#135). 체험 테넌트의 `trial_turns_remaining`으로 두고 `admit_turn`이 깎는다(dev 폴백 켜짐이면 세지 않음). |
     | `TRY_SESSIONS_PER_IP_PER_DAY` | `3` | IP당 하루 체험 세션 수(첫 쓰기 때 센다, ADR-0032 — 진입·새로고침은 안 센다). IP는 `TRUSTED_PROXY_COUNT` 규칙(XFF 끝에서 N번째)으로 정하고 HMAC으로만 저장. |
@@ -285,6 +286,10 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     5. portfolio 홈 iframe(`/try?embed=1&template=home`): 곧바로 편집기. 929px 폭에서 캔버스가 위, 노드 목록은 아래. 편집 전 「이 흐름으로 가입」 → 새 탭이 `/admin-ui/try/signup`을 거쳐 sandcorp 로그인으로, iframe에서 `GET /session/`이 새 탭과 같은 세션.
     6. 오늘 이 네트워크의 체험 3개를 다 쓴 뒤 `/try?template=home`: 편집기는 열리고, 설정을 바꾸면 「저장하지 못했습니다: 오늘 이 네트워크에서…」인데 화면 값은 유지된다.
     7. 두 탭에서 같은 `/try?template=home`을 열어 한쪽을 먼저 저장 → 다른 쪽에서 저장해도 두 번째 체험이 안 생기고 이 탭 편집이 반영된다. 쿠키를 지우고 저장하면 첫 화면으로 튕기지 않고 안내가 뜬다.
+16. [ ] **MCP 쓰기 감사 로그(#208)** — 배포 직후 한 번. 마이그레이션 `mcp.0001`은 새 표(`mcp_audit_event`)만 만든다(기존 표·데이터 그대로).
+    1. **정리 cron**: 호스트 root crontab에 하루 한 번(예: 매일 04:30) `docker compose -f docker-compose.prod.oracle.yml exec -T api python manage.py prune_mcp_audit >> /var/log/sandcorp-flow-cron.log 2>&1`. `MCP_AUDIT_RETENTION_DAYS`(기본 180)보다 오래된 행을 지운다. 출력 `pruned N MCP audit event(s)`.
+    2. **기록 확인**: claude.ai 커넥터로 Admin 계정이 `create_flow`(또는 `save_version`)를 한 번 부른 뒤 `list_audit_events`를 부르면 맨 위에 그 호출(`result_code` `ok`, 내 `user_sub`·`client_id`)이 보인다. `GET /api/tenant/audit-events/`(Admin 세션)도 같은 줄. Member 계정은 둘 다 거부(`admin_required`·403).
+    3. 기존 커넥터는 다시 연결할 필요가 없다(스코프·보호 리소스 메타데이터 그대로 — `flow.deploy`·`flow.admin`은 #210).
 
 ### portfolio(sandcorp.co.kr)가 쓰는 Flow 주소(#39, #165)
 

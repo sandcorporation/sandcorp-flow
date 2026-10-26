@@ -3,7 +3,8 @@
 - `caller_memberships(token, issuer)` : 토큰 `(iss, sub)` → User → 활성 멤버십(멤버십·테넌트 모두 활성).
                                         대표(acct 없음)도 같다 — Operator 권한은 MCP에 없다.
 - `resolve_membership(memberships, slug)` : `tenant` 인자(slug 또는 tenant id) 해석. 하나면 생략 가능, 없거나 남의 테넌트면 `ToolError`.
-- `can_edit(membership)` / `require_editor(membership)` : Admin만 편집·배포.
+- `can_edit(membership)` : 흐름 편집 비트(FLOW_EDIT)가 있나 — `list_tenants`의 표시용.
+- `require_tool_permission(membership, permission)` : 도구에 등록된 권한 비트를 `has_permission` 한 곳에서 본다(#208).
 """
 
 from __future__ import annotations
@@ -57,6 +58,11 @@ def can_edit(membership: Membership) -> bool:
     return has_permission(membership, FLOW_EDIT)  # 판정은 권한 비트 한 곳(HTTP 흐름 API와 같은 규칙)
 
 
-def require_editor(membership: Membership) -> None:
-    if not can_edit(membership):
-        raise ToolError("admin_required", "편집·배포는 테넌트 Admin만 할 수 있습니다. 이 테넌트에서 내 역할은 Member입니다.")
+def require_tool_permission(membership: Membership, permission: str | None) -> None:
+    """비트가 없으면 거부. 지금 Member에게 없는 비트는 모두 Admin 전용(ADMIN_ONLY)이라 코드는 `admin_required`로 둔다
+    (#74부터 클라이언트·시험이 읽는 코드). 멤버별 비트 세분화가 오면 이름을 다시 본다."""
+    if permission is not None and not has_permission(membership, permission):
+        raise ToolError(
+            "admin_required",
+            f"이 도구는 테넌트 Admin만 쓸 수 있습니다(권한 {permission}). 이 테넌트에서 내 역할은 {membership.role}입니다.",
+        )
