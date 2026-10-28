@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import Markdown from './Markdown'
+import FlowFilter from './FlowFilter'
 
 const STATUS_LABEL: Record<string, string> = { pending: '대기 중', claimed: '진행 중', resolved: '완료' }
 const STATUS_VARIANT: Record<string, 'destructive' | 'default' | 'success'> = { pending: 'destructive', claimed: 'default', resolved: 'success' }
@@ -86,6 +87,7 @@ function EscalationCard({ esc, onUpdate, incomingMessage }: { esc: EscalationOut
           <span className="text-sm font-semibold">세션 {esc.session_id.slice(0, 8)}…</span>
           <Badge variant={STATUS_VARIANT[esc.status] || 'secondary'}>{STATUS_LABEL[esc.status]}</Badge>
         </div>
+        {esc.flow_name && <p className="break-words text-xs text-muted-foreground">흐름 · <span data-testid="flow-name">{esc.flow_name}</span></p>}
         {esc.reason && <p className="break-words text-xs text-muted-foreground">{esc.reason}</p>}
 
         <div data-log-scroll className="max-h-60 overflow-y-auto rounded-md bg-muted/40 p-2.5">
@@ -133,6 +135,7 @@ export default function HitlTab() {
   const [sessions, setSessions] = useState<SessionListItemOut[]>([])
   const [activeIds, setActiveIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  const [flowId, setFlowId] = useState('')
   const [incomingBySession, setIncomingBySession] = useState<Record<string, ChatMsg>>({})
   const [takingOver, setTakingOver] = useState<string | null>(null)
   const [historyOpen, setHistoryOpen] = useState<Set<string>>(new Set())
@@ -146,8 +149,10 @@ export default function HitlTab() {
     })
   }
 
+  const flowRef = useRef('')
   const refresh = () => {
-    Promise.all([listEscalations(), listSessions()]).then(([es, ss]) => {
+    const f = flowRef.current || undefined
+    Promise.all([listEscalations(f), listSessions(50, 0, f)]).then(([es, ss]) => {
       const escs = Array.isArray(es) ? es : []
       const sess = Array.isArray(ss) ? ss : []
       setEscalations(escs)
@@ -177,6 +182,8 @@ export default function HitlTab() {
     return () => { clearInterval(reconcile); esRef.current?.close() }
   }, [])
 
+  const changeFlow = (id: string) => { setFlowId(id); flowRef.current = id; refresh() }
+
   if (loading) return <p className="text-sm text-muted-foreground">로딩 중...</p>
 
   const escSessionIds = new Set(escalations.map(e => e.session_id))
@@ -202,6 +209,7 @@ export default function HitlTab() {
         <h3 className="text-sm font-semibold">상담 콘솔</h3>
         <div className="flex gap-2">
           {escalationId && <Button size="sm" variant="ghost" onClick={() => navigate('/tenant/hitl')}>← 전체 보기</Button>}
+          <FlowFilter value={flowId} onChange={changeFlow} />
           <Button size="sm" variant="outline" onClick={refresh}>새로고침</Button>
         </div>
       </div>
@@ -236,8 +244,9 @@ export default function HitlTab() {
                 return (
                   <li key={s.session_id}
                     className="rounded-md border border-border bg-card px-3 py-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{s.visitor_id}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="min-w-0 max-w-full break-all font-medium">{s.visitor_id}</span>
+                      <span className="min-w-0 max-w-full break-words text-xs text-muted-foreground" data-testid="flow-name">{s.flow_name ?? '—'}</span>
                       <Badge variant={isActive ? 'success' : 'secondary'}>{isActive ? '접속중' : '유휴'}</Badge>
                       <span className="ml-auto text-xs text-muted-foreground">{new Date(s.last_activity).toLocaleString()}</span>
                       <Button size="sm" variant="ghost" onClick={() => toggleHistory(s.session_id)}>

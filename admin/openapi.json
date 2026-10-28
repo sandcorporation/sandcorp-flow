@@ -721,6 +721,28 @@
             "title": "Created At",
             "type": "string"
           },
+          "flow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow Id"
+          },
+          "flow_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow Name"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -1783,6 +1805,28 @@
             "default": "",
             "title": "Escalation Status",
             "type": "string"
+          },
+          "flow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow Id"
+          },
+          "flow_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow Name"
           },
           "is_hitl": {
             "title": "Is Hitl",
@@ -3074,6 +3118,28 @@
           "created_at": {
             "title": "Created At",
             "type": "string"
+          },
+          "flow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow Id"
+          },
+          "flow_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow Name"
           },
           "is_hitl": {
             "title": "Is Hitl",
@@ -4673,7 +4739,24 @@
     "/api/tenant/escalations/": {
       "get": {
         "operationId": "apps_escalation_api_list_escalations",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "flow_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Flow Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6369,6 +6452,22 @@
               "title": "Offset",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "flow_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Flow Id"
+            }
           }
         ],
         "responses": {
@@ -6960,6 +7059,22 @@
             "schema": {
               "title": "Visitor Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flow_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Flow Id"
             }
           }
         ],

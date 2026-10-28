@@ -4,11 +4,15 @@
  * Sandcorp Flow API
  * OpenAPI spec version: 1.0.0
  */
+import type { SessionListItemOutFlowId } from './sessionListItemOutFlowId';
+import type { SessionListItemOutFlowName } from './sessionListItemOutFlowName';
 
 export interface SessionListItemOut {
   active: boolean;
   created_at: string;
   escalation_status?: string;
+  flow_id?: SessionListItemOutFlowId;
+  flow_name?: SessionListItemOutFlowName;
   is_hitl: boolean;
   last_activity: string;
   session_id: string;

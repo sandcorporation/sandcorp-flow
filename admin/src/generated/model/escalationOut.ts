@@ -4,9 +4,13 @@
  * Sandcorp Flow API
  * OpenAPI spec version: 1.0.0
  */
+import type { EscalationOutFlowId } from './escalationOutFlowId';
+import type { EscalationOutFlowName } from './escalationOutFlowName';
 
 export interface EscalationOut {
   created_at: string;
+  flow_id?: EscalationOutFlowId;
+  flow_name?: EscalationOutFlowName;
   id: string;
   reason: string;
   session_id: string;

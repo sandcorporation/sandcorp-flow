@@ -8,4 +8,5 @@
 export type AppsMemoryApiListSessionsParams = {
 limit?: number;
 offset?: number;
+flow_id?: string | null;
 };

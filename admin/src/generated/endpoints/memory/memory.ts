@@ -5,6 +5,7 @@
  * OpenAPI spec version: 1.0.0
  */
 import type {
+  AppsMemoryApiListVisitorSessionsParams,
   AppsMemoryApiListVisitorsParams,
   DetailOut,
   MemoryIn,
@@ -190,17 +191,26 @@ export type appsMemoryApiListVisitorSessionsResponseSuccess = (appsMemoryApiList
 
 export type appsMemoryApiListVisitorSessionsResponse = (appsMemoryApiListVisitorSessionsResponseSuccess)
 
-export const getAppsMemoryApiListVisitorSessionsUrl = (visitorId: string,) => {
+export const getAppsMemoryApiListVisitorSessionsUrl = (visitorId: string,
+    params?: AppsMemoryApiListVisitorSessionsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
+    
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
 
-  
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/tenant/visitors/${visitorId}/sessions/`
+  return stringifiedParams.length > 0 ? `/api/tenant/visitors/${visitorId}/sessions/?${stringifiedParams}` : `/api/tenant/visitors/${visitorId}/sessions/`
 }
 
-export const appsMemoryApiListVisitorSessions = async (visitorId: string, options?: RequestInit): Promise<appsMemoryApiListVisitorSessionsResponse> => {
+export const appsMemoryApiListVisitorSessions = async (visitorId: string,
+    params?: AppsMemoryApiListVisitorSessionsParams, options?: RequestInit): Promise<appsMemoryApiListVisitorSessionsResponse> => {
   
-  return customInstance<appsMemoryApiListVisitorSessionsResponse>(getAppsMemoryApiListVisitorSessionsUrl(visitorId),
+  return customInstance<appsMemoryApiListVisitorSessionsResponse>(getAppsMemoryApiListVisitorSessionsUrl(visitorId,params),
   {      
     ...options,
     method: 'GET'

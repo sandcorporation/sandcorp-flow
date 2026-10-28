@@ -2,6 +2,7 @@ import { useState, useEffect, ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { listVisitors, listVisitorSessions, listMemories, updateMemory, deleteMemory } from '../api'
 import type { VisitorOut, VisitorSessionOut, MemoryOut } from '../generated/model'
+import FlowFilter from './FlowFilter'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -43,15 +44,18 @@ function VisitorList({ selectedId, onSelect }: { selectedId: string | null; onSe
 
 function SessionList({ visitorId, onSelectSession }: { visitorId: string; onSelectSession: (id: string) => void }) {
   const [sessions, setSessions] = useState<VisitorSessionOut[]>([])
+  const [flowId, setFlowId] = useState('')
 
   useEffect(() => {
-    listVisitorSessions(visitorId).then(data => setSessions(Array.isArray(data) ? data : []))
-  }, [visitorId])
+    listVisitorSessions(visitorId, flowId || undefined).then(data => setSessions(Array.isArray(data) ? data : []))
+  }, [visitorId, flowId])
 
-  if (sessions.length === 0) return <p className="text-xs text-muted-foreground">세션 없음</p>
+  const filter = <div className="mb-1"><FlowFilter value={flowId} onChange={setFlowId} /></div>
+  if (sessions.length === 0) return <div>{filter}<p className="text-xs text-muted-foreground">세션 없음</p></div>
 
   return (
     <div className="flex flex-col gap-1.5">
+      {filter}
       {sessions.map(sess => (
         <button key={sess.session_id} onClick={() => onSelectSession(sess.session_id)}
           className="rounded-md border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent">
@@ -59,7 +63,9 @@ function SessionList({ visitorId, onSelectSession }: { visitorId: string; onSele
             {sess.session_id.slice(0, 8)}…
             {sess.is_hitl && <Badge variant="secondary" className="bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">HITL</Badge>}
           </div>
-          <div className="mt-0.5 text-xs text-muted-foreground">{new Date(sess.created_at).toLocaleString()}</div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            <span data-testid="flow-name">{sess.flow_name ?? '—'}</span> · {new Date(sess.created_at).toLocaleString()}
+          </div>
         </button>
       ))}
     </div>

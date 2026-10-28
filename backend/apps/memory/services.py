@@ -27,6 +27,18 @@ class SessionRow:
     created_at: datetime
     last_activity: datetime
     tier: int  # 0 대기 escalation → 1 처리 중 → 2 활성 → 3 나머지
+    flow_id: str | None = None  # ChatSession.flow — 옛 세션은 None
+    flow_name: str | None = None
+
+
+def parse_flow_id(value: str | None) -> uuid.UUID | None:
+    """흐름 필터 인자 → UUID. 비었거나 UUID가 아니면 None."""
+    if not value:
+        return None
+    try:
+        return uuid.UUID(str(value))
+    except ValueError:
+        return None
 
 
 def list_session_rows(
@@ -36,12 +48,17 @@ def list_session_rows(
     until: datetime | None = None,
     pin_live: bool = True,
     status: str = "all",
+    flow_id: str | None = None,
 ) -> list[SessionRow]:
     """세션 목록 — 계층(대기→처리 중→활성→나머지) 우선, 같은 계층 안에서는 최근 활동순.
 
     ``pin_live``면 escalation·활성 세션은 기간 밖이라도 포함한다(콘솔 기본, issue 139).
     ``status``: ``all`` | ``escalated``(대기·처리 중 escalation) | ``active``(연결 중).
+    ``flow_id``: 그 흐름의 세션만. 잘못된 id·남의 흐름 id는 빈 목록(존재 여부를 흘리지 않는다).
     """
+    flow_filter = parse_flow_id(flow_id)
+    if flow_id and flow_filter is None:
+        return []
     esc_map = {
         str(sid): st
         for sid, st in Escalation.objects.filter(
@@ -55,7 +72,14 @@ def list_session_rows(
         window &= Q(created_at__lt=until)
     if pin_live:
         window |= Q(id__in=set(esc_map) | active_ids)
-    qs = ChatSession.objects.filter(tenant_id=tenant_id, is_test=False).filter(window).annotate(last_msg=Max("messages__created_at"))
+    qs = (
+        ChatSession.objects.filter(tenant_id=tenant_id, is_test=False)
+        .filter(window)
+        .select_related("flow")
+        .annotate(last_msg=Max("messages__created_at"))
+    )
+    if flow_filter is not None:
+        qs = qs.filter(flow_id=flow_filter)
 
     def tier(sid: str) -> int:
         st = esc_map.get(sid)
@@ -73,7 +97,8 @@ def list_session_rows(
         if status == "active" and sid not in active_ids:
             continue
         last = getattr(s, "last_msg", None) or s.created_at  # .annotate() 동적 필드
-        rows.append(SessionRow(sid, s.visitor_id, s.is_hitl, esc_map.get(sid, ""), sid in active_ids, s.created_at, last, tier(sid)))
+        rows.append(SessionRow(sid, s.visitor_id, s.is_hitl, esc_map.get(sid, ""), sid in active_ids, s.created_at, last, tier(sid),
+                        str(s.flow_id) if s.flow_id else None, s.flow.name if s.flow else None))
     rows.sort(key=lambda r: r.last_activity, reverse=True)
     rows.sort(key=lambda r: r.tier)  # stable
     return rows
@@ -82,7 +107,7 @@ def list_session_rows(
 def get_session(tenant_id: uuid.UUID | str, session_id: str) -> ChatSession | None:
     """운영 세션 하나. 다른 테넌트·시험 세션·잘못된 id는 None."""
     try:
-        return ChatSession.objects.select_related("flow_version__flow").get(id=session_id, tenant_id=tenant_id, is_test=False)
+        return ChatSession.objects.select_related("flow_version__flow", "flow").get(id=session_id, tenant_id=tenant_id, is_test=False)
     except (ChatSession.DoesNotExist, ValidationError):
         return None
 

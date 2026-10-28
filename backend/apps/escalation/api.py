@@ -22,6 +22,8 @@ class EscalationOut(Schema):
     reason: str
     status: str
     created_at: str
+    flow_id: str | None = None    # session.flow — 옛 세션은 null
+    flow_name: str | None = None
 
 
 class EscalationMessageOut(Schema):
@@ -40,8 +42,9 @@ class DetailOut(Schema):
 
 
 @escalation_router.get("/", response=List[EscalationOut])
-def list_escalations(request):
+def list_escalations(request, flow_id: str | None = None):
     from apps.escalation.models import Escalation
+    from apps.memory.services import parse_flow_id
 
     tenant = request.auth.tenant
     escalations = (
@@ -49,9 +52,14 @@ def list_escalations(request):
             session__tenant_id=tenant.id,
             status__in=[Escalation.STATUS_PENDING, Escalation.STATUS_CLAIMED],
         )
-        .select_related("session")
+        .select_related("session__flow")
         .order_by("-created_at")
     )
+    if flow_id:
+        flow_uuid = parse_flow_id(flow_id)
+        if flow_uuid is None:
+            return []
+        escalations = escalations.filter(session__flow_id=flow_uuid)
 
     return [
         {
@@ -61,6 +69,8 @@ def list_escalations(request):
             "reason": e.reason,
             "status": e.status,
             "created_at": e.created_at.isoformat(),
+            "flow_id": str(e.session.flow_id) if e.session.flow_id else None,
+            "flow_name": e.session.flow.name if e.session.flow else None,
         }
         for e in escalations
     ]

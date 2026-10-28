@@ -1,6 +1,7 @@
 // admin HTTP facade (ADR-0014). CRUD는 전부 orval 생성 클라이언트(→ mutator)를 거친다.
 // 손작성으로 남는 것: login/logout의 토큰 부수효과 + Operator 로그인 이동 + SSE(openEscalationStream).
 // 이 facade는 친근한 함수명 + .data 언랩 + 일부 특수 계약(409/404/친절 에러)만 담당한다.
+import { appsFlowsApiFlowsList } from './generated/endpoints/flows/flows'
 import { setAccess, clearAccess, getAccess, onAccessChange } from './auth'
 import { HttpError } from './mutator'
 import { getRole, registerRoleLoader, setRole } from './roleStore'
@@ -320,15 +321,15 @@ export async function rebuildGraph() {
 export async function listVisitors(search?: string) {
   return (await appsMemoryApiListVisitors(search ? { search } : undefined)).data
 }
-export async function listVisitorSessions(visitorId: string) {
-  return (await appsMemoryApiListVisitorSessions(visitorId)).data
+export async function listVisitorSessions(visitorId: string, flowId?: string) {
+  return (await appsMemoryApiListVisitorSessions(visitorId, flowId ? { flow_id: flowId } : undefined)).data
 }
 export async function getSessionMessages(sessionId: string) {
   return (await appsMemoryApiGetSessionMessages(sessionId)).data
 }
 // 세션 콘솔: 전체 세션(escalation→활성→나머지) 목록(issue 139).
-export async function listSessions(limit = 50, offset = 0) {
-  return (await appsMemoryApiListSessions({ limit, offset })).data
+export async function listSessions(limit = 50, offset = 0, flowId?: string) {
+  return (await appsMemoryApiListSessions({ limit, offset, ...(flowId ? { flow_id: flowId } : {}) })).data
 }
 // 임의 세션 takeover — 자동-claimed escalation 생성. 409(다른 상담원 점유) 정규화(issue 140).
 export async function takeoverSession(
@@ -372,8 +373,13 @@ export async function deleteMemory(visitorId: string, memoryId: string) {
 
 // ── Escalations (HITL) ────────────────────────────────────────────────────
 
-export async function listEscalations() {
-  return (await appsEscalationApiListEscalations()).data
+export async function listEscalations(flowId?: string) {
+  return (await appsEscalationApiListEscalations(flowId ? { flow_id: flowId } : undefined)).data
+}
+// 흐름 필터 선택지(대화 목록·방문자 세션 공용) — id·이름만.
+export async function listFlowOptions(): Promise<{ id: string; name: string }[]> {
+  const data = (await appsFlowsApiFlowsList()).data as unknown
+  return Array.isArray(data) ? (data as { id: string; name: string }[]).map(f => ({ id: f.id, name: f.name })) : []
 }
 // claim은 409(이미 수락됨) 분기가 있어 status/ok로 정규화해 반환
 export async function claimEscalation(escalationId: string): Promise<{ status: number; ok: boolean }> {

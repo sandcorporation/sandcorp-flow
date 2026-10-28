@@ -24,6 +24,32 @@ beforeEach(() => {
   vi.mocked(api.getEscalationMessages).mockResolvedValue([] as any)
 })
 
+describe('HitlTab — 흐름 칸·필터', () => {
+  it('세션 행과 상담 카드에 흐름 이름이 보이고 옛 세션은 —이다', async () => {
+    vi.mocked(api.listFlowOptions).mockResolvedValue([])
+    vi.mocked(api.listEscalations).mockResolvedValue([esc({ flow_id: 'f1', flow_name: '봄 이벤트' })] as any)
+    vi.mocked(api.listSessions).mockResolvedValue([
+      sess({ session_id: 's-a', visitor_id: 'visA', flow_id: 'f2', flow_name: '환불 안내' }),
+      sess({ session_id: 's-b', visitor_id: 'visB', flow_id: null, flow_name: null }),
+    ] as any)
+    renderHitl()
+    expect(await screen.findByText('봄 이벤트')).toBeInTheDocument()
+    expect(screen.getByText('환불 안내')).toBeInTheDocument()
+    expect(screen.getByText('—')).toBeInTheDocument()
+  })
+
+  it('흐름 필터를 고르면 그 흐름 id로 상담·세션 목록을 다시 부른다', async () => {
+    vi.mocked(api.listFlowOptions).mockResolvedValue([{ id: 'f1', name: '봄 이벤트' }, { id: 'f2', name: '환불 안내' }])
+    vi.mocked(api.listEscalations).mockResolvedValue([] as any)
+    vi.mocked(api.listSessions).mockResolvedValue([] as any)
+    renderHitl()
+    const select = await screen.findByRole('combobox', { name: '흐름' })
+    await userEvent.selectOptions(select, 'f2')
+    await waitFor(() => expect(api.listEscalations).toHaveBeenLastCalledWith('f2'))
+    expect(api.listSessions).toHaveBeenLastCalledWith(50, 0, 'f2')
+  })
+})
+
 describe('HitlTab — 세션 콘솔', () => {
   it('진행 중 상담은 카드(수락하기)로, 나머지 세션은 목록으로 보이고 escalation 세션은 목록에서 제외된다', async () => {
     vi.mocked(api.listEscalations).mockResolvedValue([esc()] as any)

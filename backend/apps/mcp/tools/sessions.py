@@ -29,6 +29,7 @@ class ListSessionsArgs(TenantArgs):
     status: Literal["all", "escalated", "active"] = Field(
         default="all", description="all | escalated(사람 넘김 대기·처리 중) | active(연결 중)"
     )
+    flow_id: str | None = Field(default=None, description="이 흐름의 세션만(list_flows로 확인). 잘못된 id·남의 흐름은 빈 목록.")
     limit: int = Field(default=50, ge=1, le=100, description="한 쪽 건수(최대 100)")
     cursor: str | None = Field(default=None, description="앞 결과의 next_cursor")
 
@@ -46,8 +47,8 @@ def _aware(value: datetime) -> datetime:
 @register(
     "list_sessions",
     "상담 세션 목록(시험 세션 제외): 사람 넘김 대기→처리 중→연결 중→나머지 순, 같은 순위는 최근 활동순. "
-    "각 행: session_id·visitor_id·is_hitl·escalation_status(''|pending|claimed)·active·created_at·last_activity. "
-    "인자: since?(기본 7일 전)·until?·status?(all|escalated|active)·limit?·cursor?. 다음 쪽이 있으면 next_cursor.",
+    "각 행: session_id·visitor_id·is_hitl·escalation_status(''|pending|claimed)·active·created_at·last_activity·flow_id·flow_name(옛 세션은 null). "
+    "인자: since?(기본 7일 전)·until?·status?(all|escalated|active)·flow_id?·limit?·cursor?. 다음 쪽이 있으면 next_cursor.",
     ListSessionsArgs,
     scope="flow.read",
     permission=None,
@@ -59,7 +60,7 @@ async def list_sessions(ctx: ToolContext, args: ListSessionsArgs) -> JSONObject:
     since = _aware(args.since) if args.since else datetime.now(timezone.utc) - timedelta(days=DEFAULT_WINDOW_DAYS)
     until = _aware(args.until) if args.until else None
     rows = await sync_to_async(services.list_session_rows)(
-        tenant_id, since=since, until=until, pin_live=False, status=args.status
+        tenant_id, since=since, until=until, pin_live=False, status=args.status, flow_id=args.flow_id
     )
     page = rows[offset : offset + args.limit]
     return {
@@ -72,6 +73,8 @@ async def list_sessions(ctx: ToolContext, args: ListSessionsArgs) -> JSONObject:
                 "active": r.active,
                 "created_at": r.created_at.isoformat(),
                 "last_activity": r.last_activity.isoformat(),
+                "flow_id": r.flow_id,
+                "flow_name": r.flow_name,
             }
             for r in page
         ],
@@ -82,7 +85,7 @@ async def list_sessions(ctx: ToolContext, args: ListSessionsArgs) -> JSONObject:
 @register(
     "get_session",
     "상담 세션 하나: 방문자·메시지(오래된 것부터, role=user|assistant|human_agent)·사람 넘김 이력(trigger·reason·"
-    "status·시각)·대화가 고정된 흐름 버전(flow_version={flow, number}, 없으면 null). 최근 20턴의 판단 기록 합계(decision_traces: turn·토큰·비용 USD(아는 호출의 합)·unpriced_models(단가 모름 모델, 비면 전부 포함)·걸린 시간)·긴 대화는 limit개씩 자르고 "
+    "status·시각)·대화가 속한 흐름(flow={id, name}, 옛 세션은 null)·고정된 흐름 버전(flow_version={flow, number}, 없으면 null). 최근 20턴의 판단 기록 합계(decision_traces: turn·토큰·비용 USD(아는 호출의 합)·unpriced_models(단가 모름 모델, 비면 전부 포함)·걸린 시간)·긴 대화는 limit개씩 자르고 "
     "has_more=true면 next_cursor로 이어 읽는다. 메시지 하나가 2000자를 넘으면 잘라 truncated=true. "
     "인자: session_id, limit?, cursor?. 실패: session_not_found(없거나 남의 테넌트·시험 세션).",
     GetSessionArgs,
@@ -119,6 +122,7 @@ async def get_session(ctx: ToolContext, args: GetSessionArgs) -> JSONObject:
         "is_test": session.is_test,
         "created_at": session.created_at.isoformat(),
         "ended_at": session.ended_at.isoformat() if session.ended_at else None,
+        "flow": {"id": str(session.flow_id), "name": session.flow.name} if session.flow else None,
         "flow_version": {"flow": version.flow.name, "number": version.number} if version else None,
         "messages": [
             {

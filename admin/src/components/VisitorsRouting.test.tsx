@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import * as api from '../api'
@@ -27,6 +28,20 @@ function at(path: string) {
     </MemoryRouter>,
   )
 }
+
+describe('방문자 세션 — 흐름 칸·필터', () => {
+  it('세션 행에 흐름 이름(옛 세션은 —)이 보이고 필터를 고르면 flow_id로 다시 부른다', async () => {
+    vi.mocked(api.listFlowOptions).mockResolvedValue([{ id: 'f1', name: '봄 이벤트' }, { id: 'f2', name: '환불 안내' }])
+    vi.mocked(api.listVisitorSessions).mockResolvedValue([
+      { session_id: 'aaaaaaaa-1', visitor_id: 'v', is_hitl: false, created_at: '2026-06-22T00:00:00Z', flow_id: 'f1', flow_name: '봄 이벤트' },
+      { session_id: 'bbbbbbbb-2', visitor_id: 'v', is_hitl: false, created_at: '2026-06-22T00:00:00Z', flow_id: null, flow_name: null },
+    ] as any)
+    at('/tenant/visitors/v')
+    expect((await screen.findAllByTestId('flow-name')).map(e => e.textContent)).toEqual(['봄 이벤트', '—'])
+    await userEvent.selectOptions(await screen.findByRole('combobox', { name: '흐름' }), 'f2')
+    await waitFor(() => expect(api.listVisitorSessions).toHaveBeenLastCalledWith('v', 'f2'))
+  })
+})
 
 describe('Visitors/Session 자원 라우트(ADR-0017)', () => {
   it('/tenant/visitors/:visitorId가 그 방문자 뷰를 렌더한다(딥링크)', async () => {

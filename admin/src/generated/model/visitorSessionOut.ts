@@ -4,9 +4,13 @@
  * Sandcorp Flow API
  * OpenAPI spec version: 1.0.0
  */
+import type { VisitorSessionOutFlowId } from './visitorSessionOutFlowId';
+import type { VisitorSessionOutFlowName } from './visitorSessionOutFlowName';
 
 export interface VisitorSessionOut {
   created_at: string;
+  flow_id?: VisitorSessionOutFlowId;
+  flow_name?: VisitorSessionOutFlowName;
   is_hitl: boolean;
   session_id: string;
   visitor_id: string;
