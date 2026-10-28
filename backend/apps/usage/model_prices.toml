@@ -1,7 +1,10 @@
 # 모델 단가 표 — 토큰 100만 개당 USD. 비용 계산의 유일한 근거(판단 기록·TokenUsage 일 롤업·체험 한도).
-# 출처: 각 공급자 공식 가격 페이지(https://openai.com/api/pricing). 기준일: 2026-10-24.
+# 출처: 각 공급자 공식 가격 페이지(https://openai.com/api/pricing, https://www.anthropic.com/pricing). 기준일: 2026-10-28(Claude는 2026-10-06 가격 확인).
 # 단가가 바뀌면 이 파일만 고치고 기준일을 갱신한다. 표에 없는 모델은 비용 null(0으로 치지 않는다).
-# 날짜가 붙은 이름(gpt-4o-mini-2024-07-18)은 가장 긴 앞부분 이름으로 찾는다.
+# 날짜가 붙은 이름(gpt-4o-mini-2024-07-18)은 가장 긴 앞부분 이름으로 찾는다. 정확히 같은 이름이 먼저다
+# (claude-opus-5-5와 claude-opus-5는 단가가 다르다).
+# 한계: 모델당 단가 하나만 담는다. claude-haiku-5-5는 프롬프트 10만 토큰 이하 단가(0.10/0.50)이고 넘으면
+# 0.50/2.50이다 — 상담 한 턴은 10만 토큰을 넘지 않는 것으로 보고 낮은 단가를 쓴다. 캐시 읽기·쓰기 단가는 칸이 없어 담지 않는다.
 
 [[model]]
 provider = "openai"
@@ -26,3 +29,75 @@ provider = "openai"
 model = "text-embedding-3-large"
 input_per_mtok = "0.13"
 output_per_mtok = "0"
+
+[[model]]
+provider = "anthropic"
+model = "claude-fable-5-1"
+input_per_mtok = "10.00"
+output_per_mtok = "50.00"
+
+[[model]]
+provider = "anthropic"
+model = "claude-fable-5"
+input_per_mtok = "10.00"
+output_per_mtok = "50.00"
+
+[[model]]
+provider = "anthropic"
+model = "claude-opus-5-5"
+input_per_mtok = "4.00"
+output_per_mtok = "20.00"
+
+[[model]]
+provider = "anthropic"
+model = "claude-opus-5"
+input_per_mtok = "5.00"
+output_per_mtok = "25.00"
+
+[[model]]
+provider = "anthropic"
+model = "claude-opus-4-8"
+input_per_mtok = "5.00"
+output_per_mtok = "25.00"
+
+[[model]]
+provider = "anthropic"
+model = "claude-opus-4-7"
+input_per_mtok = "5.00"
+output_per_mtok = "25.00"
+
+[[model]]
+provider = "anthropic"
+model = "claude-opus-4-6"
+input_per_mtok = "5.00"
+output_per_mtok = "25.00"
+
+[[model]]
+provider = "anthropic"
+model = "claude-sonnet-5-5"
+input_per_mtok = "2.00"
+output_per_mtok = "10.00"
+
+[[model]]
+provider = "anthropic"
+model = "claude-sonnet-5"
+input_per_mtok = "2.00"
+output_per_mtok = "10.00"
+
+[[model]]
+provider = "anthropic"
+model = "claude-sonnet-4-6"
+input_per_mtok = "3.00"
+output_per_mtok = "15.00"
+
+[[model]]
+provider = "anthropic"
+model = "claude-haiku-5-5"
+input_per_mtok = "0.10"
+output_per_mtok = "0.50"
+
+[[model]]
+provider = "anthropic"
+model = "claude-haiku-4-5"
+input_per_mtok = "1.00"
+output_per_mtok = "5.00"

@@ -38,6 +38,22 @@ def test_price_table_resolves_dated_model_names_and_leaves_unknown_null():
     assert cost_usd("some-unknown-model", 1000, 1000) is None
 
 
+def test_price_table_prices_current_claude_models():
+    """anthropic Provider의 현행 모델 단가가 표에 있다(#234) — 정확 일치가 앞부분 일치보다 먼저다."""
+    from apps.usage.pricing import cost_usd, is_priced
+
+    assert cost_usd("claude-haiku-5-5", 1_000_000, 1_000_000) == Decimal("0.60")  # 0.10 + 0.50
+    # 이름이 앞부분인 모델끼리 단가가 다르다 — claude-opus-5-5가 claude-opus-5로 떨어지면 안 된다
+    assert cost_usd("claude-opus-5-5", 1_000_000, 1_000_000) == Decimal("24.00")
+    assert cost_usd("claude-opus-5", 1_000_000, 1_000_000) == Decimal("30.00")
+    assert cost_usd("claude-sonnet-5-5", 1_000_000, 1_000_000) == Decimal("12.00")
+    assert cost_usd("claude-fable-5-1", 1_000_000, 1_000_000) == Decimal("60.00")
+    # 응답 model에 날짜 꼬리표가 붙어도 가장 긴 앞부분 이름으로 찾는다
+    assert cost_usd("claude-opus-5-5-20261001", 1_000_000, 1_000_000) == Decimal("24.00")
+    assert cost_usd("claude-haiku-4-5-20251001", 1_000_000, 0) == Decimal("1.00")
+    assert is_priced("claude-sonnet-4-6") and not is_priced("claude-unknown-9")
+
+
 # ── 기록 ─────────────────────────────────────────────────────────────────────
 
 
