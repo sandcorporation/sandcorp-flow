@@ -101,7 +101,7 @@ def _compute(tenant_id: uuid.UUID, key: str) -> str:
     tenant_origins = TenantConfig.objects.filter(tenant_id=tenant_id).values_list("embed_origins", flat=True).first() or []
     if not key:
         return _value(tenant_origins)  # 기본 흐름 주소는 테넌트 목록만 본다
-    flow_origins = Flow.objects.for_tenant(tenant_id).filter(embed_key=key).values_list("embed_origins", flat=True).first()
+    flow_origins = Flow.objects.for_tenant(tenant_id).active().filter(embed_key=key).values_list("embed_origins", flat=True).first()
     if flow_origins is None:
         return SELF_ONLY
     return _value(flow_origins or tenant_origins)

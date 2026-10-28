@@ -177,6 +177,17 @@ def test_unknown_slug_or_key_is_self_only(tenant_with_key):
 
 
 @pytest.mark.django_db
+def test_archived_flow_key_is_self_only(tenant_with_key):
+    from django.utils import timezone
+
+    tenant, _ = tenant_with_key
+    flow = _setup(tenant, flow_origins=["https://campaign.example.net"])
+    Flow.objects.filter(pk=flow.pk).update(archived_at=timezone.now(), embed_enabled=False)
+    embed_policy.forget_tenant(tenant.id)
+    assert frame_ancestors("fa-corp", flow.embed_key) == "'self'"
+
+
+@pytest.mark.django_db
 def test_slug_is_matched_like_the_widget_resolves_it(tenant_with_key):
     tenant, _ = tenant_with_key
     _setup(tenant, tenant_origins=["https://shop.example.com"])
