@@ -33,9 +33,10 @@ async function takeOnboardingTicket(timeoutMs = 15000) {
 
 /**
  * 스펙 전용 새 조직과 그 Admin 멤버 토큰을 받는다(#65). 조직 이름을 요청 파일로 떨구면 시드(--serve-tenants-from)가
- * 조직+Admin 멤버십을 만들고 토큰을 쓴다. 반환: { name, token, secondToken }.
+ * 조직+Admin 멤버십을 만들고 토큰을 쓴다. 반환: { name, token, secondToken, embedKey }.
+ * `embedFlow`면 기본 흐름에 더해 임베드를 켠 배포 흐름을 두고 그 키를 `embedKey`로 준다(#246 — 켬 API는 E2 몫).
  */
-async function provisionTenant(name, timeoutMs = 15000, { defaultFlow = false } = {}) {
+async function provisionTenant(name, timeoutMs = 15000, { defaultFlow = false, embedFlow = false } = {}) {
   const dir = path.join(DIR, 'tenant_requests')
   fs.mkdirSync(dir, { recursive: true })
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -44,7 +45,8 @@ async function provisionTenant(name, timeoutMs = 15000, { defaultFlow = false } 
   // 반복 판에서만 반복 번호를 붙인다 — 보통 판의 이름 길이는 그대로 둔다(좁은 폭 넘침 시험이 이름 길이에 민감하다).
   const repeat = test.info().repeatEachIndex
   if (repeat > 0) name = `${name} r${repeat}`
-  fs.writeFileSync(path.join(dir, `${id}.req.tmp`), defaultFlow ? `${name}\ndefault-flow` : name)
+  const flag = embedFlow ? '\nembed-flow' : defaultFlow ? '\ndefault-flow' : ''
+  fs.writeFileSync(path.join(dir, `${id}.req.tmp`), `${name}${flag}`)
   fs.renameSync(path.join(dir, `${id}.req.tmp`), path.join(dir, `${id}.req`))
   const tokenFile = path.join(dir, `${id}.token`)
   const until = Date.now() + timeoutMs
@@ -52,7 +54,13 @@ async function provisionTenant(name, timeoutMs = 15000, { defaultFlow = false } 
     if (fs.existsSync(tokenFile)) {
       // 같은 조직의 두 번째 Admin(배포 승인은 요청자와 다른 Admin 이 한다, #31) — 첫 토큰보다 먼저 쓰여 있다.
       const second = path.join(dir, `${id}.admin2.token`)
-      return { name, token: fs.readFileSync(tokenFile, 'utf8').trim(), secondToken: fs.existsSync(second) ? fs.readFileSync(second, 'utf8').trim() : null }
+      const embed = path.join(dir, `${id}.embed`) // 임베드 흐름 키도 토큰보다 먼저 쓰여 있다
+      return {
+        name,
+        token: fs.readFileSync(tokenFile, 'utf8').trim(),
+        secondToken: fs.existsSync(second) ? fs.readFileSync(second, 'utf8').trim() : null,
+        embedKey: fs.existsSync(embed) ? fs.readFileSync(embed, 'utf8').trim() : null,
+      }
     }
     await new Promise((r) => setTimeout(r, 50)) // wait-ok: 위와 같다(조직 요청 파일 인계)
   }

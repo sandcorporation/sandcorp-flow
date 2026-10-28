@@ -73,3 +73,33 @@ describe('ChatWidget (주입 트랜스포트)', () => {
     expect(sent).toEqual([{ sessionId: 's1', content: '안녕' }])
   })
 })
+
+describe('ChatWidget — 흐름 키(#246)', () => {
+  it('키가 있으면 stream 주소에 flow=를 붙이고, 없으면 붙이지 않는다', () => {
+    const urls: string[] = []
+    const transport: ChatTransport = {
+      createEventSource: (url) => { urls.push(url); return new MockEventSource() },
+      postMessage: async () => {},
+    }
+    render(<ChatWidget slug="shop" visitorId="v" flowKey="ab12cd34" transport={transport} />)
+    render(<ChatWidget slug="shop" visitorId="v" transport={transport} />)
+    expect(urls[0]).toContain('&flow=ab12cd34')
+    expect(urls[1]).not.toContain('flow=')
+  })
+
+  it('메시지가 「열려 있지 않음」으로 막히면 안내를 보이고 입력을 막는다', async () => {
+    const es = new MockEventSource()
+    const transport: ChatTransport = {
+      createEventSource: () => es,
+      postMessage: async () => 'closed',
+    }
+    const ref = createRef<ChatWidgetHandle>()
+    const { findByText, getByPlaceholderText } = render(
+      <ChatWidget ref={ref} slug="shop" visitorId="v" flowKey="ab12cd34" transport={transport} />
+    )
+    act(() => { es.emit('connected', { session_id: 's1' }) })
+    await act(async () => { ref.current!.send('안녕') })
+    expect(await findByText('지금 열려 있지 않은 상담입니다.')).toBeTruthy()
+    expect((getByPlaceholderText('메시지를 입력하세요...') as HTMLTextAreaElement).disabled).toBe(true)
+  })
+})

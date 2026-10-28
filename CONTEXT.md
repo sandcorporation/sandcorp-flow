@@ -57,7 +57,7 @@ _Avoid_: 슬라이딩 세션(절대 상한이라 회전이 만료를 밀지 않�
 ~~Operator가 발급하는 단기 서명 토큰 (TTL 보유). Tenant 서버가 `TENANT_KEY + VisitorId`로 발급 요청하면 생성됨. iframe src URL에 포함되어 Visitor 브라우저에 전달.~~ 공개 Tenant Slug URL + 선택적 Identity Verification으로 대체됨(ADR-0011). A1 구현 시 항목 제거.
 
 **ChatSession**
-Visitor가 `/chatbot/{slug}/`로 최초 연결할 때 생성되는 세션. VisitorId(Tenant 제공 식별 또는 Anonymous Visitor ID)에 귀속되며, 세션 이후 채팅 이력은 ChatSession 단위로 저장됨.
+Visitor가 `/chatbot/{slug}/`(또는 흐름 키 주소)로 최초 연결할 때 생성되는 세션. VisitorId(Tenant 제공 식별 또는 Anonymous Visitor ID)와 흐름에 귀속되며(재사용 키 (tenant, visitor, flow), ADR-0034), 세션 이후 채팅 이력은 ChatSession 단위로 저장됨.
 
 **VisitorContext** _(폐지 예정 — A1)_
 ~~EmbedToken 발급 시 Tenant가 함께 넘기는 Visitor의 정적 메타데이터.~~ A1에서 폐지(연결 시점 신뢰 채널 제거; 첫 메시지 개인화 상실, 대체는 Visitor Memory). 비신뢰 입력 채널을 없애 프롬프트 인젝션 표면도 축소.
@@ -193,6 +193,13 @@ _Avoid_: 2단계로 사람 승인을 보장한다고 말하기
 테넌트가 편집기에서 그리는 상담 흐름. 노드와 선으로 이뤄지며, 하나의 초안과 여러 Flow Version을 가진다. 위젯(공개 slug)은 테넌트가 정한 Flow의 배포 중 버전으로 돈다.
 _Avoid_: 시나리오, 봇, 워크플로(Workflow는 다른 제품 용어)
 
+**기본 흐름 (Default Flow)**
+기존 위젯 주소 `/chatbot/<slug>/`가 도는 흐름. 테넌트당 하나이고 보관할 수 없으며, 임베드 켬과 상관없이 늘 열려 있다. 칸 이름은 `Flow.is_public`이다(ADR-0034 — 응답 키를 지키려고 이름을 바꾸지 않았다).
+_Avoid_: 공개 흐름(옛 이름 — 「공개 흐름 보기」 화면과 헷갈린다)
+
+**Embed Key**
+흐름 키 주소 `/chatbot/<slug>/<embed_key>/`의 키(8자 소문자·숫자, 테넌트 안 유일). 흐름을 만들 때 발급하고 바꾸지 않는다. 키 주소는 「임베드 켬」(`embed_enabled`) + 배포 버전 + 보관 아님일 때만 열리고, 닫혔으면 없는 키와 같은 404다(ADR-0034). 벡터 임베딩(bge-m3)과는 무관하다.
+
 **Flow Version**
 Flow를 굳힌, **바뀌지 않는** JSON(노드·선·노드 설정). 저장 뒤 고치지 않는다. ChatSession은 시작할 때의 버전에 고정되어 끝까지 그 버전으로 돈다(ADR-0027).
 
@@ -207,7 +214,7 @@ _Avoid_: 임시 저장본
 테넌트 설정 「배포에 관리자 승인 필요」(`deploy_requires_approval`)가 켜졌을 때만 생기는 단계. 배포를 시도하면(HTTP·MCP 모두) 배포 대신 요청이 생기고, **요청자가 아닌 다른 Admin**(또는 TENANT_KEY)이 승인하면 그 버전이 배포된다. 흐름마다 대기 요청은 하나(새 요청이 앞의 것을 대체). 되돌리기는 승인 대상이 아니다(긴급 복구). 편집·배포·승인 권한은 비트 `flow.edit`·`flow.deploy`·`flow.approve`로 모두 Admin 전용이다(Member는 읽기·판단 기록 조회).
 
 **Executor**
-대화 턴마다 Flow Version JSON을 LangGraph StateGraph로 해석해 돌리는 실행기. 체크포인트·HITL·SSE는 기존 것을 재사용한다. 운영 챗의 한 턴은 이것으로 돈다(#72) — 세션에 고정된 버전, 없으면 첫 턴에 공개 흐름 배포 중 버전에 고정, 공개 흐름이 없으면 기본 흐름.
+대화 턴마다 Flow Version JSON을 LangGraph StateGraph로 해석해 돌리는 실행기. 체크포인트·HITL·SSE는 기존 것을 재사용한다. 운영 챗의 한 턴은 이것으로 돈다(#72) — 세션에 고정된 버전, 없으면 첫 턴에 세션 흐름(없으면 기본 흐름) 배포 중 버전에 고정, 공개 흐름이 없으면 기본 흐름.
 _Avoid_: 컴파일러(코드를 만들지 않는다)
 
 **Node / Node Kind / Node Handler**

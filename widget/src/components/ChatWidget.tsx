@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 import type { CSSProperties } from 'react'
 import Markdown from './Markdown'
-import { realTransport, API_BASE } from '../transport'
+import { realTransport, API_BASE, flowParam } from '../transport'
 import type { ChatTransport, EventSourceLike } from '../transport'
 
 interface ChatMessage {
@@ -11,12 +11,16 @@ interface ChatMessage {
 }
 
 type TypingActor = null | 'ai' | 'human_agent'
-type Status = 'connecting' | 'ready' | 'streaming' | 'error'
+type Status = 'connecting' | 'ready' | 'streaming' | 'error' | 'closed'
+
+export const CLOSED_NOTICE = '지금 열려 있지 않은 상담입니다.'
 
 interface ChatWidgetProps {
   slug: string
   visitorId: string
   hash?: string
+  /** 흐름 키 주소(/chatbot/<slug>/<key>/)의 키. 없으면 기본 흐름(#246). */
+  flowKey?: string
   /** 주입 가능한 트랜스포트(기본=실제 백엔드). 랜딩 데모는 mock으로 토큰 스트리밍을 연출한다. */
   transport?: ChatTransport
 }
@@ -27,7 +31,7 @@ export interface ChatWidgetHandle {
 }
 
 const ChatWidget = forwardRef<ChatWidgetHandle, ChatWidgetProps>(function ChatWidget(
-  { slug, visitorId, hash = '', transport = realTransport }, ref
+  { slug, visitorId, hash = '', flowKey = '', transport = realTransport }, ref
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -43,7 +47,7 @@ const ChatWidget = forwardRef<ChatWidgetHandle, ChatWidgetProps>(function ChatWi
 
   useEffect(() => {
     const es = transport.createEventSource(
-      `${API_BASE}/api/chat/stream?slug=${encodeURIComponent(slug)}&visitor_id=${encodeURIComponent(visitorId)}&hash=${encodeURIComponent(hash)}`
+      `${API_BASE}/api/chat/stream?slug=${encodeURIComponent(slug)}&visitor_id=${encodeURIComponent(visitorId)}&hash=${encodeURIComponent(hash)}${flowParam(flowKey)}`
     )
     eventSourceRef.current = es
 
@@ -125,7 +129,7 @@ const ChatWidget = forwardRef<ChatWidgetHandle, ChatWidgetProps>(function ChatWi
       es.close()
       clearTimeout(typingTimerRef.current)
     }
-  }, [slug, visitorId, hash, transport])
+  }, [slug, visitorId, hash, flowKey, transport])
 
   useEffect(() => {
     // 위젯 내부 메시지 영역만 맨 아래로 — scrollIntoView는 임베드 시 호스트 페이지까지 스크롤해
@@ -136,14 +140,17 @@ const ChatWidget = forwardRef<ChatWidgetHandle, ChatWidgetProps>(function ChatWi
 
   const sendMessage = useCallback(async (explicitText?: string) => {
     const userMsg = (explicitText ?? input).trim()
-    if (!userMsg || !sessionId || status === 'streaming') return
+    if (!userMsg || !sessionId || status === 'streaming' || status === 'closed') return
 
     if (explicitText === undefined) setInput('')
     setMessages(prev => [...prev, { role: 'user', content: userMsg }])
     if (!isHitl) setStatus('streaming')
 
     try {
-      await transport.postMessage(sessionId, userMsg)
+      if (await transport.postMessage(sessionId, userMsg) === 'closed') {
+        setStatus('closed')
+        return
+      }
       if (!isHitl) setTypingActor('ai')
     } catch {
       setStatus('error')
@@ -158,6 +165,8 @@ const ChatWidget = forwardRef<ChatWidgetHandle, ChatWidgetProps>(function ChatWi
       sendMessage()
     }
   }
+
+  const blocked = status === 'connecting' || status === 'error' || status === 'closed'
 
   return (
     <div style={styles.container}>
@@ -202,6 +211,7 @@ const ChatWidget = forwardRef<ChatWidgetHandle, ChatWidgetProps>(function ChatWi
             </div>
           </div>
         )}
+        {status === 'closed' && <div style={styles.closedNotice}>{CLOSED_NOTICE}</div>}
       </div>
 
       <div style={styles.inputArea}>
@@ -211,13 +221,13 @@ const ChatWidget = forwardRef<ChatWidgetHandle, ChatWidgetProps>(function ChatWi
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="메시지를 입력하세요..."
-          disabled={status === 'connecting' || status === 'error'}
+          disabled={blocked}
           rows={2}
         />
         <button
-          style={styles.sendBtn(status !== 'connecting' && status !== 'error' && !!input.trim())}
+          style={styles.sendBtn(!blocked && !!input.trim())}
           onClick={() => sendMessage()}
-          disabled={status === 'connecting' || status === 'error' || !input.trim()}
+          disabled={blocked || !input.trim()}
         >
           전송
         </button>
@@ -248,7 +258,7 @@ const styles = {
     width: '8px',
     height: '8px',
     borderRadius: '50%',
-    background: status === 'ready' ? '#48bb78' : status === 'error' ? '#fc8181' : '#ed8936',
+    background: status === 'ready' ? '#48bb78' : status === 'error' ? '#fc8181' : status === 'closed' ? '#a0aec0' : '#ed8936',
   }),
   headerTitles: {
     display: 'flex',
@@ -317,6 +327,12 @@ const styles = {
   dots: {
     animation: 'blink 1.2s step-end infinite',
     letterSpacing: 2,
+  } as CSSProperties,
+  closedNotice: {
+    padding: '12px',
+    color: '#4a5568',
+    fontSize: '13px',
+    textAlign: 'center',
   } as CSSProperties,
   inputArea: {
     display: 'flex',

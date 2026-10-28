@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useState } from 'react'
-import ChatWidget from './components/ChatWidget'
+import ChatWidget, { CLOSED_NOTICE } from './components/ChatWidget'
 import { realTransport, resolveTenant as defaultResolveTenant } from './transport'
 import type { ChatTransport, ResolveResult } from './transport'
 
@@ -9,6 +9,12 @@ import type { ChatTransport, ResolveResult } from './transport'
 export function resolveSlug(): string {
   const m = window.location.pathname.match(/\/chatbot\/([^/?#]+)/)
   return m ? decodeURIComponent(m[1]).normalize('NFC') : ''
+}
+
+// /chatbot/{slug}/{embed_key}/ 의 흐름 키(#246, ADR-0034). 한 조각짜리 기존 주소는 '' — 기본 흐름이 답한다.
+export function resolveFlowKey(): string {
+  const m = window.location.pathname.match(/\/chatbot\/[^/?#]+\/([^/?#]+)/)
+  return m ? decodeURIComponent(m[1]) : ''
 }
 
 // Visitor 식별: ?visitor_id= 명시값 우선, 없으면 위젯이 생성·localStorage에 지속하는
@@ -37,30 +43,33 @@ function App({
   resolveTenant = defaultResolveTenant,
 }: {
   transport?: ChatTransport
-  resolveTenant?: (slug: string) => Promise<ResolveResult>
+  resolveTenant?: (slug: string, flowKey: string) => Promise<ResolveResult>
 } = {}) {
   const slug = useMemo(resolveSlug, [])
+  const flowKey = useMemo(resolveFlowKey, [])
   const visitorId = useMemo(resolveVisitorId, [])
   // 신원검증(opt-in)을 켠 Tenant는 ?hash=로 HMAC 검증 해시를 함께 넘긴다.
   const hash = useMemo(
     () => new URLSearchParams(window.location.search).get('hash') || '',
     []
   )
-  // 렌더 전에 slug가 실제 활성 Tenant인지 검증한다 — 무효 slug면 챗 셸 대신 not-found를 띄운다.
+  // 렌더 전에 주소가 열려 있는지 검증한다 — 무효 slug·닫힌 흐름이면 챗 셸 대신 안내를 띄운다(입력도 없다).
   const [state, setState] = useState<'checking' | ResolveResult>('checking')
   useEffect(() => {
     if (!slug) return
     let alive = true
-    resolveTenant(slug).then((s) => { if (alive) setState(s) })
+    resolveTenant(slug, flowKey).then((s) => { if (alive) setState(s) })
     return () => { alive = false }
-  }, [slug, resolveTenant])
+  }, [slug, flowKey, resolveTenant])
 
   if (!slug) return notice('잘못된 챗봇 주소입니다.', '#e53e3e')
   if (state === 'checking') return notice('불러오는 중…')
+  // 키 주소의 404는 없는 키·임베드 꺼짐·보관·미배포를 구별하지 않는다 — 기본 흐름으로 넘기지 않는다.
+  if (state === 'notfound' && flowKey) return notice(CLOSED_NOTICE)
   if (state === 'notfound') return notice('존재하지 않는 챗봇입니다. 주소를 확인해 주세요.', '#e53e3e')
   if (state === 'error') return notice('일시적으로 연결할 수 없습니다. 잠시 후 새로고침해 주세요.', '#e53e3e')
 
-  return <ChatWidget slug={slug} visitorId={visitorId} hash={hash} transport={transport} />
+  return <ChatWidget slug={slug} flowKey={flowKey} visitorId={visitorId} hash={hash} transport={transport} />
 }
 
 export default App
