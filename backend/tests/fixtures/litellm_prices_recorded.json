@@ -1,0 +1,108 @@
+{
+  "sample_spec": {
+    "litellm_provider": "one of https://docs.litellm.ai/docs/providers",
+    "mode": "one of chat, embedding"
+  },
+  "gpt-4o-mini": {
+    "input_cost_per_token": 1.5e-07,
+    "input_cost_per_token_priority": 2.5e-07,
+    "litellm_provider": "openai",
+    "mode": "chat",
+    "output_cost_per_token": 6e-07,
+    "output_cost_per_token_priority": 1e-06
+  },
+  "gpt-4o": {
+    "input_cost_per_token": 2.5e-06,
+    "input_cost_per_token_priority": 4.25e-06,
+    "litellm_provider": "openai",
+    "mode": "chat",
+    "output_cost_per_token": 1e-05,
+    "output_cost_per_token_priority": 1.7e-05
+  },
+  "text-embedding-3-small": {
+    "input_cost_per_token": 2e-08,
+    "litellm_provider": "openai",
+    "mode": "embedding",
+    "output_cost_per_token": 0.0
+  },
+  "text-embedding-3-large": {
+    "input_cost_per_token": 1.3e-07,
+    "litellm_provider": "openai",
+    "mode": "embedding",
+    "output_cost_per_token": 0.0
+  },
+  "claude-fable-5-1": {
+    "input_cost_per_token": 1e-05,
+    "litellm_provider": "anthropic",
+    "mode": "chat",
+    "output_cost_per_token": 5e-05
+  },
+  "claude-fable-5": {
+    "input_cost_per_token": 1e-05,
+    "litellm_provider": "anthropic",
+    "mode": "chat",
+    "output_cost_per_token": 5e-05
+  },
+  "claude-opus-5-5": {
+    "input_cost_per_token": 4e-06,
+    "litellm_provider": "anthropic",
+    "mode": "chat",
+    "output_cost_per_token": 2e-05
+  },
+  "claude-opus-5": {
+    "input_cost_per_token": 5e-06,
+    "litellm_provider": "anthropic",
+    "mode": "chat",
+    "output_cost_per_token": 2.5e-05
+  },
+  "claude-opus-4-8": {
+    "input_cost_per_token": 5e-06,
+    "litellm_provider": "anthropic",
+    "mode": "chat",
+    "output_cost_per_token": 2.5e-05
+  },
+  "claude-opus-4-7": {
+    "input_cost_per_token": 5e-06,
+    "litellm_provider": "anthropic",
+    "mode": "chat",
+    "output_cost_per_token": 2.5e-05
+  },
+  "claude-opus-4-6": {
+    "input_cost_per_token": 5e-06,
+    "litellm_provider": "anthropic",
+    "mode": "chat",
+    "output_cost_per_token": 2.5e-05
+  },
+  "claude-sonnet-5-5": {
+    "input_cost_per_token": 2e-06,
+    "litellm_provider": "anthropic",
+    "mode": "chat",
+    "output_cost_per_token": 1e-05
+  },
+  "claude-sonnet-5": {
+    "input_cost_per_token": 2e-06,
+    "litellm_provider": "anthropic",
+    "mode": "chat",
+    "output_cost_per_token": 1e-05
+  },
+  "claude-sonnet-4-6": {
+    "input_cost_per_token": 3e-06,
+    "litellm_provider": "anthropic",
+    "mode": "chat",
+    "output_cost_per_token": 1.5e-05
+  },
+  "claude-haiku-5-5": {
+    "input_cost_per_token": 1e-07,
+    "litellm_provider": "anthropic",
+    "mode": "chat",
+    "output_cost_per_token": 5e-07,
+    "input_cost_per_token_above_100k_tokens": 5e-07,
+    "output_cost_per_token_above_100k_tokens": 2.5e-06
+  },
+  "claude-haiku-4-5": {
+    "input_cost_per_token": 1e-06,
+    "litellm_provider": "anthropic",
+    "mode": "chat",
+    "output_cost_per_token": 5e-06
+  }
+}

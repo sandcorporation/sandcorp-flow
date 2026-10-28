@@ -203,3 +203,9 @@ OCR_MAX_PAGES = int(os.environ.get("OCR_MAX_PAGES", "30"))
 
 # MCP 쓰기 감사 로그(#208) 보존 일수 — `prune_mcp_audit`(호스트 cron, 하루 한 번)가 이보다 오래된 행을 지운다.
 MCP_AUDIT_RETENTION_DAYS = int(os.environ.get("MCP_AUDIT_RETENTION_DAYS", "180"))
+
+# 모델 단가 일일 대조(#236, `check_model_prices`) — 실제 사용된 모델을 보는 기간, 단가 차이 허용 비율, 선택 웹훅.
+PRICE_CHECK_RECENT_DAYS = int(os.environ.get("PRICE_CHECK_RECENT_DAYS", "7"))
+PRICE_CHECK_TOLERANCE = Decimal(os.environ.get("PRICE_CHECK_TOLERANCE", "0.01"))
+PRICE_ALERT_WEBHOOK_URL = os.environ.get("PRICE_ALERT_WEBHOOK_URL", "")
+PRICE_ALERT_WEBHOOK_TYPE = os.environ.get("PRICE_ALERT_WEBHOOK_TYPE", "generic")  # discord | slack | generic

@@ -662,6 +662,7 @@ NETWORK_MODULES = ("httpx", "requests", "urllib.request", "http.client", "aiohtt
 LEGACY_NETWORK_IMPORTERS = {
     "tenants/operator_login.py",  # 플랫폼 인증 서버 token_url(설정값)
     "tenants/resource_token.py",  # 플랫폼 인증 서버 JWKS(설정값)
+    "usage/price_check.py",  # 고정 주소(LiteLLM 단가 파일)와 운영자 env 경보 웹훅 — 테넌트 입력 없음(#236)
     "rag/tasks.py",  # httpx 예외 타입만(재시도 대상) — 연결은 safe_http 가 연다
 }
 

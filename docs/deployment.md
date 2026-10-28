@@ -234,6 +234,10 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     | `TRY_SESSION_TURNS` | `20` | Try Session(체험 테넌트)당 시험 대화 턴(#135). 체험 테넌트의 `trial_turns_remaining`으로 두고 `admit_turn`이 깎는다(dev 폴백 켜짐이면 세지 않음). |
     | `TRY_SESSIONS_PER_IP_PER_DAY` | `3` | IP당 하루 체험 세션 수(첫 쓰기 때 센다, ADR-0032 — 진입·새로고침은 안 센다). IP는 `TRUSTED_PROXY_COUNT` 규칙(XFF 끝에서 N번째)으로 정하고 HMAC으로만 저장. |
     | `TRY_DAILY_BUDGET_USD` | `5` | 체험 전체 하루 비용 상한(판단 기록 비용 합). 누적이 상한 미만일 때만 시험 대화를 들이고 턴 뒤 더한다 — 진행 중인 턴들만큼(보통 한 턴) 넘을 수 있다. 넘으면 LLM 없이 `try_daily_budget`(「내일 다시」). |
+    | `PRICE_ALERT_WEBHOOK_URL` | (빈 값) | 모델 단가 일일 대조(#236)가 문제를 찾았을 때만 보내는 웹훅 주소. 비면 stdout·로그·종료 코드만. 전송 실패는 로그만 남기고 종료 코드는 대조 결과를 따른다. |
+    | `PRICE_ALERT_WEBHOOK_TYPE` | `generic` | 위 웹훅 종류: `discord`(`content`)·`slack`(`text`)·`generic`(`summary`·`problems`·`checked_at` JSON). |
+    | `PRICE_CHECK_RECENT_DAYS` / `PRICE_CHECK_TOLERANCE` | `7` / `0.01` | (선택) 「표에 없는 모델」을 보는 최근 일수 / 표와 LiteLLM의 단가 차이 허용 비율(큰 쪽 기준 1%). |
+    - **단가 대조 알림을 받으면(#236)**: 명령은 표를 고치지 않는다. 사람이 공식 가격 페이지(OpenAI·Anthropic)를 확인하고 `backend/apps/usage/model_prices.toml`을 고쳐(기준일 갱신) 배포한다. LiteLLM이 틀렸을 수도 있다. `대조 실패`(종료 2)는 LiteLLM 파일을 못 받았거나 형식이 바뀐 것이라 명령(`price_check.py`)을 손본다.
     | `TRY_QUOTA_TIMEZONE` | `Asia/Seoul` | 위 「하루」의 날짜 기준. |
     | `TRY_ALLOWED_ORIGINS` | (빈 값) | `/api/try` 쓰기 요청(POST·PUT·PATCH)에 허용할 Origin(쉼표). 비어 있어도 API와 같은 호스트의 Origin은 허용 — `/try` 화면을 다른 도메인(예: sandcorp.co.kr)에서 띄울 때만 넣는다. |
     | `PLATFORM_OPENAI_BASE_URL` | `https://api.openai.com/v1` | 바꿀 일 없음(시험·프록시용). |
@@ -307,6 +311,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     | 13 | URL 가드 | `add_document_url`에 사설 IP(`http://10.0.0.1/`)·`localhost` → `url_not_allowed`(토큰 없음, 가져오지 않음). 공개 URL이면 미리보기에 `already_registered` 여부 | 새 대화에서 확인 |
     | 14 | 팀 도구 미리보기(확정하지 않는다) | `change_member_role`·`deactivate_member`·`cancel_invite`를 미리보기까지만. 자기 강등·자기 비활성화는 `warning`, 마지막 Admin은 `last_admin`, `cancel_invite` 응답에 토큰·링크 없음 | 새 대화에서 확인 |
     | 15 | 설정 화면 HITL 저장(#223) | 관리 화면 설정에서 상담 시간대를 잘못된 값(`Asia/Seoul2`)으로 저장 → 400 문구가 저장 실패로 보이고, 올바른 IANA 이름·시간표는 저장된다 | 화면에서 확인 |
+    | 16 | 모델 단가 일일 대조(#236) | root crontab 매일 05:00 `docker compose -f docker-compose.prod.oracle.yml exec -T api python manage.py check_model_prices >> /var/log/sandcorp-flow-cron.log 2>&1`. 수동 실행(`... exec -T api python manage.py check_model_prices; echo exit=$?`) 기대 출력: 한 줄 `모델 단가 대조: 문제 없음 (표 16개 모델)` + 종료 코드 0(`claude-haiku-5-5`의 `구간 단가 있음(대조 제외)` 줄은 정상). 문제가 있으면 `문제 있음`(종료 1: 표에 없는 모델·단가 차이 1% 초과·LiteLLM에 키 없음) 또는 `대조 실패`(종료 2: 파일 못 받음·형식 바뀜) 뒤에 줄별 내용이 붙고, 로그에 warning/error가 남는다. 선택 웹훅은 아래 env 2개를 `.env`에 넣고 재배포해야 켜진다 | 대장 등록 전 |
 
     - **호환 분기 걷기(#220) — 끝남**: `registry.py` 호환 절·`Tool.legacy_scope`, 두 도구의 `legacy_scope=`, `protocol.py` 분기·`notice`를 지웠다. 이제 `flow.write`만 가진 옛 커넥터의 `deploy_version`·`rollback_flow`는 403(`scope="flow.deploy"`)이고 재연결로 푼다. 감사 표 `legacy_scope` 칸은 지난 기록 보존용으로 남기며 늘 false다(칸 삭제 마이그레이션 없음). 5번 행(legacy 성공)은 더는 재현되지 않는다.
     - **되돌리기**: 11·10에서 바꾼 값은 원래대로 되돌린다. 감사 행은 보존 180일 뒤 `prune_mcp_audit`가 지운다. `started`로 남은 행은 「결과 모름」이다(`MCP audit result write failed` 로그와 함께 본다).
