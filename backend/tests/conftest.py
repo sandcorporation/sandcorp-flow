@@ -262,7 +262,7 @@ def webhook_server():
     server = HTTPServer(("127.0.0.1", 0), _WebhookHandler)
     server.received = []
     port = server.server_address[1]
-    t = threading.Thread(target=server.serve_forever, daemon=True)
+    t = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     t.start()
     yield {"url": f"http://127.0.0.1:{port}", "received": server.received}
     server.shutdown()
@@ -287,7 +287,7 @@ def failing_webhook_server():
     server = HTTPServer(("127.0.0.1", 0), _FailHandler)
     server.attempts = []
     port = server.server_address[1]
-    t = threading.Thread(target=server.serve_forever, daemon=True)
+    t = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     t.start()
     yield {"url": f"http://127.0.0.1:{port}", "attempts": server.attempts}
     server.shutdown()
@@ -421,3 +421,85 @@ def redis_subscribe():
             r.close()
         except Exception:
             pass
+
+
+# ── 시험 하나의 CPU 시간 한도 (test-speed-budget 스킬) ─────────────────────────
+# 시험 본문(call)의 CPU 시간(이 프로세스 + 자식)을 재서 junit `cpu_seconds` 로 남기고, 한도(TEST_CPU_LIMIT 초,
+# 0=끔)를 넘은 통과를 실패로 바꾼다. 준비·정리 픽스처는 재지 않는다.
+import resource  # noqa: E402
+import time  # noqa: E402
+from collections.abc import Generator  # noqa: E402
+
+
+
+_DEFAULT_LIMIT = "1.0"  # 0 이면 끈다. 로컬 기본 1.0초, 목표 0.5초
+_CPU_LIMIT_SECONDS = float(os.environ.get("TEST_CPU_LIMIT", _DEFAULT_LIMIT))
+
+# item 에 속성을 붙이지 않고 stash 에 둔다 — mypy 가 속성 대입을 막고, stash 는 타입이 있다.
+_spent_key = pytest.StashKey[float]()
+
+
+def _extra_charged_cpu_seconds() -> float:
+    """자식 프로세스 중 `RUSAGE_CHILDREN` 에 안 잡히는 몫이 있으면 여기서 더한다.
+
+    예: multiprocessing forkserver 의 자식은 이 프로세스의 자식이 아니다 — 자식이 자기 사용량을
+    돌려주게 해서 합산한다 (codemit `tests/boot_process.py` 의 `charged_cpu_seconds`).
+    그런 것이 없으면 0.0 그대로 둔다.
+    """
+
+    return 0.0
+
+
+def _cpu_seconds() -> float:
+    children = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return time.process_time() + children.ru_utime + children.ru_stime + _extra_charged_cpu_seconds()
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item: pytest.Item) -> Generator[None, None, None]:
+    started = _cpu_seconds()
+    try:
+        return (yield)
+    finally:
+        item.stash[_spent_key] = _cpu_seconds() - started
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
+    report = yield
+    spent = item.stash.get(_spent_key, None)
+    if report.when == "call" and spent is not None:
+        # junitxml 은 teardown 보고서의 user_properties 를 쓰고, pytest 는 보고서마다 item 의
+        # 목록을 복사한다 — item 과 report 양쪽에 넣어야 junit 에 남는다 (codemit #701).
+        item.user_properties.append(("cpu_seconds", round(spent, 3)))
+        report.user_properties.append(("cpu_seconds", round(spent, 3)))
+        if _CPU_LIMIT_SECONDS > 0 and spent > _CPU_LIMIT_SECONDS and report.passed:
+            report.outcome = "failed"
+            report.longrepr = (
+                f"시험 본문이 CPU {spent:.2f}초를 썼다 — 한도 {_CPU_LIMIT_SECONDS:g}초"
+                " (TEST_CPU_LIMIT). 원인을 찾아 줄인다; 한도를 늘리지 않는다."
+            )
+    return report
+
+
+# ── config.asgi 를 새 프로세스에서 불러온 뒤의 sys.modules (세션당 한 번) ─────────────
+@pytest.fixture(scope="session")
+def asgi_loaded_modules() -> frozenset[str]:
+    """워커가 뜰 때(uvicorn 이 `config.asgi` 를 불러올 때) 올라와 있는 모듈 이름들.
+
+    새 프로세스라 다른 시험이 먼저 불러 둔 모듈에 오염되지 않는다. 무거운 import(CPU 1초+)를 시험마다
+    치르지 않게 세션 픽스처로 한 번만 돈다 — warmup 시험 둘이 같이 쓴다.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    code = "import json, sys; import config.asgi; print(json.dumps(sorted(sys.modules)))"
+    out = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parent.parent, env={**os.environ},
+        capture_output=True, text=True, timeout=120, check=True,
+    )
+    return frozenset(json.loads(out.stdout.strip().splitlines()[-1]))

@@ -8,10 +8,6 @@
 누락되면 `config/warmup.py` 의 HEAVY_LAZY_MODULES 에 그 모듈을 더한다. 확인 수단: scripts/e2e-soak (루프 지연 >200ms 스택).
 """
 import ast
-import json
-import os
-import subprocess
-import sys
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parent.parent
@@ -44,18 +40,10 @@ def _function_level_heavy_imports() -> dict[str, list[str]]:
     return found
 
 
-def test_함수_안에서_불러오는_무거운_모듈은_워커_시작_때_이미_올라와_있다() -> None:
+def test_함수_안에서_불러오는_무거운_모듈은_워커_시작_때_이미_올라와_있다(asgi_loaded_modules: frozenset[str]) -> None:
     lazy = _function_level_heavy_imports()
     assert lazy, "AST 수집이 비었다 — 수집 로직이 깨졌다"
-    code = (
-        "import json, sys; import config.asgi; "
-        "print(json.dumps([m for m in json.loads(sys.argv[1]) if m not in sys.modules]))"
-    )
-    out = subprocess.run(
-        [sys.executable, "-c", code, json.dumps(sorted(lazy))],
-        cwd=BACKEND, env={**os.environ}, capture_output=True, text=True, timeout=120, check=True,
-    )
-    missing = json.loads(out.stdout.strip().splitlines()[-1])
+    missing = sorted(m for m in lazy if m not in asgi_loaded_modules)
     assert missing == [], (
         "함수 안 import 인데 워커 시작 때 안 불러온다 — config/warmup.py HEAVY_LAZY_MODULES 에 더하라(#177/#189): "
         + ", ".join(f"{m} ({', '.join(lazy[m])})" for m in missing)

@@ -248,7 +248,7 @@ def server(pki: Pki) -> Iterator[TestServer]:
     ctx.sni_callback = remember_sni  # type: ignore[assignment]  # typeshed 서명이 SSLObject만 받는다
     httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
     state.port = httpd.server_address[1]
-    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t = threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     t.start()
     yield state
     httpd.shutdown()
