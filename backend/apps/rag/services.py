@@ -6,9 +6,14 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from apps.rag.models import Document
+
+if TYPE_CHECKING:
+    from apps.rag.graph_store import GraphStore
 
 
 def list_documents(tenant_id: uuid.UUID | str, *, offset: int = 0, limit: int | None = None) -> list[Document]:
@@ -35,15 +40,20 @@ class EntityHit:
     relations: list[dict[str, str | None]] = field(default_factory=list)
 
 
-def local_search(tenant_id: uuid.UUID | str, query: str, *, top_k: int = 5) -> list[EntityHit]:
-    """엔티티 중심 근거 — 질의로 resolved Entity를 찾고 그 이웃 관계를 모은다(ADR-0010)."""
+def local_search(tenant_id: uuid.UUID | str, query: str, *, top_k: int = 5, store: GraphStore | None = None,
+                 embed: Callable[[], list[float]] | None = None) -> list[EntityHit]:
+    """엔티티 중심 근거 — 질의로 resolved Entity를 찾고 그 이웃 관계를 모은다(ADR-0010).
+
+    턴 노드는 미리 연 ``store``와 미리 받아 둔 질의 벡터 ``embed``를 넘긴다(임베딩 HTTP를 thread-sensitive 스레드
+    밖에서 하려고, #262). 없으면 여기서 열고 ``search_entities``가 임베딩을 부른다.
+    """
     from apps.rag.graph_store import GraphStore
 
-    gs = GraphStore.for_search(tenant_id)  # 체험 테넌트는 도서관의 자기 예제 묶음만(#134)
+    gs = store or GraphStore.for_search(tenant_id)  # 체험 테넌트는 도서관의 자기 예제 묶음만(#134)
     hits: list[EntityHit] = []
     seen_entities: set[str] = set()
     seen_edges: set[tuple[str, str, str | None]] = set()
-    for ent in gs.search_entities(query, top_k=top_k):
+    for ent in gs.search_entities(query, top_k=top_k, embed=embed):
         name = ent["name"]
         if name in seen_entities:
             continue

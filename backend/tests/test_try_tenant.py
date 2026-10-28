@@ -269,7 +269,9 @@ def test_try_knowledge_search_sees_only_its_example_in_the_library():
 
 @pytest.mark.django_db
 def test_try_source_fallback_reads_only_its_example_text():
-    from apps.agent.nodes import _source_search_sync
+    from asgiref.sync import async_to_sync
+
+    from apps.agent.nodes import source_search_node
     from apps.flows.example_catalog import EXAMPLES
     from apps.tenants import try_tenant
 
@@ -278,7 +280,8 @@ def test_try_source_fallback_reads_only_its_example_text():
     texts = {d.text for d in EXAMPLES["academy_reservation"].docs}
     shop_text = EXAMPLES["shop_support"].docs[0].text
 
-    out = _source_search_sync({"tenant_id": str(academy.tenant_id), "user_message": shop_text, "rag_chunks": []})
+    out = async_to_sync(source_search_node)(
+        {"tenant_id": str(academy.tenant_id), "user_message": shop_text, "rag_chunks": []})
 
     assert out["rag_chunks"], "자기 예제 원문은 찾아야 한다"
     # 원문 청크는 「문서 레이블 + 본문」이다 — 모두 학원 예제 본문에서 나와야 한다(도서관의 쇼핑몰 문서는 안 보임).
