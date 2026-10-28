@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useInRouterContext } from 'react-router-dom'
 import type { FlowOut } from '../generated/model'
 import { Button } from '@/components/ui/button'
+import EmbedOriginsField from './EmbedOriginsField'
 
 // 운영에서 쓰는 방식(docs/deployment.md portfolio 표)과 같은 iframe 문자열. 비밀은 없다.
 export function buildIframeCode(origin: string, slug: string): string {
@@ -25,10 +26,14 @@ type Props = {
   isAdmin: boolean
   /** 흐름 목록 — 임베드를 켠 흐름의 키 주소 코드를 보인다(#247). 없으면 그 칸을 그리지 않는다. */
   flows?: FlowOut[]
+  /** 테넌트 허용 사이트(#248) — 기본 흐름 주소와 자기 목록이 없는 흐름에 쓴다. 없으면 그 칸을 그리지 않는다. */
+  embedOrigins?: string[]
+  /** 테넌트 목록 저장(정규화된 목록을 돌려준다). */
+  onSaveOrigins?: (origins: string[]) => Promise<string[]>
 }
 
 // 「내 사이트에 붙이기」 — slug 기반 위젯 embed 코드 복사·미리보기. 읽기 전용 안내라 Member도 볼 수 있다.
-export default function EmbedGuideCard({ origin, slug, isAdmin, flows }: Props) {
+export default function EmbedGuideCard({ origin, slug, isAdmin, flows, embedOrigins, onSaveOrigins }: Props) {
   const inRouter = useInRouterContext()
   const [copied, setCopied] = useState<string>('')
   const embedded = (flows ?? []).filter((f) => f.embed_enabled && !f.is_public && f.embed_path)
@@ -93,7 +98,12 @@ export default function EmbedGuideCard({ origin, slug, isAdmin, flows }: Props) 
           {inRouter
             ? <Link to="/tenant/flows" className="text-sm text-primary underline-offset-4 hover:underline">흐름 목록으로 ›</Link>
             : <a href="/tenant/flows" className="text-sm text-primary underline-offset-4 hover:underline">흐름 목록으로 ›</a>}
-          {/* 허용 사이트 칸: E3(#248) */}
+        </div>
+      )}
+      {embedOrigins && onSaveOrigins && (
+        <div className="border-t border-border pt-3">
+          <EmbedOriginsField origins={embedOrigins} canManage={isAdmin} onSave={onSaveOrigins}
+            emptyHint="비어 있으면 어디서나 붙일 수 있습니다. 넣으면 그 사이트에서만 기본 주소와 (자기 목록이 없는) 흐름 키 주소를 붙일 수 있습니다." />
         </div>
       )}
     </section>

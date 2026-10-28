@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { appsFlowsApiFlowsSetDefault, appsFlowsApiFlowsSetEmbed } from '../generated/endpoints/flows/flows'
+import { appsFlowsApiFlowsSetDefault, appsFlowsApiFlowsSetEmbed, appsFlowsApiFlowsSetEmbedOrigins } from '../generated/endpoints/flows/flows'
 import type { FlowOut } from '../generated/model'
 import { HttpError } from '../mutator'
 import { buildKeyIframeCode } from './EmbedGuideCard'
+import EmbedOriginsField from './EmbedOriginsField'
 import { Button } from './ui/button'
 
 const hint = 'text-xs text-muted-foreground'
@@ -19,7 +20,7 @@ type Props = {
 
 /**
  * 흐름 하나의 「임베드」 패널 — 켬/끔 · iframe 코드 복사 · 미리보기 · 「기본 흐름으로」(#247, ADR-0034).
- * 흐름 목록 행과 편집기 머리가 같이 쓴다. 허용 사이트 칸은 E3(#248)가 이 패널 아래에 더한다.
+ * 흐름 목록 행과 편집기 머리가 같이 쓴다. 허용 사이트 칸(#248)은 이 흐름의 키 주소에만 쓰이고, 비면 테넌트 목록을 따른다.
  */
 export default function FlowEmbedPanel({ flow, deployed, canManage, origin, onChange }: Props) {
   const [busy, setBusy] = useState(false)
@@ -71,7 +72,12 @@ export default function FlowEmbedPanel({ flow, deployed, canManage, origin, onCh
       ) : (
         <p className={hint}>임베드를 켜면 붙일 코드가 나타납니다.</p>
       )}
-      {/* 허용 사이트 칸: E3(#248)가 여기에 더한다. */}
+      <EmbedOriginsField origins={flow.embed_origins ?? []} canManage={canManage} emptyHint="비어 있음 — 테넌트 목록을 따름(설정 > 보안)."
+        onSave={async (origins) => {
+          const next = (await appsFlowsApiFlowsSetEmbedOrigins(flow.id, { origins })).data as FlowOut
+          onChange(next)
+          return next.embed_origins ?? []
+        }} />
       {canManage && !flow.is_public && (
         <Button size="sm" variant="outline" type="button" disabled={busy || !deployed}
           onClick={() => run(() => appsFlowsApiFlowsSetDefault(flow.id), '기본 흐름을 바꾸지 못했습니다.')}>기본 흐름으로</Button>

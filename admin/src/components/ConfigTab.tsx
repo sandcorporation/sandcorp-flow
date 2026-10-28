@@ -570,7 +570,14 @@ export default function ConfigTab() {
             ) : (
               <p className={hint}>Slug 변경은 Admin만 할 수 있습니다.</p>
             )}
-            <EmbedGuideCard origin={window.location.origin} slug={slug} isAdmin={isAdmin} flows={flows} />
+            <EmbedGuideCard origin={window.location.origin} slug={slug} isAdmin={isAdmin} flows={flows}
+              embedOrigins={config.embed_origins ?? []}
+              onSaveOrigins={async (origins) => {
+                // 허용 사이트만 따로 저장한다(#248) — 검증 거절은 칸 안에 그대로 보인다. 아래 전체 저장도 같은 값을 되돌려 보낸다.
+                const saved = ((await updateTenantConfig({ embed_origins: origins })) as TenantConfigOut).embed_origins ?? []
+                setConfig(c => ({ ...c, embed_origins: saved }))
+                return saved
+              }} />
           </div>
           <div className="space-y-1.5">
             <label className={`flex items-center gap-2 text-sm ${isAdmin ? 'cursor-pointer' : 'opacity-60'}`}>

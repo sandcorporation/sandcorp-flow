@@ -72,4 +72,34 @@ describe('FlowEmbedPanel — 임베드 메뉴', () => {
     expect(screen.getByTestId('flow-embed-code')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '기본 흐름으로' })).not.toBeInTheDocument()
   })
+
+  it('허용 사이트가 비면 「테넌트 목록을 따름」이라고 보인다', () => {
+    render(<FlowEmbedPanel flow={flow()} deployed canManage origin={ORIGIN} onChange={vi.fn()} />)
+    expect(screen.getByText(/테넌트 목록을 따름/)).toBeInTheDocument()
+  })
+
+  it('Admin이 허용 사이트를 저장하면 줄마다 한 출처로 보내고 바뀐 흐름을 알린다', async () => {
+    const fake = fakeFlowsApi({ graph, flows: [flow()] })
+    const onChange = vi.fn()
+    render(<FlowEmbedPanel flow={flow()} deployed canManage origin={ORIGIN} onChange={onChange} />)
+    await userEvent.type(screen.getByRole('textbox', { name: '허용 사이트' }), 'https://Shop.example.com{enter}{enter}https://*.example.org')
+    await userEvent.click(screen.getByRole('button', { name: '허용 사이트 저장' }))
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ embed_origins: ['https://shop.example.com', 'https://*.example.org'] })))
+    expect(fake.calls.find((c) => c.path.endsWith('/flows/f1/embed-origins/'))?.body).toEqual({ origins: ['https://Shop.example.com', 'https://*.example.org'] })
+  })
+
+  it('허용 사이트가 틀리면 서버 문구를 그대로 보인다', async () => {
+    fakeFlowsApi({ graph, flows: [flow()], originsStatus: 400 })
+    render(<FlowEmbedPanel flow={flow()} deployed canManage origin={ORIGIN} onChange={vi.fn()} />)
+    await userEvent.type(screen.getByRole('textbox', { name: '허용 사이트' }), 'http://example.com')
+    await userEvent.click(screen.getByRole('button', { name: '허용 사이트 저장' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('허용 사이트 「http://example.com」: http는 localhost·127.0.0.1에만 쓸 수 있습니다')
+  })
+
+  it('Member는 허용 사이트를 읽기만 한다', () => {
+    render(<FlowEmbedPanel flow={flow({ embed_origins: ['https://shop.example.com'] })} deployed canManage={false} origin={ORIGIN} onChange={vi.fn()} />)
+    expect(screen.getByText('https://shop.example.com')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: '허용 사이트' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '허용 사이트 저장' })).toBeNull()
+  })
 })
