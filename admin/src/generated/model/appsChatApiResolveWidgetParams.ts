@@ -7,4 +7,5 @@
 
 export type AppsChatApiResolveWidgetParams = {
 slug: string;
+flow?: string;
 };

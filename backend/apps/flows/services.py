@@ -185,7 +185,8 @@ class FlowInUse(FlowServiceError):
 
 
 def archive_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
-    """흐름을 보관한다(soft delete). 위젯이 쓰는 공개 흐름은 ``FlowInUse`` — 먼저 다른 흐름을 배포해야 한다.
+    """흐름을 보관한다(soft delete). 위젯이 쓰는 기본 흐름은 ``FlowInUse`` — 먼저 다른 흐름을 배포해야 한다.
+    임베드를 켠 흐름이면 임베드도 끈다 — 키 주소로 붙여 둔 코드가 멈춘다(경고·확인은 화면·MCP 몫, ADR-0034).
 
     버전·세션·판단 기록은 지우지 않는다. 기다리던 배포 요청은 ``superseded``로 닫는다(승인해도 갈 곳이 없다).
     """
@@ -199,7 +200,8 @@ def archive_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
                 f"'{flow.name}'은(는) 위젯이 쓰고 있는 흐름이라 보관할 수 없습니다. 먼저 다른 흐름을 배포해 위젯이 그 흐름으로 돌게 하세요."
             )
         flow.archived_at = timezone.now()
-        flow.save(update_fields=["archived_at", "updated_at"])
+        flow.embed_enabled = False
+        flow.save(update_fields=["archived_at", "embed_enabled", "updated_at"])
         DeployRequest.objects.filter(flow=flow, status=DeployRequest.PENDING).update(status=DeployRequest.SUPERSEDED)
     return flow
 

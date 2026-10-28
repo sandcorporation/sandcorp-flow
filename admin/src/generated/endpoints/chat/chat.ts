@@ -9,6 +9,7 @@ import type {
   AppsChatApiResolveWidget404,
   AppsChatApiResolveWidgetParams,
   AppsChatApiSendMessage202,
+  AppsChatApiSendMessage403,
   AppsChatApiSendMessage404,
   AppsChatApiSendMessage429,
   AppsChatApiStreamParams,
@@ -63,6 +64,11 @@ export type appsChatApiSendMessageResponse202 = {
   status: 202
 }
 
+export type appsChatApiSendMessageResponse403 = {
+  data: AppsChatApiSendMessage403
+  status: 403
+}
+
 export type appsChatApiSendMessageResponse404 = {
   data: AppsChatApiSendMessage404
   status: 404
@@ -76,7 +82,7 @@ export type appsChatApiSendMessageResponse429 = {
 export type appsChatApiSendMessageResponseSuccess = (appsChatApiSendMessageResponse202) & {
   headers: Headers;
 };
-export type appsChatApiSendMessageResponseError = (appsChatApiSendMessageResponse404 | appsChatApiSendMessageResponse429) & {
+export type appsChatApiSendMessageResponseError = (appsChatApiSendMessageResponse403 | appsChatApiSendMessageResponse404 | appsChatApiSendMessageResponse429) & {
   headers: Headers;
 };
 
@@ -104,10 +110,11 @@ export const appsChatApiSendMessage = async (messageIn: MessageIn, options?: Req
 
 
 /**
- * 공개 위젯 진입 가드 — slug가 활성 Tenant로 해석되면 200(+공개 브랜드), 아니면 404.
+ * 공개 위젯 진입 가드 — 위젯 주소가 열려 있으면 200(+공개 브랜드·흐름 이름), 아니면 404.
 
-위젯이 렌더 전에 호출해, 유효하지 않은 slug면 챗 셸 대신 not-found를 띄운다(EventSource는 HTTP
-상태를 못 읽어 404와 일시 오류를 구분 못 하므로, 사전 검증이 필요하다).
+위젯이 렌더 전에 호출해, 유효하지 않은 주소면 챗 셸 대신 안내를 띄운다(EventSource는 HTTP
+상태를 못 읽어 404와 일시 오류를 구분 못 하므로, 사전 검증이 필요하다). ``flow``는 키 주소의 embed_key다.
+없는 slug·닫힌 키는 모두 같은 404 몸통이다.
  * @summary Resolve Widget
  */
 export type appsChatApiResolveWidgetResponse200 = {

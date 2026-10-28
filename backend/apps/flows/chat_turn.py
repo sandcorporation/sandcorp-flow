@@ -1,8 +1,8 @@
 """운영 챗 한 턴의 진입: 세션이 고정된 Flow Version을 골라 실행기로 돈다(#72, ADR-0027).
 
 - 세션에 고정된 버전이 있으면 그 흐름. 배포가 진행 중 대화를 바꾸지 않는다.
-- 고정 버전이 없는 세션(이 칸이 생기기 전 세션)은 첫 턴에 테넌트 공개 흐름의 **배포 중 버전에 고정**하고 이어 간다.
-- 공개 흐름이 없는 테넌트는 고정하지 않고 ``DEFAULT_FLOW``로 돈다.
+- 고정 버전이 없는 세션은 첫 턴에 세션의 흐름(ADR-0034), 흐름이 없으면 테넌트 기본 흐름의 **배포 중 버전에 고정**하고 이어 간다.
+- 고를 흐름(또는 그 배포 버전)이 없으면 고정하지 않고 ``DEFAULT_FLOW``로 돈다.
 
 체크포인트(thread_id=session_id)는 옛 build_graph와 같은 자리다. 옛 체크포인트에는 실행기 키(``resume_node`` 등)가 없어
 시작 노드부터 돌고, 대화 기록(``messages``)은 그대로 이어진다. 체험 턴 차감은 이 함수를 부르는 chat_task가 먼저 한다.
@@ -21,17 +21,19 @@ __all__ = ["run_chat_turn_async", "session_flow_graph"]
 
 
 def session_flow_graph(session: ChatSession) -> JSON:
-    """이 세션이 돌 흐름 JSON(sync). 고정 버전이 없으면 공개 흐름 배포 중 버전에 고정한다(조건부 UPDATE라 동시 턴에도 하나)."""
+    """이 세션이 돌 흐름 JSON(sync). 고정 버전이 없으면 세션 흐름(없으면 기본 흐름)의 배포 중 버전에 고정한다(조건부 UPDATE라 동시 턴에도 하나)."""
     from apps.chat.models import ChatSession
     from apps.flows.defaults import DEFAULT_FLOW
-    from apps.flows.models import Flow, FlowVersion
+    from apps.flows.models import FlowVersion
 
     if session.flow_version_id is None and not session.is_test:
-        version = Flow.public_version_for(session.tenant_id)
-        if version is None:
+        session.pin_flow_version()
+        if session.flow_version_id is None:
             return DEFAULT_FLOW
-        ChatSession.objects.filter(pk=session.pk, flow_version__isnull=True).update(flow_version=version)
-        session.refresh_from_db(fields=["flow_version"])
+        ChatSession.objects.filter(pk=session.pk, flow_version__isnull=True).update(
+            flow_version=session.flow_version_id, flow=session.flow_id
+        )
+        session.refresh_from_db(fields=["flow_version", "flow"])
     if session.flow_version_id is None:
         return DEFAULT_FLOW
     return FlowVersion.objects.only("graph").get(pk=session.flow_version_id).graph
