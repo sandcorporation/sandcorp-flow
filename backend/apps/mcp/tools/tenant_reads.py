@@ -47,7 +47,7 @@ _PLAIN_SETTINGS = (
     "slug", "system_prompt", "agent_display_name", "welcome_message", "brand_name",
     "hitl_enabled", "hitl_timezone", "hitl_schedule", "hitl_holidays",
     "require_identity_verification", "deploy_requires_approval", "public_flow_view",
-    "topic_scope_enabled", "scope_description", "scope_refusal_message",
+    "topic_scope_enabled", "scope_description", "scope_refusal_message", "embed_origins",
 )
 
 
@@ -74,7 +74,7 @@ def settings_view(config_out: dict[str, JSON]) -> JSONObject:
 
 @register(
     "get_settings",
-    "테넌트 설정(비밀 제외): 시스템 프롬프트·상담 문구·주제 범위·사람 넘김(hitl_*)·본인 확인·배포 승인 필요·공개 흐름 보기, "
+    "테넌트 설정(비밀 제외): 시스템 프롬프트·상담 문구·주제 범위·사람 넘김(hitl_*)·본인 확인·배포 승인 필요·공개 흐름 보기, 위젯을 붙일 수 있는 사이트(embed_origins), "
     "providers{llm|embed|ocr: provider_type·model·api_key_set}, webhook{webhook_set·webhook_type}. "
     "API 키 값·base_url·웹훅 주소·TENANT_KEY는 주지 않는다(설정 여부 bool만). 인자: tenant?.",
     TenantArgs,

@@ -43,6 +43,9 @@ INSTRUCTIONS = (
     "2단계: 설명 끝에 (2단계)가 붙은 도구는 처음 부르면 실행하지 않고 미리보기와 confirm_token을 돌려준다. "
     "미리보기를 사용자에게 그대로 보이고 확인받은 뒤에만, 같은 인자에 confirm_token을 실어 다시 부른다"
     "(5분 안, 한 번만). 사용자가 확인하지 않았으면 부르지 않는다.\n"
+    "임베드: 흐름마다 키 주소 /chatbot/<slug>/<embed_key>/가 있고(list_flows·get_flow의 embed_path), 기본 흐름은 /chatbot/<slug>/가 돈다. "
+    "set_flow_embed(켬/끔·흐름 허용 사이트)·set_default_flow·set_embed_origins(테넌트 허용 사이트)는 Admin·flow.deploy·2단계다. "
+    "허용 사이트는 붙이기 통제이지 접근 통제가 아니다(주소를 직접 열거나 API를 부르는 것은 막지 않는다).\n"
     "비밀 값·API 키·Provider·웹훅·초대 링크는 다루지 않는다. 쓰기 호출은 모두 감사 로그에 남는다."
 )
 

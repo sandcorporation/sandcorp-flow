@@ -360,6 +360,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
     3. **확인**: `curl -sI https://flow.sandcorp.co.kr/chatbot/sandcorp/ | grep -i content-security`가 `frame-ancestors 'self' https://sandcorp.co.kr https://www.sandcorp.co.kr`. portfolio 홈에서 위젯이 뜨고, 목록에 없는 출처(예: 임의의 정적 페이지에 같은 iframe)에서는 브라우저가 막는다(콘솔에 `frame-ancestors` 거부).
     4. **NPMplus**: `/chatbot/` 응답에 프록시가 `X-Frame-Options`나 다른 `Content-Security-Policy`를 덧붙이지 않는지 본다(`curl -sI …/chatbot/sandcorp/`에 XFO가 없어야 한다 — 있으면 iframe이 목록과 상관없이 막힐 수 있다).
     - **실패할 때**: 정책 엔드포인트가 죽거나 늦으면(api 재시작·롤아웃·5xx·2초 넘음) nginx는 `frame-ancestors *`로 위젯을 그대로 낸다(fail-open, 막지 않는다). 목록을 넣은 뒤라면 그 몇 초 동안 제한이 풀린다.
+    - **MCP로도 바꿀 수 있다(#250)**: 테넌트 목록은 `set_embed_origins`, 흐름 목록은 `set_flow_embed`의 `origins`(Admin·`flow.deploy`·2단계·감사). 검증과 캐시 지우기는 화면과 같은 함수라 결과가 같다. 배포 후 확인(위 1~4)은 그대로다.
     - **되돌리기**: 목록을 비우면 곧바로 `*`. 설정째 되돌리려면 되돌리기 PR(병합 → 배포가 nginx를 다시 만든다). 칸은 남아도 옛 코드가 읽지 않는다.
 
 ### portfolio(sandcorp.co.kr)가 쓰는 Flow 주소(#39, #165)
@@ -378,6 +379,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
 | 체험 임베드(iframe, #178) | `<iframe id="flow-try" src="https://flow.sandcorp.co.kr/try?embed=1&template=home" title="Flow 체험" allow="clipboard-write" style="width:100%;border:0;height:640px"></iframe>` + 아래 높이 수신 스니펫 | **임베드 모드**(ADR-0031). 권장 폭 100%(390~1200 확인)·초기 높이 640px(hello 뒤 실제 높이로 바뀜). `template=home`(`shop`·`academy`)이면 곧바로 편집기(세션은 첫 저장·시험 대화에 생김, 방문만으로는 안 만들어짐). 다크 호스트는 `&theme=dark`(`light`), 없으면 OS를 따름. 부모와 flow가 **같은 사이트**여야 한다 |
 | 위젯 embed(iframe) | `<iframe src="https://flow.sandcorp.co.kr/chatbot/sandcorp/" width="400" height="600" style="border:none" allow="microphone"></iframe>` | 공개 slug URL, ADR-0011 — 토큰 없음. **바꾸지 않는다** |
 | 공개 챗봇 페이지 | `/chatbot/sandcorp/` | 위 iframe과 같은 주소(slug `sandcorp`) |
+| 흐름별 위젯 주소(#246) | `/chatbot/sandcorp/<embed_key>/` — 예: `<iframe src="https://flow.sandcorp.co.kr/chatbot/sandcorp/<embed_key>/" …>` | portfolio가 약속한 주소가 아니라 테넌트가 흐름마다 붙이는 주소(ADR-0034). 키는 흐름 「임베드」 패널·MCP `list_flows`(`embed_path`)에서 본다. 켜기·기본 흐름 바꾸기·허용 사이트는 admin 화면 또는 MCP `set_flow_embed`·`set_default_flow`·`set_embed_origins`(Admin, `flow.deploy`, 2단계)로 한다. 위 portfolio 줄은 그대로다 |
 | 위젯 SPA 자산 | `/embed/` | 위젯 base. portfolio는 직접 쓰지 않는다 |
 
 #### 체험 임베드(portfolio가 붙이는 법)

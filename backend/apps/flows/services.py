@@ -259,6 +259,21 @@ def set_embed_origins(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, origins: l
     return get_flow(tenant_id, flow_id)
 
 
+def set_tenant_embed_origins(tenant_id: uuid.UUID, origins: list[str]) -> list[str]:
+    """테넌트의 허용 사이트 목록(기본 흐름 주소와 자기 목록이 없는 흐름이 쓴다)을 검증·정규화해 저장하고 정책 캐시를 지운다(#250).
+    REST ``PATCH /config/``와 같은 검증 함수·캐시 무효화를 쓴다. 정규화된 목록을 돌려준다."""
+    from apps.flows.embed_policy import EmbedOriginsInvalid, forget_tenant, normalize_embed_origins
+    from apps.tenants.models import TenantConfig
+
+    try:
+        normalized = normalize_embed_origins(origins)
+    except EmbedOriginsInvalid as e:
+        raise InvalidEmbedOrigins(e.message) from e
+    TenantConfig.objects.filter(tenant_id=tenant_id).update(embed_origins=normalized)
+    forget_tenant(tenant_id)
+    return normalized
+
+
 def set_default_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
     """기본 흐름(``is_public``, 위젯 ``/chatbot/<slug>/``가 도는 흐름)을 바꾼다. 배포됨·보관 아님만 된다.
 

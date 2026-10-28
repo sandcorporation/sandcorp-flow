@@ -54,42 +54,15 @@ Operator로부터 다음을 받아야 합니다:
 - 서비스 이용 약관 (TXT)
 ```
 
-## 4. 위젯 삽입 — 서버사이드 구현
+## 4. 위젯 삽입 (iframe)
 
-챗봇 위젯을 삽입하려면 **서버에서 EmbedToken을 발급**해야 합니다. TENANT_KEY는 절대 프론트엔드에 노출하지 마세요.
+챗봇 위젯은 **공개 주소**를 iframe으로 붙이면 됩니다. 발급할 토큰이 없고 `TENANT_KEY`도 필요 없습니다(옛 EmbedToken 방식은 폐지됐습니다 — [ADR-0011](./adr/0011-public-slug-url-replaces-embed-token.md)). 설정 > 보안 「내 사이트에 붙이기」 카드가 아래 코드를 만들어 줍니다.
 
-### EmbedToken 발급 (서버사이드)
-
-```bash
-POST https://your-platform/api/embed/token
-Authorization: Bearer {TENANT_KEY}
-Content-Type: application/json
-
-{
-  "visitor_id": "user-123",          # 자사 시스템의 사용자 ID
-  "visitor_context": {               # 선택: 챗봇에게 전달할 방문자 정보
-    "name": "홍길동",
-    "plan": "premium",
-    "language": "ko"
-  }
-}
-```
-
-응답:
-```json
-{
-  "embed_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
-```
-
-### 위젯 삽입 (프론트엔드)
-
-발급받은 `embed_token`을 iframe src에 담아 페이지에 삽입합니다.
+### 기본 흐름 주소
 
 ```html
-<!-- 서버에서 생성한 embed_token을 사용 -->
 <iframe
-  src="https://your-platform/embed/?token={embed_token}"
+  src="https://your-platform/chatbot/{slug}/"
   width="400"
   height="600"
   style="border: none; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"
@@ -97,43 +70,25 @@ Content-Type: application/json
 ></iframe>
 ```
 
-### 서버사이드 구현 예시
+`{slug}`는 설정에서 정한 조직 주소입니다. 이 주소는 늘 **기본 흐름**이 답합니다. 기본 흐름을 바꾸면 이 주소의 새 대화부터 새 흐름이 답하고, 이미 열린 대화는 끊기지 않습니다.
 
-**Node.js / Express**
-```js
-app.get('/chat-token', async (req, res) => {
-  const response = await fetch('https://your-platform/api/embed/token', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.TENANT_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      visitor_id: req.user.id,
-      visitor_context: { name: req.user.name, plan: req.user.plan },
-    }),
-  })
-  const { embed_token } = await response.json()
-  res.json({ embed_token })
-})
+### 흐름별 주소
+
+흐름마다 바뀌지 않는 `embed_key`(8자)가 있어, 같은 사이트의 다른 쪽에 다른 흐름을 붙일 수 있습니다. 흐름 목록의 「임베드」 패널에서 **임베드 켜기**를 누르면(배포한 버전이 있어야 합니다) 코드가 나옵니다.
+
+```html
+<iframe src="https://your-platform/chatbot/{slug}/{embed_key}/" width="400" height="600" style="border: none" allow="microphone"></iframe>
 ```
 
-**Python / Django**
-```python
-import requests
+흐름마다 대화가 따로입니다. 임베드를 끄거나 흐름을 보관하면 그 주소는 「지금 열려 있지 않은 상담입니다.」를 보입니다(기본 흐름은 끄더라도 자기 키 주소로 열려 있습니다).
 
-def get_embed_token(visitor_id, visitor_context=None):
-    response = requests.post(
-        'https://your-platform/api/embed/token',
-        headers={'Authorization': f'Bearer {settings.TENANT_KEY}'},
-        json={'visitor_id': visitor_id, 'visitor_context': visitor_context or {}},
-    )
-    return response.json()['embed_token']
-```
+### 방문자 식별
 
-### 토큰 갱신
+로그인한 사용자를 알리려면 주소 끝에 `?visitor_id=<자사 사용자 ID>`를 붙입니다. 본인 확인을 켠 조직은 위조를 막는 확인값(`hash`)도 함께 요구합니다(설정 > 보안 안내 참고).
 
-EmbedToken은 기본 **5분** 후 만료됩니다. 페이지 로드 시마다 새로 발급하거나, 만료 전 갱신 로직을 구현하세요.
+### 허용 사이트
+
+기본으로는 어느 사이트든 위 iframe을 붙일 수 있습니다. 설정 > 보안 카드의 「허용 사이트」(조직 전체)와 흐름 「임베드」 패널의 허용 사이트(그 흐름의 키 주소만, 비면 조직 목록을 따름)에 `https://example.com`, `https://*.example.com` 같은 출처를 넣으면 그 사이트에서만 붙습니다. 이것은 **붙이기 통제이지 접근 통제가 아닙니다** — 주소를 직접 열거나 API를 부르는 것은 막지 않습니다.
 
 ## 5. 방문자 메모리 관리
 
@@ -166,7 +121,10 @@ Authorization: Bearer {TENANT_KEY}
 
 | 엔드포인트 | 메서드 | 설명 |
 |------------|--------|------|
-| `/api/embed/token` | POST | EmbedToken 발급 |
+| `/api/tenant/flows/` | GET | 흐름 목록(`embed_key`·`embed_enabled`·`embed_path`·`embed_origins`) |
+| `/api/tenant/flows/{id}/embed/` | POST | 흐름의 키 주소 임베드 켜기/끄기 |
+| `/api/tenant/flows/{id}/default/` | POST | 기본 흐름 바꾸기 |
+| `/api/tenant/flows/{id}/embed-origins/` | PUT | 흐름의 허용 사이트 |
 | `/api/tenant/config/` | GET | 챗봇 설정 조회 |
 | `/api/tenant/config/` | PATCH | 챗봇 설정 변경 |
 | `/api/tenant/documents/` | GET | 문서 목록 |
@@ -181,5 +139,5 @@ Authorization: Bearer {TENANT_KEY}
 ## 보안 주의사항
 
 - `TENANT_KEY`는 서버사이드에서만 사용하세요. 환경 변수(`process.env.TENANT_KEY`)로 관리하고, 절대 소스코드나 프론트엔드에 하드코딩하지 마세요.
-- EmbedToken은 짧은 유효기간(기본 5분)을 유지하세요.
+- iframe 주소에는 비밀이 없습니다. 허용 사이트는 붙이기만 통제하니, 대화 내용 보호는 본인 확인과 `visitor_id` 관리로 하세요.
 - `visitor_id`는 자사 인증 시스템과 연동된 실제 사용자 식별자를 사용하세요.
