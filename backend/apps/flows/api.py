@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import Literal
 
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
 from ninja import Router, Schema
 from ninja.errors import HttpError
@@ -414,6 +415,10 @@ def deploy_requests_reject(request, request_id: str, body: DecisionIn):
 # ── 시험 대화(SSE) ───────────────────────────────────────────────────────────
 
 
+HEARTBEAT = ": heartbeat\n\n"
+"""SSE 주석 줄 — 소비자는 ``data:`` 없는 블록을 건너뛴다(#253)."""
+
+
 def _sse(event: str, data: Mapping[str, object]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
@@ -532,7 +537,16 @@ def stream_test_turn(
             task = asyncio.create_task(_run_turn(turn, queue, after))
             _running_turns.add(task)
             task.add_done_callback(_forget_turn)
-            while (item := await queue.get()) is not None:
+            interval = settings.TEST_SSE_HEARTBEAT_SECONDS
+            while True:
+                try:
+                    # 하트비트는 이벤트 루프에서만 — sync_to_async를 끼우면 지식 검색의 DB 쿼리 뒤에 줄 선다(#256, #253)
+                    item = await asyncio.wait_for(queue.get(), interval)
+                except asyncio.TimeoutError:
+                    yield HEARTBEAT
+                    continue
+                if item is None:
+                    break
                 name, data = item
                 yield _sse(name, clean(name, data))
             try:
