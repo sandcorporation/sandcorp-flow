@@ -1,10 +1,18 @@
+from __future__ import annotations
+
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
 from pydantic import BaseModel, Field
 from asgiref.sync import sync_to_async
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from apps.agent import llm as llm_boundary
 from apps.agent.providers import get_chat_provider
 from apps.chat.sse import apublish_token, apublish_done
+
+if TYPE_CHECKING:
+    from apps.agent.providers import EmbeddingProvider
+    from apps.rag.graph_store import GraphStore
 
 
 # 노드는 async def다(issue 195/노드 async화). DB 협력자(GraphStore raw psycopg·Django ORM)는
@@ -63,12 +71,55 @@ class PlainResponse(BaseModel):
     response: str
 
 
-def _local_search_sync(state: dict) -> dict:
+QueryEmbed = Callable[[], list[float]]
+
+
+def _open_store_sync(state: dict) -> tuple[GraphStore, EmbeddingProvider | None | Exception]:
+    """검색 저장소를 열고 그 임베딩 Provider를 읽는다. DB(sync). Provider를 못 읽으면 그 예외를 돌려준다 —
+    전에는 ``search_entities``·원문 폴백의 의미 보강 구간 안에서 읽어 실패해도 어휘만으로 계속했다."""
+    from apps.rag.graph_store import GraphStore
+
+    gs = GraphStore.for_search(state["tenant_id"])  # 체험 테넌트는 도서관의 자기 예제 묶음만(#134)
+    try:
+        return gs, gs._embedding_provider()
+    except Exception as exc:  # noqa: BLE001 — 의미 보강 실패는 무중단(아래 _aquery_embed)
+        return gs, exc
+
+
+async def _aquery_embed(state: dict) -> tuple[GraphStore, QueryEmbed]:
+    """질의 임베딩 HTTP를 thread-sensitive 스레드 **밖**에서 미리 한다(#262).
+
+    taskiq 워커에는 요청 경계가 없어 모든 턴이 thread-sensitive 스레드 하나를 나눠 쓴다. 임베딩 HTTP를 그 스레드에서
+    기다리면 다른 대화의 DB 단계가 그만큼 줄을 섰다. HTTP는 DB를 부르지 않으므로 ``thread_sensitive=False``(풀 스레드)로
+    보내고 — DB 연결이 늘지 않는다 — 사용량 기록(DB)은 돌려준 함수가 검색 도중 원래 자리에서 한다(``record_embeddings``).
+    """
+    from apps.rag.ingesters import fetch_embeddings, record_embeddings
+
+    gs, provider = await sync_to_async(_open_store_sync)(state)
+    failure: Exception
+    if isinstance(provider, Exception):
+        failure = provider
+    else:
+        try:
+            fetched = await sync_to_async(fetch_embeddings, thread_sensitive=False)([state["user_message"]], provider)
+        except Exception as exc:  # noqa: BLE001 — 의미 보강 실패는 무중단(호출부의 except가 삼킨다)
+            failure = exc
+        else:
+            return gs, lambda: record_embeddings(fetched)[0]
+
+    def failed() -> list[float]:
+        raise failure
+
+    return gs, failed
+
+
+def _local_search_sync(state: dict, store: GraphStore, embed: QueryEmbed) -> dict:
     """엔티티 중심 근거 — 질의로 resolved Entity를 찾고 그 이웃 관계를 모은다(ADR-0010). DB(sync)."""
     from apps.rag import services
 
     hits = services.local_search(
-        state["tenant_id"], state["user_message"], top_k=state.get("search_top_k", 5)  # 흐름 지식 검색 노드의 top_k(#23)
+        state["tenant_id"], state["user_message"], top_k=state.get("search_top_k", 5),  # 흐름 지식 검색 노드의 top_k(#23)
+        store=store, embed=embed,
     )
     return {"rag_chunks": services.hits_as_chunks(hits)}
 
@@ -87,7 +138,8 @@ def _observe_retrieval(name: str, state: dict, result: dict) -> None:
 
 
 async def local_search_node(state: dict) -> dict:
-    result = await sync_to_async(_local_search_sync)(state)
+    store, embed = await _aquery_embed(state)
+    result = await sync_to_async(_local_search_sync)(state, store, embed)
     _observe_retrieval("graphrag_local_search", state, result)
     return result
 
@@ -95,15 +147,12 @@ async def local_search_node(state: dict) -> dict:
 SOURCE_TOP_K = 4  # 폴백 1회당 끌어올 원문 청크 수(토큰 통제)
 
 
-def _source_search_sync(state: dict) -> dict:
-    """원문(TextUnit) 폴백 — 그래프-only가 답을 못 냈을 때 질의 임베딩으로 최근접 원문을 보강(ADR-0010)."""
-    from apps.rag.graph_store import GraphStore
-    from apps.rag.ingesters import get_embeddings
-
-    gs = GraphStore.for_search(state["tenant_id"])  # 체험 테넌트는 도서관의 자기 예제 묶음만(#134)
+def _source_search_sync(state: dict, gs: GraphStore, embed: QueryEmbed) -> dict:
+    """원문(TextUnit) 폴백 — 그래프-only가 답을 못 냈을 때 질의 임베딩으로 최근접 원문을 보강(ADR-0010).
+    질의 임베딩 HTTP는 ``_aquery_embed``가 미리 했다(#262)."""
     existing = state.get("rag_chunks") or []
     try:
-        emb = get_embeddings([state["user_message"]], provider=gs._embedding_provider())[0]
+        emb = embed()
         hits = gs.vector_search(emb, top_k=SOURCE_TOP_K)
     except Exception:
         hits = []
@@ -118,7 +167,8 @@ def _source_search_sync(state: dict) -> dict:
 
 
 async def source_search_node(state: dict) -> dict:
-    result = await sync_to_async(_source_search_sync)(state)
+    store, embed = await _aquery_embed(state)
+    result = await sync_to_async(_source_search_sync)(state, store, embed)
     _observe_retrieval("graphrag_source_search", state, result)
     return result
 

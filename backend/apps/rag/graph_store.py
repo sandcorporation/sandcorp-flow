@@ -7,7 +7,7 @@ per-Tenant 임베딩 차원은 차원별 vec 테이블(kg_*_vec_d{dim})로 라�
 스코프 + HNSW(+iterative scan)다. 비-벡터(엣지·meta)는 정적 공유 테이블(마이그레이션, ADR-0021).
 """
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 # 같은 deep module 인터페이스를 Postgres로 백킹한다. per-Tenant 임베딩 차원은 차원별 테이블
 # (kg_text_unit_d{dim} 등)로 라우팅하고, 검색은 tenant_id 스코프 + HNSW(+iterative scan)다.
@@ -298,8 +298,13 @@ class GraphStore:
             cur.execute("SELECT a, b FROM kg_same_as WHERE tenant_id=%s", [self.tenant_id])
             return [(r[0], r[1]) for r in cur.fetchall()]
 
-    def search_entities(self, term: str, top_k: int = 10) -> list:
-        """어휘(부분일치) ∪ 의미(벡터) Mention 검색 → SAME_AS 클러스터로 dedup (현 Neo4j와 동일)."""
+    def search_entities(self, term: str, top_k: int = 10, *, embed: Callable[[], list[float]] | None = None) -> list:
+        """어휘(부분일치) ∪ 의미(벡터) Mention 검색 → SAME_AS 클러스터로 dedup (현 Neo4j와 동일).
+
+        ``embed``는 질의 벡터를 주는 함수다. 없으면 여기서 ``get_embeddings``(HTTP)를 부른다. 턴 노드는 HTTP를
+        thread-sensitive 스레드 밖에서 미리 해 두고 그 결과를 주는 함수를 넘긴다(#262). 어느 쪽이든 예외는 아래
+        의미 보강 구간에서 삼켜 어휘만으로 계속한다.
+        """
         from django.db import connection
         cols = ("mention_id", "name", "entity_type", "description", "source_document_id")
         by_mid = {}
@@ -317,8 +322,11 @@ class GraphStore:
         # 의미(벡터) 보강 — 인덱스/임베딩이 없으면 어휘만으로 무중단(savepoint로 격리)
         try:
             from django.db import transaction
-            from apps.rag.ingesters import get_embeddings
-            qe = get_embeddings([term], provider=self._embedding_provider())[0]
+            if embed is None:
+                from apps.rag.ingesters import get_embeddings
+                qe = get_embeddings([term], provider=self._embedding_provider())[0]
+            else:
+                qe = embed()
             q = _vec_literal(qe)
             mvec = f"kg_mention_vec_d{len(qe)}"  # 질의 임베딩 길이로 라우팅
             with transaction.atomic(), connection.cursor() as cur:

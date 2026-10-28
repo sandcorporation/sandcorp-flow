@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import List
+from dataclasses import dataclass
+from typing import List, TypedDict
 
 
 CHUNK_SIZE = 500
@@ -24,6 +25,36 @@ def get_embeddings(texts: List[str], provider=None) -> List[List[float]]:
 
     provider 미지정 시 플랫폼 기본(로컬 ollama /v1)을 쓴다. prod에선 Tenant가
     Embedding Provider를 설정해야 한다(폴백 없음 — embedding_provider 참조).
+    HTTP(``fetch_embeddings``)와 사용량 기록(``record_embeddings``)을 차례로 한다.
+    """
+    fetched = fetch_embeddings(texts, provider)
+    return record_embeddings(fetched)
+
+
+class _EmbeddingItem(TypedDict):
+    embedding: List[float]
+
+
+class EmbeddingResponse(TypedDict, total=False):
+    """OpenAI 호환 ``/v1/embeddings`` 응답 중 우리가 쓰는 칸."""
+    data: List[_EmbeddingItem]
+    usage: dict[str, int]
+
+
+@dataclass(frozen=True)
+class FetchedEmbeddings:
+    """임베딩 HTTP 응답 — 사용량 기록 전. ``record_embeddings``가 사용량을 남기고 벡터를 꺼낸다."""
+    texts: List[str]
+    model: str
+    body: EmbeddingResponse
+
+
+def fetch_embeddings(texts: List[str], provider=None) -> FetchedEmbeddings:
+    """임베딩 HTTP만 — DB를 부르지 않는다.
+
+    그래서 턴 노드는 이것을 thread-sensitive 스레드 밖(``sync_to_async(thread_sensitive=False)``)에서 부른다(#262).
+    taskiq 워커의 모든 턴이 thread-sensitive 스레드 하나를 나눠 쓰므로, 거기서 HTTP를 기다리면 다른 대화의 DB 단계가
+    그만큼 줄을 선다. ``provider``는 미리 읽어 둔 값(``EmbeddingProvider``)이라 여기서 DB를 읽지 않는다.
     """
     from django.conf import settings
 
@@ -48,7 +79,12 @@ def get_embeddings(texts: List[str], provider=None) -> List[List[float]]:
         resp = client.post(f"{base_url}/embeddings", json=payload, headers={"Authorization": f"Bearer {api_key}"})
         resp.raise_for_status()
         body = resp.json()
+    return FetchedEmbeddings(list(texts), model, body)
 
+
+def record_embeddings(fetched: FetchedEmbeddings) -> List[List[float]]:
+    """임베딩 사용량을 기록하고 벡터를 돌려준다. **sync·DB** — thread-sensitive 스레드에서 부른다(ORM)."""
+    texts, model, body = fetched.texts, fetched.model, fetched.body
     # 임베딩은 httpx 직접 호출이라 langchain 콜백이 못 잡는다 — 두 sink(TokenUsage DB + Langfuse
     # generation)를 응답 usage에서 수동 기록한다(LLM이 콜백으로 둘 다 다는 것과 대칭, issue 203).
     from apps.usage.context import get_usage_context
