@@ -7,6 +7,8 @@
 - ``await_reply`` AI 답변 뒤에는 ``resume_node``에 다음 노드를 적어 두고 턴을 끝낸다. 다음 턴은 거기서 시작한다
   (체크포인터가 상태를 이어 준다).
 - 한 턴 노드 상한 ``MAX_STEPS_PER_TURN``을 넘으면 그 자리에서 턴을 끝낸다(``step_limit_exceeded``).
+- 시험 턴이면 노드마다 ``node_start``/``node_end``/``node_error`` 이벤트를 ``node_events`` sink로 낸다(#239, ADR-0035).
+  sink가 없는 운영 턴은 아무것도 내지 않는다.
 - 지은 ``StateGraph``는 흐름 해시(``flow_hash``)로 캐시한다. 체크포인터는 실행마다 달라 compile은 실행 때 한다.
 """
 
@@ -23,6 +25,7 @@ from typing import TYPE_CHECKING
 from langgraph.graph import END, START, StateGraph
 
 from apps.flows import handlers as _handlers  # noqa: F401 — 레지스트리를 채운다
+from apps.flows import node_events
 from apps.flows.contract import (
     HANDLERS,
     FlowState,
@@ -84,9 +87,18 @@ def _make_step(node: Node, handler: NodeHandler, outgoing: dict[str, str], *, ho
         if steps >= MAX_STEPS_PER_TURN:
             return {"route": FINISH_NODE, "resume_node": "", "step_limit_exceeded": True}
 
+        live = node_events.active()  # 시험 턴만 sink가 있다 — 운영 턴은 아래 emit이 모두 건너뛰어진다(#239)
+        if live:
+            node_events.emit("node_start", {"node_id": node.id, "kind": node.kind.value, "step": steps})
         started = time.monotonic()
         with collect_calls() as llm_calls:
-            outcome: NodeOutcome = await handler(state, ctx)
+            try:
+                outcome: NodeOutcome = await handler(state, ctx)
+            except Exception as exc:
+                if live:
+                    node_events.emit("node_error", {"node_id": node.id, "kind": node.kind.value, "step": steps,
+                                                    "message": node_events.error_message(exc)})
+                raise
         duration_ms = int((time.monotonic() - started) * 1000)
         target = outgoing.get(outcome.handle) if outcome.handle else None
         resume = ""
@@ -110,6 +122,13 @@ def _make_step(node: Node, handler: NodeHandler, outgoing: dict[str, str], *, ho
             "unpriced_models": unpriced,
             "calls": calls,
         }
+        if live:
+            node_events.emit("node_end", {
+                "node_id": node.id, "kind": node.kind.value, "step": steps, "handle": outcome.handle,
+                "duration_ms": duration_ms, "input_tokens": entry["input_tokens"], "output_tokens": entry["output_tokens"],
+                "cost_usd": entry["cost_usd"], "unpriced_models": list(unpriced),
+                "summary": node_events.summary(node.kind.value, outcome.handle, outcome.record),
+            })
         return {
             **outcome.update,
             "route": route,

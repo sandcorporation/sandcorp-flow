@@ -229,11 +229,16 @@ async def try_test_conversation(request: HttpRequest, flow_id: str, body: TestTu
         refused = services.TestTurnResult(ran=False, note=try_session.DAILY_BUDGET_NOTE)
         return stream_test_turn(flow_id, refused, code=try_session.DAILY_BUDGET)
 
-    result = await services.run_test_turn(tenant_id, flow_id, body.message, session_id=body.session_id)
+    begun = await services.begin_test_turn(tenant_id, flow_id, body.message, session_id=body.session_id)
+    if isinstance(begun, services.PreparedTestTurn):
+        return stream_test_turn(flow_id, begun, after=_add_turn_spend)
+    if begun.note == services.TRIAL_EXHAUSTED_NOTE:
+        code, note = await sync_to_async(_refusal_code)(tenant_id)
+        return stream_test_turn(flow_id, dataclasses.replace(begun, note=note), code=code)
+    return stream_test_turn(flow_id, begun)
+
+
+async def _add_turn_spend(result: services.TestTurnResult) -> None:
+    """돈 턴의 비용을 하루 체험 비용에 더한다 — 스트림과 따로 도는 턴 작업이 끝에 부른다(연결이 끊겨도 더한다)."""
     if result.ran:
         await sync_to_async(try_session.add_spend)(try_session.turn_cost(result.trace))
-        return stream_test_turn(flow_id, result)
-    if result.note == services.TRIAL_EXHAUSTED_NOTE:
-        code, note = await sync_to_async(_refusal_code)(tenant_id)
-        return stream_test_turn(flow_id, dataclasses.replace(result, note=note), code=code)
-    return stream_test_turn(flow_id, result)

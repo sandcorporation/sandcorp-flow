@@ -28,6 +28,7 @@ from apps.flows.schema import DEFAULT_HANDLE, JSON, FlowError, NodeKind, validat
 
 if TYPE_CHECKING:
     from apps.chat.models import ChatSession
+    from apps.flows.node_events import NodeEventSink
 
 type JSONObject = dict[str, JSON]
 
@@ -643,8 +644,66 @@ def _prepare_test_turn(
     return graph, [], session, trial.admit_turn(config)
 
 
-async def run_test_turn(
+@dataclass(frozen=True)
+class PreparedTestTurn:
+    """돌 준비가 끝난 시험 한 턴(세션·방문자 메시지 저장, 체험 턴 차감까지). ``finish_test_turn``으로 돌린다."""
+
+    tenant_id: uuid.UUID
+    session: ChatSession
+    graph: JSON
+    message: str
+
+
+async def begin_test_turn(
     tenant_id: uuid.UUID, flow_id: uuid.UUID | str, message: str, *, session_id: uuid.UUID | str | None = None
+) -> PreparedTestTurn | TestTurnResult:
+    """시험 한 턴의 앞 절반 — 돌 수 있으면 ``PreparedTestTurn``, 아니면(초안 오류·체험 한도) 돌지 않은 결과.
+
+    흐름·세션이 없으면 여기서 ``FlowServiceError``가 난다(SSE 응답을 열기 전이라 HTTP 오류로 돌려줄 수 있다).
+    """
+    from asgiref.sync import sync_to_async
+
+    graph, errors, session, admitted = await sync_to_async(_prepare_test_turn)(tenant_id, flow_id, message, session_id)
+    if session is None:
+        return TestTurnResult(ran=False, errors=errors, note="초안을 고친 뒤 다시 시험하세요.")
+    if not admitted:
+        return TestTurnResult(ran=False, session_id=session.id, note=TRIAL_EXHAUSTED_NOTE)
+    return PreparedTestTurn(tenant_id=tenant_id, session=session, graph=graph, message=message)
+
+
+async def finish_test_turn(prepared: PreparedTestTurn, *, on_node_event: NodeEventSink | None = None) -> TestTurnResult:
+    """시험 한 턴의 뒤 절반 — 실행기를 돌린다. ``on_node_event``를 주면 노드 이벤트(가리기 전)를 턴 도중에 받는다(#239)."""
+    from asgiref.sync import sync_to_async
+
+    from apps.flows import node_events
+    from apps.flows.executor import run_flow_turn_async
+    from apps.flows.trace import prepare
+
+    with node_events.sink(on_node_event):
+        state = await run_flow_turn_async(prepared.session, prepared.message, prepared.graph, dry_run=True)
+
+    # 시험 한 턴의 trace도 저장하는 판단 기록과 같은 항목 형식(가림·자름 포함)이다. 가림이 그 테넌트 비밀을 DB에서
+    # 읽을 수 있어(#118) sync로 돌린다.
+    entries = (await sync_to_async(prepare)(state.get("trace", []), tenant_id=prepared.tenant_id))[0]
+    trace: list[JSONObject] = [dict(e) for e in entries]  # type: ignore[misc]
+    handoff = any(t["kind"] == NodeKind.HANDOFF.value for t in trace)
+    return TestTurnResult(
+        ran=True,
+        reply=str(state.get("assistant_response") or ""),
+        trace=trace,
+        session_id=prepared.session.id,
+        handoff=handoff,
+        note="사람 넘김 노드에 닿았습니다(시험이라 실제로 넘기지 않음)." if handoff else "",
+    )
+
+
+async def run_test_turn(
+    tenant_id: uuid.UUID,
+    flow_id: uuid.UUID | str,
+    message: str,
+    *,
+    session_id: uuid.UUID | str | None = None,
+    on_node_event: NodeEventSink | None = None,
 ) -> TestTurnResult:
     """초안으로 방문자 메시지 한 턴을 돌려 답과 지나간 노드를 돌려준다(편집 중 시험).
 
@@ -654,30 +713,10 @@ async def run_test_turn(
     - 실행기를 ``dry_run``으로 돌린다: 사람 넘김은 넘겼다고만 표시(``handoff``)하고 Escalation·웹훅·SSE 알림이 없다.
     - LLM은 운영과 같은 Provider 선택을 탄다. 플랫폼 키(체험) 테넌트면 **시험 한 턴도 체험 턴 1을 쓴다**(ADR-0026) —
       남은 턴이 없으면 LLM 없이 ``ran=False``와 사유를 돌려준다.
+    - ``on_node_event``: 노드 이벤트를 턴 도중에 받는 콜백(가리기 전 값, #239). 시험 대화 SSE는 ``begin``·``finish``를
+      나눠 부른다(``apps.flows.api.stream_test_turn``).
     """
-    from asgiref.sync import sync_to_async
-
-    from apps.flows.executor import run_flow_turn_async
-
-    graph, errors, session, admitted = await sync_to_async(_prepare_test_turn)(tenant_id, flow_id, message, session_id)
-    if session is None:
-        return TestTurnResult(ran=False, errors=errors, note="초안을 고친 뒤 다시 시험하세요.")
-    if not admitted:
-        return TestTurnResult(ran=False, session_id=session.id, note=TRIAL_EXHAUSTED_NOTE)
-
-    state = await run_flow_turn_async(session, message, graph, dry_run=True)
-    from apps.flows.trace import prepare
-
-    # 시험 한 턴의 trace도 저장하는 판단 기록과 같은 항목 형식(가림·자름 포함)이다. 가림이 그 테넌트 비밀을 DB에서
-    # 읽을 수 있어(#118) sync로 돌린다.
-    entries = (await sync_to_async(prepare)(state.get("trace", []), tenant_id=tenant_id))[0]
-    trace: list[JSONObject] = [dict(e) for e in entries]  # type: ignore[misc]
-    handoff = any(t["kind"] == NodeKind.HANDOFF.value for t in trace)
-    return TestTurnResult(
-        ran=True,
-        reply=str(state.get("assistant_response") or ""),
-        trace=trace,
-        session_id=session.id,
-        handoff=handoff,
-        note="사람 넘김 노드에 닿았습니다(시험이라 실제로 넘기지 않음)." if handoff else "",
-    )
+    begun = await begin_test_turn(tenant_id, flow_id, message, session_id=session_id)
+    if isinstance(begun, TestTurnResult):
+        return begun
+    return await finish_test_turn(begun, on_node_event=on_node_event)

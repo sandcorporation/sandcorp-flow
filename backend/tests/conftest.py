@@ -114,6 +114,10 @@ class _FakeChatLLM:
         self.captured: list[tuple[str, list]] = []
         # 스키마 이름 → callable(messages, schema) -> schema 인스턴스. 동적으로 만든 스키마(AI 분류·추출 ClassifyResult)용.
         self.by_schema: dict = {}
+        # async 호출마다 이만큼(초) 기다린다 — 시험 대화 노드 이벤트가 턴 도중에 실시간으로 나가는지 보는 시험용(#239)
+        self.delay = 0.0
+        # 설정하면 async 호출이 이 예외를 낸다(노드 예외 → node_error 시험용, #239)
+        self.raises: BaseException | None = None
 
     def complete_structured(self, provider, messages, schema):
         self.last_provider = provider
@@ -169,6 +173,14 @@ class _FakeChatLLM:
     # Provider 응답의 usage — (모델, 입력 토큰, 출력 토큰). None이면 보고하지 않는다(#24). async 경로만 보고한다.
     usage: tuple[str, int, int] | None = ("gpt-4o-mini", 120, 30)
 
+    async def _wait_or_raise(self) -> None:
+        if self.delay:
+            import asyncio
+
+            await asyncio.sleep(self.delay)
+        if self.raises is not None:
+            raise self.raises
+
     async def _report_usage(self) -> None:
         if self.usage is None:
             return
@@ -180,12 +192,14 @@ class _FakeChatLLM:
 
     async def acomplete_structured(self, provider, messages, schema):
         """complete_structured의 async 대응(issue 191) — 같은 결정적 판정."""
+        await self._wait_or_raise()
         result = self.complete_structured(provider, messages, schema)
         await self._report_usage()
         return result
 
     async def astream_structured(self, provider, messages, schema):
         """stream_structured의 async 대응 — 같은 청크를 async로 yield."""
+        await self._wait_or_raise()
         for chunk in self.stream_structured(provider, messages, schema):
             yield chunk
         await self._report_usage()
