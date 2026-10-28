@@ -210,6 +210,9 @@ def test_initialize_instructions_state_scopes_two_step_rule_and_no_secrets(signe
         assert scope in text
     assert "confirm_token" in text and "(2단계)" in text
     assert "비밀" in text
+    for name in ("set_flow_embed", "set_default_flow", "set_embed_origins"):  # 임베드 쓰기 도구(#250)
+        assert name in text
+    assert "접근 통제가 아니" in text
     assert "편집·배포는 Admin만 된다" not in text  # 옛 문구(Member 쓰기 도구가 생겨 사실이 아니다)
 
 

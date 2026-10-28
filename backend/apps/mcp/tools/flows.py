@@ -73,12 +73,21 @@ def _errors(errors: list[FlowError]) -> list[JSON]:
     return [dict(e.as_dict()) for e in errors]
 
 
-def _flow_row(flow: Flow) -> JSONObject:
+def _slug(ctx: ToolContext) -> str | None:
+    return ctx.require_membership().tenant.slug
+
+
+def _flow_row(flow: Flow, slug: str | None) -> JSONObject:
     deployed = flow.deployed_version
     return {
         "id": str(flow.id),
         "name": flow.name,
         "is_public": flow.is_public,
+        "is_default": flow.is_public,  # 위젯 ``/chatbot/<slug>/``가 도는 기본 흐름(#250) — ``is_public``과 같은 값
+        "embed_key": flow.embed_key,
+        "embed_enabled": flow.embed_enabled,
+        "embed_path": f"/chatbot/{slug}/{flow.embed_key}/" if slug else None,
+        "embed_origins": list(flow.embed_origins),
         "deployed_version": deployed.number if deployed else None,
         "updated_at": flow.updated_at.isoformat(),
     }
@@ -96,7 +105,7 @@ def _version_row(version: FlowVersion, deployed_id: uuid.UUID | None) -> JSONObj
 
 @register(
     "list_flows",
-    "테넌트의 흐름 목록: id·이름·공개 여부(위젯이 도는 흐름)·배포 중 버전 번호. 인자: tenant.",
+    "테넌트의 흐름 목록: id·이름·공개 여부(is_public=is_default, 위젯이 도는 기본 흐름)·배포 중 버전 번호·임베드 칸(embed_key·embed_enabled·embed_path·embed_origins). 인자: tenant.",
     TenantArgs,
     scope="flow.read",
     permission=None,
@@ -104,7 +113,8 @@ def _version_row(version: FlowVersion, deployed_id: uuid.UUID | None) -> JSONObj
 )
 async def list_flows(ctx: ToolContext, args: TenantArgs) -> JSONObject:
     flows = await _service(lambda: services.list_flows(_tenant_id(ctx)))
-    return {"flows": [_flow_row(f) for f in flows]}
+    slug = _slug(ctx)
+    return {"flows": [_flow_row(f, slug) for f in flows]}
 
 
 @register(
@@ -121,7 +131,7 @@ async def get_flow(ctx: ToolContext, args: GetFlowArgs) -> JSONObject:
     detail = await _service(lambda: services.flow_detail(tenant_id, args.flow_id))
     deployed_id = detail.flow.deployed_version_id
     out: JSONObject = {
-        **_flow_row(detail.flow),
+        **_flow_row(detail.flow, _slug(ctx)),
         "versions": [_version_row(v, deployed_id) for v in detail.versions],
     }
     if args.version is None:
@@ -144,7 +154,7 @@ async def get_flow(ctx: ToolContext, args: GetFlowArgs) -> JSONObject:
 )
 async def create_flow(ctx: ToolContext, args: CreateFlowArgs) -> JSONObject:
     flow = await _service(lambda: services.create_flow(_tenant_id(ctx), args.name))
-    return _flow_row(flow)
+    return _flow_row(flow, _slug(ctx))
 
 
 @register(
@@ -217,9 +227,9 @@ async def deploy_version(ctx: ToolContext, args: DeployArgs) -> JSONObject:
             "approval_required": True,
             "request_id": str(outcome.request.pk),
             "message": "이 테넌트는 배포에 승인이 필요해 배포 요청을 만들었습니다. 다른 Admin이 승인하면 배포됩니다.",
-            **_flow_row(outcome.flow),
+            **_flow_row(outcome.flow, _slug(ctx)),
         }
-    return {"deployed": True, **_flow_row(outcome.flow)}
+    return {"deployed": True, **_flow_row(outcome.flow, _slug(ctx))}
 
 
 @register(
@@ -276,7 +286,7 @@ async def archive_flow(ctx: ToolContext, args: FlowArgs) -> JSONObject:
 )
 async def rollback_flow(ctx: ToolContext, args: FlowArgs) -> JSONObject:
     flow = await _service(lambda: services.rollback(_tenant_id(ctx), args.flow_id))
-    return {"deployed": True, **_flow_row(flow)}
+    return {"deployed": True, **_flow_row(flow, _slug(ctx))}
 
 
 async def _preview_restore_flow(ctx: ToolContext, args: FlowArgs) -> JSONObject:
