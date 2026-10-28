@@ -1,9 +1,0 @@
-# GPU(nvidia 런타임) 호스트 전용 겹침 파일. scripts/test.sh가 `docker info`에서 nvidia 런타임을 찾으면
-# 자동으로 `-f docker-compose.test.yml -f docker-compose.test.gpu.yml`로 겹친다(TEST_GPU=0이면 끈다).
-# 기본(docker-compose.test.yml)은 GPU 없이 도는 CPU 구성이다. GPU가 쓰는 것은 ollama(bge-m3 임베딩)뿐.
-services:
-  ollama-test:
-    runtime: nvidia
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
