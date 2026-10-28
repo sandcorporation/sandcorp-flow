@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Trash2 } from 'lucide-react'
-import type { DeployRequestOut, VersionOut } from '../generated/model'
+import { ArrowLeft, Code2, Trash2 } from 'lucide-react'
+import type { DeployRequestOut, FlowOut, VersionOut } from '../generated/model'
 import { useFlowEditorBackend } from '@/lib/flowEditorBackend'
 import { HttpError } from '../mutator'
 import {
@@ -14,6 +14,7 @@ import VersionsPanel from './VersionsPanel'
 import type { Me } from './DeployRequestCard'
 import NodeConfigForm from './NodeConfigForm'
 import ClaimedNotice from './ClaimedNotice'
+import FlowEmbedPanel from './FlowEmbedPanel'
 import { DecisionLog, TestChat, useTestSession } from './TestPanel'
 import { useIsNarrow } from '@/lib/useIsNarrow'
 import { useEmbed } from '@/lib/embed'
@@ -40,6 +41,8 @@ export default function FlowEditorPage() {
   const [requiresApproval, setRequiresApproval] = useState(false)
   const [me, setMe] = useState<Me>(null)
   const [name, setName] = useState('')
+  const [flowInfo, setFlowInfo] = useState<FlowOut | null>(null) // 임베드 칸(키·켬·기본 흐름)
+  const [embedOpen, setEmbedOpen] = useState(false)
   const [graph, setGraph] = useState<FlowGraph>(EMPTY)
   const [errors, setErrors] = useState<FlowError[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -63,6 +66,7 @@ export default function FlowEditorPage() {
     const d = await backend.loadFlow(id)
     if (stale?.()) return // 더 새 불러오기가 있다 — 늦은 응답이 그 사이 편집을 덮지 않게 버린다(#167)
     setName(d.flow.name)
+    setFlowInfo(d.flow)
     const raw = d.draft.graph as unknown as Partial<FlowGraph>
     setGraph({ nodes: raw.nodes ?? [], edges: raw.edges ?? [] })
     setErrors(d.draft.errors as FlowError[])
@@ -227,7 +231,17 @@ export default function FlowEditorPage() {
         )}
         {!isAdmin && <span className="hmi-label border border-line-soft px-1.5 py-0.5">{backend.readOnlyNotice}</span>}
         {deployedVersion !== null && <span className="hmi-label flex items-center gap-1.5"><span className="lamp lamp-ok" />v{deployedVersion} 배포 중</span>}
+        {backend.embedMenu && flowInfo && (
+          <Button type="button" size="sm" variant="outline" className="h-7" aria-expanded={embedOpen} aria-label="임베드 메뉴" onClick={() => setEmbedOpen((o) => !o)}>
+            <Code2 className="h-4 w-4" />임베드{flowInfo.is_public ? ' · 기본 흐름' : flowInfo.embed_enabled ? ' · 켬' : ''}
+          </Button>
+        )}
       </div>
+      {embedOpen && flowInfo && (
+        <div className="max-w-xl">
+          <FlowEmbedPanel flow={flowInfo} deployed={deployedVersion !== null} canManage={isAdmin} origin={window.location.origin} onChange={setFlowInfo} />
+        </div>
+      )}
       {claimed && loaded && <ClaimedNotice graph={graph} />}
       {flowErrors.map((e, i) => <p key={i} role="alert" className="text-sm text-destructive">{e.message}</p>)}
       {save.state === 'failed' && <p role="alert" className="text-sm text-destructive">{save.message}</p>}

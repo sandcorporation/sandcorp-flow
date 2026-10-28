@@ -145,3 +145,47 @@ describe('FlowsTab — 배포 요청', () => {
     expect(region.getByText(/관리자만/)).toBeInTheDocument()
   })
 })
+
+const F = (over: object) => ({ id: 'f1', name: '기본 흐름', is_public: false, embed_key: 'abcd1234', embed_enabled: false, embed_path: '/chatbot/acme/abcd1234/', deployed_version: 1, updated_at: '2026-10-01T09:00:00Z', has_pending_request: false, ...over })
+
+describe('FlowsTab — 임베드 메뉴·보관 경고(#247)', () => {
+  it('행의 「임베드」를 누르면 패널이 펼쳐진다', async () => {
+    fakeFlowsApi({ graph: { nodes: [], edges: [] }, flows: [F({ id: 'f1', name: '봄 이벤트' })] })
+    renderList()
+    await userEvent.click(await screen.findByRole('button', { name: '봄 이벤트 임베드' }))
+    expect(screen.getByRole('checkbox', { name: '임베드 켜기' })).toBeEnabled()
+  })
+
+  it('켜면 행에 「임베드 켬」이 붙는다', async () => {
+    fakeFlowsApi({ graph: { nodes: [], edges: [] }, flows: [F({ name: '봄 이벤트' })] })
+    renderList()
+    await userEvent.click(await screen.findByRole('button', { name: '봄 이벤트 임베드' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: '임베드 켜기' }))
+    expect(await screen.findByText('임베드 켬')).toBeInTheDocument()
+  })
+
+  it('기본 흐름을 바꾸면 다른 행의 「기본 흐름」 표시가 옮겨 간다', async () => {
+    fakeFlowsApi({ graph: { nodes: [], edges: [] }, flows: [F({ id: 'f1', name: '옛 기본', is_public: true }), F({ id: 'f2', name: '새 기본', embed_key: 'zzzz9999' })] })
+    renderList()
+    expect(await screen.findAllByText('기본 흐름')).toHaveLength(1)
+    await userEvent.click(screen.getByRole('button', { name: '새 기본 임베드' }))
+    await userEvent.click(screen.getByRole('button', { name: '기본 흐름으로' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: '기본 흐름으로' })).toBeNull())
+    expect(screen.getAllByText('기본 흐름')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: '옛 기본 보관' })).toBeInTheDocument() // 해제된 옛 기본 흐름은 이제 보관할 수 있다
+  })
+
+  it('임베드를 켠 흐름을 보관하려 하면 「붙여 둔 코드가 멈춥니다」라고 확인을 받는다', async () => {
+    fakeFlowsApi({ graph: { nodes: [], edges: [] }, flows: [F({ name: '붙인 흐름', embed_enabled: true })] })
+    renderList()
+    await userEvent.click(await screen.findByRole('button', { name: '붙인 흐름 보관' }))
+    expect(screen.getByText(/붙여 둔 코드가 멈춥니다/)).toBeInTheDocument()
+  })
+
+  it('임베드를 켜지 않은 흐름의 보관 확인에는 그 경고가 없다', async () => {
+    fakeFlowsApi({ graph: { nodes: [], edges: [] }, flows: [F({ name: '조용한 흐름' })] })
+    renderList()
+    await userEvent.click(await screen.findByRole('button', { name: '조용한 흐름 보관' }))
+    expect(screen.queryByText(/붙여 둔 코드가 멈춥니다/)).toBeNull()
+  })
+})

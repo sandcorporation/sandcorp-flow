@@ -178,3 +178,21 @@ describe('FlowEditorPage — 체험에서 옮긴 흐름(?claimed=1, #42)', () =>
     expect(screen.queryByTestId('claimed-notice')).toBeNull()
   })
 })
+
+describe('FlowEditorPage — 임베드 메뉴(#247)', () => {
+  it('머리의 「임베드」를 누르면 패널이 열리고, 배포 전이면 켤 수 없다', async () => {
+    fakeFlowsApi({ graph: GRAPH, deployedVersion: null })
+    renderEditor()
+    await userEvent.click(await screen.findByRole('button', { name: '임베드 메뉴' }))
+    expect(screen.getByRole('checkbox', { name: '임베드 켜기' })).toBeDisabled()
+    expect(screen.getByText(/배포한 버전이 없어 켤 수 없습니다/)).toBeInTheDocument()
+  })
+
+  it('배포된 흐름은 켤 수 있다', async () => {
+    fakeFlowsApi({ graph: GRAPH, deployedVersion: 1 })
+    renderEditor()
+    await userEvent.click(await screen.findByRole('button', { name: '임베드 메뉴' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: '임베드 켜기' }))
+    expect(await screen.findByTestId('flow-embed-code')).toBeInTheDocument()
+  })
+})

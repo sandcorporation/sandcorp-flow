@@ -24,6 +24,7 @@ from django.utils import timezone
 from pydantic import BaseModel, ConfigDict, Field
 
 from apps.flows.models import DeployRequest, Flow, FlowDraft, FlowVersion
+from apps.tenants.models import Tenant
 from apps.flows.schema import DEFAULT_HANDLE, JSON, FlowError, NodeKind, validate_flow
 
 if TYPE_CHECKING:
@@ -130,12 +131,12 @@ class SaveVersionResult:
 
 
 def list_flows(tenant_id: uuid.UUID) -> list[Flow]:
-    return list(Flow.objects.for_tenant(tenant_id).active().select_related("deployed_version").order_by("created_at"))
+    return list(Flow.objects.for_tenant(tenant_id).active().select_related("deployed_version", "tenant").order_by("created_at"))
 
 
 def get_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
     try:
-        return Flow.objects.for_tenant(tenant_id).active().select_related("deployed_version").get(pk=flow_id)
+        return Flow.objects.for_tenant(tenant_id).active().select_related("deployed_version", "tenant").get(pk=flow_id)
     except (Flow.DoesNotExist, DjangoValidationError, ValueError, TypeError) as exc:  # UUID가 아닌 문자열
         raise FlowNotFound(f"흐름 '{flow_id}'이 이 테넌트에 없습니다.") from exc
 
@@ -206,10 +207,58 @@ def archive_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
     return flow
 
 
+class NotEmbeddable(FlowServiceError):
+    """배포 버전이 없어 임베드를 켜거나 기본 흐름으로 만들 수 없다(``Flow.embeddable``과 같은 조건)."""
+
+    code = "not_embeddable"
+
+
+def _locked_deployable_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, *, what: str) -> Flow:
+    """테넌트 행을 잠근 뒤 흐름 행을 잠가 읽는다. 배포 버전이 없으면 ``NotEmbeddable``(이유 포함)."""
+    pk = get_flow(tenant_id, flow_id).pk
+    Tenant.objects.select_for_update().get(pk=tenant_id)
+    flow = Flow.objects.select_for_update().get(pk=pk)
+    if flow.archived_at is not None:  # 잠금을 기다리는 사이 보관됐다
+        raise FlowNotFound(f"흐름 '{flow_id}'이 이 테넌트에 없습니다.")
+    if flow.deployed_version_id is None:
+        raise NotEmbeddable(f"'{flow.name}'은(는) 아직 배포한 버전이 없어 {what} 수 없습니다. 먼저 배포하세요.")
+    return flow
+
+
+def set_embed_enabled(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, enabled: bool) -> Flow:
+    """키 주소 임베드를 켜고 끈다. 켜는 것은 배포 버전이 있는 흐름만(끄는 것은 늘 된다).
+    기본 흐름은 끄더라도 자기 키 주소로 늘 열려 있다(ADR-0034)."""
+    if not enabled:
+        pk = get_flow(tenant_id, flow_id).pk
+        Flow.objects.filter(pk=pk).update(embed_enabled=False, updated_at=timezone.now())
+        return get_flow(tenant_id, flow_id)
+    with transaction.atomic():
+        flow = _locked_deployable_flow(tenant_id, flow_id, what="임베드를 켤")
+        flow.embed_enabled = True
+        flow.save(update_fields=["embed_enabled", "updated_at"])
+    return flow
+
+
+def set_default_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
+    """기본 흐름(``is_public``, 위젯 ``/chatbot/<slug>/``가 도는 흐름)을 바꾼다. 배포됨·보관 아님만 된다.
+
+    부분 유일 제약 ``flow_one_public_per_tenant`` 때문에 한 트랜잭션에서 테넌트 행을 잠그고 옛 기본 흐름을 False로 바꾼 뒤
+    새 흐름을 True로 바꾼다 — 중간에 깨지면 옛 기본 흐름도 그대로다. 이미 기본 흐름이면 아무것도 안 한다.
+    열려 있던 옛 기본 흐름의 세션은 끊기지 않는다(``opened_by_key`` 세션만 막는다).
+    """
+    with transaction.atomic():
+        flow = _locked_deployable_flow(tenant_id, flow_id, what="기본 흐름으로 만들")
+        if not flow.is_public:
+            Flow.objects.for_tenant(tenant_id).filter(is_public=True).update(is_public=False)
+            flow.is_public = True
+            flow.save(update_fields=["is_public", "updated_at"])
+    return flow
+
+
 def get_archived_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
     """보관된 흐름 하나. 없거나 보관 상태가 아니면 ``FlowNotFound``."""
     try:
-        return Flow.objects.for_tenant(tenant_id).filter(archived_at__isnull=False).select_related("deployed_version").get(pk=flow_id)
+        return Flow.objects.for_tenant(tenant_id).filter(archived_at__isnull=False).select_related("deployed_version", "tenant").get(pk=flow_id)
     except (Flow.DoesNotExist, DjangoValidationError, ValueError, TypeError) as exc:
         raise FlowNotFound(f"보관된 흐름 '{flow_id}'이 이 테넌트에 없습니다.") from exc
 

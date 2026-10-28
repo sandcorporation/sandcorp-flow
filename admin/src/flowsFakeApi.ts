@@ -19,6 +19,8 @@ export function fakeFlowsApi(opts: {
   testStatus?: number
   /** DELETE /flows/{id}/ (보관)이 돌려줄 상태(기본 204). 409면 {detail, code:'flow_in_use'}. */
   archiveStatus?: number
+  /** POST /flows/{id}/embed/ 가 돌려줄 상태(기본 200). 409면 {detail, code:'not_embeddable'}. 200이면 본문의 enabled로 바뀐 흐름을 돌려준다. */
+  embedStatus?: number
   /** true면 버전 저장이 「마지막 버전과 같음」(created:false)으로 새 버전을 만들지 않는다. */
   duplicateVersion?: boolean
   trial?: { state: string; remaining: number; limit: number } | (() => { state: string; remaining: number; limit: number })  // 함수면 호출할 때마다 계산(턴 뒤 감소 흉내)
@@ -54,7 +56,7 @@ export function fakeFlowsApi(opts: {
   const st = { deployed: opts.deployedVersion ?? null as number | null, pending: opts.pending ?? null as FakeRequest | null, requests: [...(opts.requests ?? [])] }
   let listed: object[] | null = null
   const flowList = () => (listed ??= [...(opts.flows ?? [flowOut()])])
-  const flowOut = () => ({ id: 'f1', name: '기본 흐름', is_public: false, deployed_version: st.deployed, updated_at: '2026-10-01T09:00:00Z', has_pending_request: st.pending !== null })
+  const flowOut = () => ({ id: 'f1', name: '기본 흐름', is_public: false, embed_key: 'abcd1234', embed_enabled: false, embed_path: '/chatbot/acme/abcd1234/', deployed_version: st.deployed, updated_at: '2026-10-01T09:00:00Z', has_pending_request: st.pending !== null })
   const versionOut = (v: FakeVersion) => ({ hash: `h${v.number}`, ...v, deployed: v.number === st.deployed })
   const newRequest = (version: number): FakeRequest => ({ id: `r${st.requests.length + 1}`, flow_id: 'f1', flow_name: '기본 흐름', version, status: 'pending', requested_by_name: opts.me?.name ?? '나', decided_by_name: null, decided_at: null, decision_note: '', created_at: '2026-10-02T09:00:00Z' })
   let turnNo = 0
@@ -104,6 +106,14 @@ export function fakeFlowsApi(opts: {
       if (opts.archiveStatus && opts.archiveStatus !== 204) return json(opts.archiveStatus, { detail: '위젯이 쓰고 있는 흐름이라 보관할 수 없습니다. 먼저 다른 흐름을 배포하세요.', code: 'flow_in_use' })
       listed = flowList().filter((f) => (f as { id: string }).id !== archived[1])
       return new Response(null, { status: 204 })
+    }
+    const embedCall = method === 'POST' ? path.match(/\/api\/tenant\/flows\/([^/]+)\/(embed|default)\/$/) : null
+    if (embedCall) {
+      if (opts.embedStatus && opts.embedStatus !== 200) return json(opts.embedStatus, { detail: '아직 배포한 버전이 없어 임베드를 켤 수 없습니다. 먼저 배포하세요.', code: 'not_embeddable' })
+      const base = (flowList().find((f) => (f as { id: string }).id === embedCall[1]) ?? flowOut()) as Record<string, unknown>
+      const next = embedCall[2] === 'embed' ? { ...base, embed_enabled: !!body.enabled } : { ...base, is_public: true }
+      listed = flowList().map((f) => ((f as { id: string }).id === embedCall[1] ? next : embedCall[2] === 'default' ? { ...(f as object), is_public: false } : f))
+      return json(200, next)
     }
     if (method === 'POST' && path.endsWith('/api/tenant/flows/')) return json(201, { ...flowOut(), id: 'f2', name: body.name })
     if (method === 'POST' && path.endsWith('/test/')) {

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { getTenantConfig, updateTenantConfig, resetTenantKey, updateTenantSlug, fetchProviderModels, quickSetupOpenAI } from '../api'
-import type { TenantConfigOut } from '../generated/model'
+import type { FlowOut, TenantConfigOut } from '../generated/model'
+import { appsFlowsApiFlowsList } from '../generated/endpoints/flows/flows'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
@@ -58,6 +59,7 @@ export default function ConfigTab() {
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
   const [newKey, setNewKey] = useState<string | null>(null)
+  const [flows, setFlows] = useState<FlowOut[] | undefined>(undefined) // 「내 사이트에 붙이기」 카드의 임베드 켠 흐름(#247)
   const [resetConfirm, setResetConfirm] = useState(false)
   const [slug, setSlug] = useState('')
   const [slugSaved, setSlugSaved] = useState(false)
@@ -132,6 +134,7 @@ export default function ConfigTab() {
       setSlug(data.slug || '')   // 새로고침 시 저장된 slug를 입력에 복원
       setLoading(false)
     })
+    appsFlowsApiFlowsList().then(r => setFlows(r.data as unknown as FlowOut[])).catch(() => {}) // 못 받아도 카드는 기본 흐름 코드만 보인다
   }, [])
 
   const handleSave = async () => {
@@ -567,7 +570,7 @@ export default function ConfigTab() {
             ) : (
               <p className={hint}>Slug 변경은 Admin만 할 수 있습니다.</p>
             )}
-            <EmbedGuideCard origin={window.location.origin} slug={slug} isAdmin={isAdmin} />
+            <EmbedGuideCard origin={window.location.origin} slug={slug} isAdmin={isAdmin} flows={flows} />
           </div>
           <div className="space-y-1.5">
             <label className={`flex items-center gap-2 text-sm ${isAdmin ? 'cursor-pointer' : 'opacity-60'}`}>

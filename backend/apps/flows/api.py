@@ -45,6 +45,7 @@ _STATUS_BY_CODE = {
     "session_not_found": 404,
     "duplicate_name": 409,
     "flow_in_use": 409,
+    "not_embeddable": 409,
     "request_not_pending": 409,
     "approval_required": 409,
     "self_approval": 403,
@@ -90,9 +91,18 @@ class FlowOut(Schema):
     id: str
     name: str
     is_public: bool
+    """「기본 흐름」(위젯 ``/chatbot/<slug>/``가 도는 흐름). 이름은 E1이 정한 대로 둔다 — ``is_default`` 별칭은 두지 않는다(ADR-0034)."""
+    embed_key: str
+    embed_enabled: bool
+    embed_path: str | None = None
+    """키 주소 ``/chatbot/<slug>/<embed_key>/``(origin 없이). 슬러그가 없는 테넌트는 None."""
     deployed_version: int | None
     updated_at: datetime
     has_pending_request: bool = False
+
+
+class EmbedIn(Schema):
+    enabled: bool
 
 
 class VersionOut(Schema):
@@ -190,6 +200,9 @@ def _flow_out(flow: Flow, pending: bool = False) -> dict[str, object]:
         "id": str(flow.id),
         "name": flow.name,
         "is_public": flow.is_public,
+        "embed_key": flow.embed_key,
+        "embed_enabled": flow.embed_enabled,
+        "embed_path": f"/chatbot/{slug}/{flow.embed_key}/" if (slug := flow.tenant.slug) else None,
         "deployed_version": deployed.number if deployed else None,
         "updated_at": flow.updated_at,
         "has_pending_request": pending,
@@ -308,6 +321,20 @@ def flows_restore(request, flow_id: str):
     """보관한 흐름을 되돌린다(화면 없음 — API만)."""
     require_permission(request.auth, FLOW_EDIT)
     return _flow_out(services.restore_flow(_tenant_id(request.auth), flow_id))
+
+
+@flow_router.post("/{flow_id}/embed/", response=FlowOut)
+def flows_set_embed(request, flow_id: str, body: EmbedIn):
+    """키 주소 임베드 켬/끔. 배포 버전이 없으면 켤 수 없다(409 ``not_embeddable``, 이유는 ``detail``)."""
+    require_permission(request.auth, FLOW_DEPLOY)
+    return _flow_out(services.set_embed_enabled(_tenant_id(request.auth), flow_id, body.enabled))
+
+
+@flow_router.post("/{flow_id}/default/", response=FlowOut)
+def flows_set_default(request, flow_id: str):
+    """기본 흐름 바꾸기 — 위젯 ``/chatbot/<slug>/``가 이 흐름으로 돈다. 배포됨·보관 아님만(409 ``not_embeddable``)."""
+    require_permission(request.auth, FLOW_DEPLOY)
+    return _flow_out(services.set_default_flow(_tenant_id(request.auth), flow_id))
 
 
 # ── 초안 ─────────────────────────────────────────────────────────────────────
