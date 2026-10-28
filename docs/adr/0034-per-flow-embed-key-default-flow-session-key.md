@@ -65,6 +65,14 @@ E1(#246)이 주소·기본 흐름·세션·공개 API·위젯을 했다. 허용 
 - **한계**: 붙이기 통제이지 접근 통제가 아니다 — 주소를 직접 열거나 API를 부르는 것은 막지 않는다.
 - **시험**: `backend/tests/test_embed_origins.py`(검증·정책·캐시·내부 엔드포인트·편집 API), `scripts/test-nginx-embed-policy.sh`(실제 nginx + 가짜 정책 서버 — 성공·500·404·403·시간 초과·앱 없음·바깥 호출·`nginx -t` 두 conf), `e2e/tests/flow-embed-origins.spec.js`(test compose의 `nginx-e2e`가 운영 conf를 그대로 올린다 — 헤더, 다른 출처 iframe 막힘, 화면 편집). e2e 스택의 다른 시험은 nginx를 거치지 않는다(admin·widget은 Vite).
 
+## E5 덧붙임 (#250) — MCP 임베드 도구와 종합 시험
+- **읽기**: `list_flows`·`get_flow`의 흐름 행에 `is_default`(=`is_public`, REST에는 별칭이 없고 MCP에만 에이전트용으로 더했다)·`embed_key`·`embed_enabled`·`embed_path`·`embed_origins`. `get_settings`에 테넌트 `embed_origins`. 기존 키는 바꾸지 않았다.
+- **쓰기**: `set_flow_embed(flow_id, enabled, origins?)`·`set_default_flow(flow_id)`·`set_embed_origins(origins)` — 스코프 `flow.deploy`, 권한 비트 `FLOW_DEPLOY`(Admin), 2단계 확인, 감사 로그(ADR-0033의 관례). REST와 규칙이 갈라지지 않도록 같은 서비스 함수(`set_embed_enabled`·`set_embed_origins`·`set_default_flow`, 테넌트 목록은 새로 뽑은 `set_tenant_embed_origins`)와 검증 함수 `normalize_embed_origins`를 부른다. 저장 뒤 정책 캐시 무효화(`forget_tenant`)도 같은 길이다.
+- **원자성**: `set_flow_embed`는 허용 사이트를 **켜기 전에** 검증해(미리보기 단계에서도) 틀린 목록이면 아무것도 바뀌지 않는다. 배포 버전이 없어 켤 수 없으면 `not_embeddable`이고 허용 사이트도 저장하지 않는다.
+- **미리보기**는 현재→새 값과 「이 주소에 붙인 코드가 어떻게 되는지」(`effect`)를 준다: 끄면 「열려 있지 않음」 화면(기본 흐름이면 계속 열림), 기본 흐름을 바꾸면 기존 주소의 새 대화부터 새 흐름·열린 대화는 안 끊김·옛 흐름 키 주소가 닫히는지, 허용 사이트를 비우면 어디서나(또는 테넌트 목록을 따름). 같은 값이면 `no_change`.
+- **종합 e2e**(`e2e/tests/flow-embed-overall.spec.js`): 한 테넌트의 두 흐름이 서로 다른 키 주소로 각자 다른 답을 하고, 같은 방문자도 흐름마다 세션이 따로이며, 기존 주소는 기본 흐름이 답한다.
+- **남은 것**: 보관·켬/끔 때 정책 캐시를 지우는 보강은 #276 몫이다.
+
 ## Alternatives
 - **사람이 정하는 흐름 slug.** 읽기 쉽지만 바꾸면 끊기고 중복 규칙이 필요하다. 기각.
 - **flow UUID를 주소에.** 길고 내부 id가 드러난다. 기각.
