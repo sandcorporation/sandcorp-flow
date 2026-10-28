@@ -185,6 +185,14 @@ class FlowInUse(FlowServiceError):
     code = "flow_in_use"
 
 
+def _forget_embed_policy(tenant_id: uuid.UUID) -> None:
+    """임베드 정책 캐시(``embed:fa:<tenant_id>``)를 지운다(#276). 보관·임베드 켬/끔·기본 흐름 바꾸기·허용 사이트 저장이
+    REST·MCP 어느 길로 오든 이 서비스 함수들이 지운다 — 길마다 따로 부르지 않는다."""
+    from apps.flows.embed_policy import forget_tenant
+
+    forget_tenant(tenant_id)
+
+
 def archive_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
     """흐름을 보관한다(soft delete). 위젯이 쓰는 기본 흐름은 ``FlowInUse`` — 먼저 다른 흐름을 배포해야 한다.
     임베드를 켠 흐름이면 임베드도 끈다 — 키 주소로 붙여 둔 코드가 멈춘다(경고·확인은 화면·MCP 몫, ADR-0034).
@@ -204,6 +212,7 @@ def archive_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
         flow.embed_enabled = False
         flow.save(update_fields=["archived_at", "embed_enabled", "updated_at"])
         DeployRequest.objects.filter(flow=flow, status=DeployRequest.PENDING).update(status=DeployRequest.SUPERSEDED)
+    _forget_embed_policy(tenant_id)
     return flow
 
 
@@ -231,11 +240,13 @@ def set_embed_enabled(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, enabled: b
     if not enabled:
         pk = get_flow(tenant_id, flow_id).pk
         Flow.objects.filter(pk=pk).update(embed_enabled=False, updated_at=timezone.now())
+        _forget_embed_policy(tenant_id)
         return get_flow(tenant_id, flow_id)
     with transaction.atomic():
         flow = _locked_deployable_flow(tenant_id, flow_id, what="임베드를 켤")
         flow.embed_enabled = True
         flow.save(update_fields=["embed_enabled", "updated_at"])
+    _forget_embed_policy(tenant_id)
     return flow
 
 
@@ -287,6 +298,7 @@ def set_default_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
             Flow.objects.for_tenant(tenant_id).filter(is_public=True).update(is_public=False)
             flow.is_public = True
             flow.save(update_fields=["is_public", "updated_at"])
+    _forget_embed_policy(tenant_id)
     return flow
 
 
