@@ -128,6 +128,7 @@ services:
       TRY_ALLOWED_ORIGINS: http://admin-e2e:5174,http://localhost:5174,http://flow.flowtest.test:5174
       # e2e는 브라우저가 모두 같은 IP다 — /try 고쳐 보기 스펙(try-flow·try-phone·try-claim ×3)이 하루 3세션 한도를 넘는다(#42). 한도 자체는 백엔드 시험 몫.
       TRY_SESSIONS_PER_IP_PER_DAY: "50"
+      E2E_API_WORKERS: ${E2E_API_WORKERS:-2}  # uvicorn 워커 수(#280 실측으로 고른 기본값). 명령의 $${E2E_API_WORKERS}가 이 값을 읽는다
     volumes:
       - media-e2e:/app/media
       - e2e-shared:/e2e-shared  # seed_e2e_operator·seed_e2e_member가 세션 토큰을 쓴다(#21·#56)
