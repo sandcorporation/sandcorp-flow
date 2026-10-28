@@ -1,0 +1,92 @@
+// 시험 대화 노드 이벤트(#239) — 실제 스택(uvicorn api-e2e + fake-llm)에서 SSE가 턴 도중에 차례대로·실시간으로 온다.
+// 화면은 T2(#240) 몫이고 여기서는 네트워크 수준만 고정한다. fake-llm 마커: [[delay:N]] N초 지연, [[fail]] 400 오류.
+const { test, expect } = require('@playwright/test')
+const { provisionTenant } = require('./memberToken')
+
+const API_URL = process.env.API_URL || 'http://localhost:8000'
+
+const GRAPH = {
+  nodes: [
+    { id: 'start', kind: 'start', code: 'N-01', name: '시작', position: { x: 0, y: 40 }, config: {} },
+    { id: 'answer', kind: 'ai_answer', code: 'N-02', name: '답변', position: { x: 260, y: 40 }, config: { instructions: '짧게 답한다.' } },
+  ],
+  edges: [{ from: 'start', to: 'answer' }],
+}
+
+async function api(token, method, path, body) {
+  return fetch(`${API_URL}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+}
+
+// SSE를 읽으며 이벤트마다 도착 시각(ms)을 붙인다 — 응답을 다 받은 뒤가 아니라 청크가 올 때마다.
+async function readEvents(response) {
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  const events = []
+  let buffer = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let cut
+    while ((cut = buffer.indexOf('\n\n')) >= 0) {
+      const block = buffer.slice(0, cut)
+      buffer = buffer.slice(cut + 2)
+      const lines = Object.fromEntries(block.split('\n').map((l) => [l.slice(0, l.indexOf(': ')), l.slice(l.indexOf(': ') + 2)]))
+      events.push({ at: Date.now(), name: lines.event, data: JSON.parse(lines.data) })
+    }
+  }
+  return events
+}
+
+async function newFlow(token) {
+  const made = await api(token, 'POST', '/api/tenant/flows/', { name: `노드 이벤트 ${Date.now()}`, graph: GRAPH })
+  expect(made.ok).toBeTruthy()
+  return (await made.json()).id
+}
+
+test.describe('시험 대화 SSE 노드 이벤트', () => {
+  test('느린 LLM에서도 노드 이벤트가 차례대로, 턴이 끝나기 전에 온다', async () => {
+    test.setTimeout(120_000)
+    const tenant = await provisionTenant(`Node Events ${Date.now()}`)
+    const id = await newFlow(tenant.token)
+
+    const response = await api(tenant.token, 'POST', `/api/tenant/flows/${id}/test/`, { message: '안녕하세요 [[delay:2]]' })
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/event-stream')
+    const events = await readEvents(response)
+
+    expect(events.map((e) => e.name)).toEqual([
+      'start', 'node_start', 'node_end', 'node_start', 'node_end', 'trace', 'trace', 'reply', 'done',
+    ])
+    expect(events.filter((e) => e.name === 'node_start').map((e) => [e.data.node_id, e.data.step])).toEqual([['start', 0], ['answer', 1]])
+    const answerStart = events.find((e) => e.name === 'node_start' && e.data.node_id === 'answer')
+    const answerEnd = events.find((e) => e.name === 'node_end' && e.data.node_id === 'answer')
+    // 답 노드 시작 이벤트가 LLM 지연(2초)만큼 먼저 도착했다 — 모았다 한꺼번에 보내지 않는다
+    expect(answerEnd.at - answerStart.at).toBeGreaterThanOrEqual(1500)
+    expect(Object.keys(answerEnd.data).sort()).toEqual([
+      'cost_usd', 'duration_ms', 'handle', 'input_tokens', 'kind', 'node_id', 'output_tokens', 'step', 'summary', 'unpriced_models',
+    ])
+    expect(answerEnd.data.summary).toMatch(/^답 \d+자$/)
+    expect(answerEnd.data.duration_ms).toBeGreaterThanOrEqual(1500)
+    expect(events.at(-1).data.ran).toBe(true)
+  })
+
+  test('LLM 오류면 node_error 뒤 done(turn_error)이 온다', async () => {
+    test.setTimeout(120_000)
+    const tenant = await provisionTenant(`Node Error ${Date.now()}`)
+    const id = await newFlow(tenant.token)
+
+    const response = await api(tenant.token, 'POST', `/api/tenant/flows/${id}/test/`, { message: '안녕하세요 [[fail]]' })
+    const events = await readEvents(response)
+
+    expect(events.map((e) => e.name)).toEqual(['start', 'node_start', 'node_end', 'node_start', 'node_error', 'done'])
+    const error = events.find((e) => e.name === 'node_error').data
+    expect(error.node_id).toBe('answer')
+    expect(error.message).toContain('오류')
+    expect(events.at(-1).data).toMatchObject({ ran: false, code: 'turn_error' })
+  })
+})
