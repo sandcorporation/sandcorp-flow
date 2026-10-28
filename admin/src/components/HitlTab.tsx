@@ -87,7 +87,7 @@ function EscalationCard({ esc, onUpdate, incomingMessage }: { esc: EscalationOut
           <span className="text-sm font-semibold">세션 {esc.session_id.slice(0, 8)}…</span>
           <Badge variant={STATUS_VARIANT[esc.status] || 'secondary'}>{STATUS_LABEL[esc.status]}</Badge>
         </div>
-        {esc.flow_name && <Badge variant="outline" className="max-w-full truncate" data-testid="flow-name">{esc.flow_name}</Badge>}
+        {esc.flow_name && <p className="break-words text-xs text-muted-foreground">흐름 · <span data-testid="flow-name">{esc.flow_name}</span></p>}
         {esc.reason && <p className="break-words text-xs text-muted-foreground">{esc.reason}</p>}
 
         <div data-log-scroll className="max-h-60 overflow-y-auto rounded-md bg-muted/40 p-2.5">
@@ -244,9 +244,9 @@ export default function HitlTab() {
                 return (
                   <li key={s.session_id}
                     className="rounded-md border border-border bg-card px-3 py-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="min-w-0 truncate font-medium">{s.visitor_id}</span>
-                      <span className="max-w-[8rem] truncate text-xs text-muted-foreground" data-testid="flow-name">{s.flow_name ?? '—'}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="min-w-0 max-w-full break-all font-medium">{s.visitor_id}</span>
+                      <span className="min-w-0 max-w-full break-words text-xs text-muted-foreground" data-testid="flow-name">{s.flow_name ?? '—'}</span>
                       <Badge variant={isActive ? 'success' : 'secondary'}>{isActive ? '접속중' : '유휴'}</Badge>
                       <span className="ml-auto text-xs text-muted-foreground">{new Date(s.last_activity).toLocaleString()}</span>
                       <Button size="sm" variant="ghost" onClick={() => toggleHistory(s.session_id)}>

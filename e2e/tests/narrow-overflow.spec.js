@@ -77,7 +77,8 @@ const FIXTURES = [
   ]],
   [/\/api\/tenant\/invites\/$/, [{ id: 'i1', role: 'member', expires_at: '2026-12-01T00:00:00Z', created_at: T0 }]],
   [/\/api\/tenant\/visitors\/$/, [{ visitor_id: 'v-long-0001' }, { visitor_id: 'visitor-' + 'x'.repeat(60) }]],
-  [/\/api\/tenant\/visitors\/[^/]+\/sessions\/$/, [{ session_id: 's-long-0001', visitor_id: 'v-long-0001', is_hitl: true, created_at: T0 }]],
+  [/\/api\/tenant\/sessions\/$/, [{ session_id: 's-long-0002', visitor_id: 'visitor-' + 'x'.repeat(60), is_hitl: false, escalation_status: '', active: true, created_at: T0, last_activity: T0, flow_id: 'f-long', flow_name: '아주 긴 흐름 이름 ' + 'y'.repeat(60) }]],
+  [/\/api\/tenant\/visitors\/[^/]+\/sessions\/$/, [{ session_id: 's-long-0001', visitor_id: 'v-long-0001', is_hitl: true, created_at: T0, flow_id: 'f-long', flow_name: '아주 긴 흐름 이름 ' + 'y'.repeat(60) }]],
   [/\/api\/tenant\/visitors\/[^/]+\/memory\/$/, [
     { id: 'mem1', key: 'preferred_contact_channel_and_time', value: LONG + LONG },
     { id: 'mem2', key: '이름', value: '홍길동' },
@@ -87,7 +88,7 @@ const FIXTURES = [
     { id: 'x2', role: 'assistant', content: 'https://example.com/' + 'a'.repeat(120), created_at: T0 },
   ]],
   [/\/api\/tenant\/escalations\/[^/]+\/messages$/, Array.from({ length: 12 }, (_, i) => ({ id: `em${i}`, role: i % 2 ? 'human_agent' : 'user', content: `긴 대화 ${i} ` + LONG, created_at: T0 }))],
-  [/\/api\/tenant\/escalations\/$/, [{ id: 'e-long-0001', session_id: 's-long-0001', trigger_type: 'user_request', reason: LONG, status: 'pending', created_at: T0 }]],
+  [/\/api\/tenant\/escalations\/$/, [{ id: 'e-long-0001', session_id: 's-long-0001', trigger_type: 'user_request', reason: LONG, status: 'pending', created_at: T0, flow_id: 'f-long', flow_name: '아주 긴 흐름 이름 ' + 'y'.repeat(60) }]],
 ]
 
 async function mockApi(page) {
