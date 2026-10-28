@@ -211,6 +211,7 @@ curl -sN -X POST "https://flow.sandcorp.co.kr/api/tenant/flows/<flow-id>/test/" 
 **운영 확인 절차**(배포 뒤 한 번): 지식 검색 노드가 있는 공개 흐름에서 서로 다른 방문자 대화 5개를 거의 동시에 보낸다(위젯 창 여러 개, 또는 `POST /api/chat/message`를 동시에). 각 세션 상세의 판단 기록(노드 배지 시간, 또는 `GET …/sessions/{id}/decision-traces`의 `duration_ms`)에서 지식 검색 노드 시간을 본다.
 - **정상**: 다섯 대화의 kb `duration_ms`가 혼자 보낸 대화의 kb 시간과 비슷하다.
 - **줄 섬(고치기 전 모습)**: kb `duration_ms`가 계단처럼 커진다(대략 임베딩 시간 × 앞에 선 대화 수). 지식 검색 노드가 임베딩을 `apps/agent/nodes.py` `_aquery_embed`(thread_sensitive=False)로 부르는지 본다.
+- **HTTP 도구(#268)**도 같다: 외부 API 요청은 그 스레드 밖(`asyncio.to_thread`)에서 기다린다. HTTP 도구 노드가 있는 흐름이면 같은 방법으로 다른 대화의 노드 시간이 외부 API 시간만큼 늘지 않는지 본다. DB 단계 자체는 여전히 한 스레드에서 줄을 서지만 턴당 20~30ms라 보류했다(ADR-0035 #268 덧붙임).
 
 ## Langfuse 토큰/트레이스 관찰 (선택)
 
