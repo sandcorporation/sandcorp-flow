@@ -1,9 +1,11 @@
 name: sandcorp-flow-test
 services:
   # ── 공용 인프라 ──────────────────────────────────────────────────────────
-  # 기본은 CPU. GPU 호스트에선 scripts/test.sh가 docker-compose.test.gpu.yml을 겹쳐 nvidia 런타임을 켠다.
+  # 임베딩은 기본이 결정적 가짜(fake-llm /v1/embeddings, #260)라 ollama는 기본 실행에 뜨지 않는다.
+  # 실제 bge-m3를 쓰는 real_embedding 마커 시험만 profile `real-embedding`으로 띄운다(TEST_REAL_EMBEDDING=1 bash scripts/test.sh).
   ollama-test:
     image: ollama/ollama
+    profiles: ["real-embedding"]
     environment:
       - OLLAMA_FLASH_ATTENTION=0
     volumes:
@@ -17,6 +19,7 @@ services:
 
   ollama-test-init:
     image: ollama/ollama
+    profiles: ["real-embedding"]
     volumes:
       - ollama_test_data:/root/.ollama
     environment:
@@ -82,17 +85,19 @@ services:
       DB_PASSWORD: postgres
       REDIS_URL: redis://redis-test:6379/0
       SECRET_KEY: test-secret-key-not-for-production
-      OPEN_ROUTER_BASE_URL: http://ollama-test:11434/v1
-      OPEN_ROUTER_API_KEY: ollama
-      OPEN_ROUTER_DEFAULT_MODEL: qwen2.5:3b
-      OLLAMA_BASE_URL: http://ollama-test:11434
+      OPEN_ROUTER_BASE_URL: http://fake-llm:8090/v1
+      OPEN_ROUTER_API_KEY: fake
+      OPEN_ROUTER_DEFAULT_MODEL: fake-llm
+      # 플랫폼 기본 임베딩 = fake-llm의 결정적 가짜(#260). 실제 bge-m3는 real_embedding 마커 시험만 REAL_OLLAMA_BASE_URL로 부른다.
+      OLLAMA_BASE_URL: http://fake-llm:8090
+      REAL_OLLAMA_BASE_URL: http://ollama-test:11434
     depends_on:
+      fake-llm:
+        condition: service_healthy
       db-test:
         condition: service_healthy
       redis-test:
         condition: service_healthy
-      ollama-test-init:
-        condition: service_completed_successfully
 
   # ── E2E용 Django API ─────────────────────────────────────────────────────
   api-e2e:
@@ -117,7 +122,7 @@ services:
       OPEN_ROUTER_BASE_URL: http://fake-llm:8090/v1
       OPEN_ROUTER_API_KEY: fake
       OPEN_ROUTER_DEFAULT_MODEL: fake-llm
-      OLLAMA_BASE_URL: http://ollama-test:11434
+      OLLAMA_BASE_URL: http://fake-llm:8090  # 결정적 가짜 임베딩(#260)
       # flow.flowtest.test 는 임베드 e2e(#181)의 flow 호스트 별칭.
       # Vite 프록시(changeOrigin)가 Host 를 api-e2e:8000 으로 바꾸므로 브라우저 Origin(admin-e2e)을 허용해야 /api/try 쓰기가 통한다(#37). 운영 검사는 그대로.
       TRY_ALLOWED_ORIGINS: http://admin-e2e:5174,http://localhost:5174,http://flow.flowtest.test:5174
@@ -131,8 +136,6 @@ services:
         condition: service_healthy
       redis-test:
         condition: service_healthy
-      ollama-test-init:
-        condition: service_completed_successfully
       fake-llm:
         condition: service_healthy
     healthcheck:
@@ -188,7 +191,7 @@ services:
       OPEN_ROUTER_BASE_URL: http://fake-llm:8090/v1
       OPEN_ROUTER_API_KEY: fake
       OPEN_ROUTER_DEFAULT_MODEL: fake-llm
-      OLLAMA_BASE_URL: http://ollama-test:11434
+      OLLAMA_BASE_URL: http://fake-llm:8090  # 결정적 가짜 임베딩(#260)
     volumes:
       - media-e2e:/app/media
     depends_on:

@@ -12,12 +12,19 @@ HITL/chat 단언을 결정적으로 만든다. 절대 외부 호출을 하지 �
   네트워크 수준에서 보려는 것이다. 서버가 스레드라 다른 요청은 막지 않는다.
 - ``[[fail]]`` — 400 오류를 돌려준다(재시도 없는 클라이언트 오류). 노드 예외 → ``node_error`` 시험용.
 
+임베딩(#260): ``POST /v1/embeddings``(OpenAI 호환)와 ``GET /api/tags``(ollama 모델 목록 흉내)도 준다.
+- 벡터는 입력 글에서만 정해진다(같은 글 → 같은 1024차원 L2 정규화 벡터). 낱말·글자 2-gram을 해시해 주머니 모양으로 더하므로
+  낱말이 많이 겹치는 글끼리 더 가깝다 — 실제 의미 임베딩은 아니다. 실제 bge-m3는 ``real_embedding`` 마커 시험이 맡는다.
+- ``[[delay:N]]`` 마커는 여기서도 먹는다(임베딩 응답을 N초 늦춘다). 벡터 계산에는 마커를 뺀 글을 쓴다.
+
 응답 형식:
 - 요청 response_format.type == "json_schema" (langchain with_structured_output) →
   스키마 JSON을 message.content 문자열로 반환.
 - 그 외(일반 .invoke) → message.content에 카난 텍스트(기본 빈 facts "{}").
 """
+import hashlib
 import json
+import math
 import os
 import re
 import time
@@ -126,6 +133,58 @@ def build_stream_chunks(completion: dict, include_usage: bool = False) -> list[d
     return chunks
 
 
+EMBEDDING_DIM = 1024
+EMBEDDING_MODEL = "bge-m3"
+_WORD = re.compile(r"\w+", re.UNICODE)
+
+
+def _feature_slot(feature: str) -> tuple[int, float]:
+    digest = hashlib.sha256(feature.encode("utf-8")).digest()
+    index = int.from_bytes(digest[:4], "big") % EMBEDDING_DIM
+    sign = 1.0 if digest[4] & 1 else -1.0
+    return index, sign
+
+
+def _features(text: str) -> list[str]:
+    feats: list[str] = []
+    for word in _WORD.findall(text.lower()):
+        feats.append(f"w:{word}")
+        if len(word) > 1:
+            feats.extend(f"b:{word[i:i + 2]}" for i in range(len(word) - 1))
+    return feats
+
+
+def embed_text(text: str) -> list[float]:
+    """글 → 1024차원 L2 정규화 벡터(결정적). 특징이 하나도 없는 글(빈 문자열 등)도 글 해시로 고정 벡터를 준다."""
+    clean = DELAY_MARKER.sub("", text)
+    vec = [0.0] * EMBEDDING_DIM
+    for feat in _features(clean) or [f"raw:{clean}"]:
+        index, sign = _feature_slot(feat)
+        vec[index] += sign
+    norm = math.sqrt(sum(v * v for v in vec))
+    return [v / norm for v in vec]
+
+
+def build_embeddings(body: dict) -> dict:
+    """OpenAI ``/v1/embeddings`` 요청 dict → 응답 dict. input은 문자열 또는 문자열 목록."""
+    raw = body.get("input", "")
+    texts = [raw] if isinstance(raw, str) else [t if isinstance(t, str) else json.dumps(t) for t in raw]
+    tokens = sum(len(_WORD.findall(t)) for t in texts)
+    return {
+        "object": "list",
+        "model": body.get("model") or EMBEDDING_MODEL,
+        "data": [{"object": "embedding", "index": i, "embedding": embed_text(t)} for i, t in enumerate(texts)],
+        "usage": {"prompt_tokens": tokens, "total_tokens": tokens},
+    }
+
+
+def _embedding_delay(body: dict) -> float:
+    raw = body.get("input", "")
+    joined = raw if isinstance(raw, str) else " ".join(t for t in raw if isinstance(t, str))
+    match = DELAY_MARKER.search(joined)
+    return min(float(match.group(1)), MAX_DELAY_SECONDS) if match else 0.0
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
@@ -154,6 +213,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(200, {"status": "ok"})
         elif self.path.rstrip("/") == "/v1/models":
             self._send_json(200, {"object": "list", "data": [{"id": "fake-llm", "object": "model"}]})
+        elif self.path.rstrip("/") == "/api/tags":
+            self._send_json(200, {"models": [{"name": EMBEDDING_MODEL}]})
         else:
             self._send_json(404, {"error": "not found"})
 
@@ -176,6 +237,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_stream(completion, bool((body.get("stream_options") or {}).get("include_usage")))
             else:
                 self._send_json(200, completion)
+        elif self.path.rstrip("/").endswith("/embeddings"):
+            delay = _embedding_delay(body)
+            if delay:
+                time.sleep(delay)
+            self._send_json(200, build_embeddings(body))
         else:
             self._send_json(404, {"error": "not found"})
 

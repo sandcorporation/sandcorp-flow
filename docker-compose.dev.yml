@@ -20,10 +20,10 @@ services:
       - "8000:8000"
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
-      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://fake-llm:8090}
       TRY_ALLOWED_ORIGINS: http://localhost:5174  # Vite 프록시가 Host 를 바꾸므로 dev 의 /try 쓰기(#37)
     depends_on:
-      ollama:
+      fake-llm:
         condition: service_healthy
 
   worker:
@@ -32,7 +32,7 @@ services:
       - ./backend:/app
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
-      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://fake-llm:8090}
 
   # taskiq chat 워커(dev) — chat 코드 변경 시 컨테이너 재시작 필요(taskiq 핫리로드 미사용).
   worker-chat:
@@ -41,9 +41,9 @@ services:
       - ./backend:/app
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
-      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://fake-llm:8090}
     depends_on:
-      ollama:
+      fake-llm:
         condition: service_healthy
 
   # ── Event pipeline (dev: 코드 마운트 + dev 설정) ──────────────────────────────
@@ -102,13 +102,26 @@ services:
     depends_on:
       - api
 
+  # 기본 임베딩은 결정적 가짜(fake-llm /v1/embeddings, #260)라 GPU·모델 내려받기 없이 어디서나 뜬다.
+  # 낱말이 겹치는 글끼리만 가까운 가짜이므로 의미 검색 품질을 보려면 실제 bge-m3를 켠다:
+  #   OLLAMA_BASE_URL=http://ollama:11434 docker compose -f docker-compose.dev.yml --profile ollama up -d
+  # GPU(nvidia)가 있으면 `ollama` 서비스에 runtime: nvidia·NVIDIA_VISIBLE_DEVICES=all을 겹쳐 쓴다(기본에는 두지 않는다).
+  fake-llm:
+    build:
+      context: ./fake_llm
+    ports:
+      - "8090:8090"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8090/health').status==200 else 1)\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   ollama:
     image: ollama/ollama
-    runtime: nvidia
+    profiles: ["ollama"]
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - OLLAMA_FLASH_ATTENTION=0
+      - OLLAMA_FLASH_ATTENTION=0  # GPU flash-attention에서 bge-m3가 NaN 임베딩을 내는 문제 회피
     volumes:
       - ollama_data:/root/.ollama
     ports:
@@ -122,6 +135,7 @@ services:
 
   ollama-init:
     image: ollama/ollama
+    profiles: ["ollama"]
     volumes:
       - ollama_data:/root/.ollama
     environment:

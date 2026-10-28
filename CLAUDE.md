@@ -6,16 +6,16 @@
 # 테스트 작성시
 - RED/GREEN/REFACTOR 사이클을 따르세요.
 - 기본적으로 MOCK을 사용하지 마세요. 실제 객체를 사용하세요. (내부 협력자/우리 코드는 절대 mock하지 않음)
-- 예외: 비결정적인 외부 경계(예: LLM/OpenRouter 호출)는 결정적 Fake/Mock으로 교체하세요. 테스트는 외부 모델의 판단 품질이 아니라 우리 코드의 동작을 검증해야 합니다. 단, 임베딩·DB·SSE·HTTP 수신부 등 결정적으로 만들 수 있는 것은 실제 객체를 사용하세요.
+- 예외: 비결정적인 외부 경계(예: LLM/OpenRouter 호출)는 결정적 Fake/Mock으로 교체하세요. 테스트는 외부 모델의 판단 품질이 아니라 우리 코드의 동작을 검증해야 합니다. 단, DB·SSE·HTTP 수신부 등 결정적으로 만들 수 있는 것은 실제 객체를 사용하세요. **임베딩은 기본 시험에서 결정적 가짜**(`fake_llm`의 `/v1/embeddings` — 같은 글이면 같은 1024차원 정규화 벡터, HTTP·사용량 기록 경로는 실제)를 쓰고, 실제 bge-m3(ollama)는 `real_embedding` 마커 시험에서 **수동으로만** 돌립니다(`TEST_REAL_EMBEDDING=1 bash scripts/test.sh`).
 - 가능한한 모든 유저 스토리를 테스트하세요. (예: 로그인, 로그아웃, 회원가입 등)
 - 테스트는 독립적이어야 합니다. 다른 테스트에 의존하지 마세요.
 
 # 테스트 실행 (무조건 Docker)
 
-- **모든 테스트는 Docker 컨테이너에서 실행합니다. 호스트에서 직접 `pytest`/`vitest`/`npm test`를 돌리지 마세요.** 호스트엔 DB(Postgres+pgvector)·Redis·Ollama가 없어 결과를 신뢰할 수 없습니다.
-- **백엔드**: `bash scripts/test.sh` (전체) 또는 `bash scripts/test.sh tests/test_xxx.py[::test_fn]` (특정 대상). 이 스크립트가 `docker-compose.test.yml`로 필요한 인프라를 띄우고 종료 시 정리합니다. 기본 구성은 GPU 없이 돌고(ollama CPU. OCR은 테넌트 Vision Provider라 컨테이너가 없고 시험은 `transcribe_image` Fake), nvidia 런타임이 있으면 `docker-compose.test.gpu.yml`을 자동으로 겹칩니다(`TEST_GPU=0|1`로 강제).
+- **모든 테스트는 Docker 컨테이너에서 실행합니다. 호스트에서 직접 `pytest`/`vitest`/`npm test`를 돌리지 마세요.** 호스트엔 DB(Postgres+pgvector)·Redis·fake-llm이 없어 결과를 신뢰할 수 없습니다.
+- **백엔드**: `bash scripts/test.sh` (전체) 또는 `bash scripts/test.sh tests/test_xxx.py[::test_fn]` (특정 대상). 이 스크립트가 `docker-compose.test.yml`로 필요한 인프라(db·redis·fake-llm)를 띄우고 종료 시 정리합니다. ollama는 기본으로 뜨지 않습니다(임베딩은 가짜). OCR은 테넌트 Vision Provider라 컨테이너가 없고 시험은 `transcribe_image` Fake입니다.
 - **프론트(admin/widget)**: Docker node 컨테이너에서 vitest 실행. 예) `docker compose -f docker-compose.dev.yml run --rm --no-deps admin sh -c "npm install && npm run test:run"`. (vitest는 jsdom+fetch mock이라 백엔드 인프라가 불필요하므로 `--no-deps`로 `api` 의존만 건너뛰는 것은 정상입니다.)
-- **백엔드에선 테스트가 요구하는 인프라(DB·Redis·Ollama)를 건너뛰지 마세요.** 일부만 띄우고 돌리면(`--no-deps`로 ollama 생략 등) 통과처럼 보여도 인프라 의존 테스트가 조용히 실패·누락됩니다. 백엔드 검증은 항상 `scripts/test.sh`로 풀스택에서.
+- **백엔드에선 테스트가 요구하는 인프라(DB·Redis·fake-llm)를 건너뛰지 마세요.** 일부만 띄우고 돌리면(`--no-deps` 등) 통과처럼 보여도 인프라 의존 테스트가 조용히 실패·누락됩니다. 백엔드 검증은 항상 `scripts/test.sh`로 풀스택에서.
 
 # admin API 클라이언트 (OpenAPI 코드젠)
 
