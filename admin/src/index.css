@@ -189,3 +189,17 @@
 .react-flow__node { cursor: pointer; }
 .react-flow__handle { width: 9px; height: 9px; border-radius: 0; }
 .react-flow__attribution a { color: hsl(var(--flow-muted)); }
+
+/* 시험 대화 실시간 노드 표시(#240): 실행 중 노드는 맥동하고 지나간 선은 흐른다. 움직임을 줄이면 색만 남긴다. */
+@keyframes live-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(var(--flow-run) / 0.55); }
+  50% { box-shadow: 0 0 0 8px hsl(var(--flow-run) / 0); }
+}
+@keyframes live-blink {
+  50% { opacity: 0.45; }
+}
+.live-pulse { animation: live-pulse 1.2s ease-in-out infinite; }
+.live-blink { animation: live-blink 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .live-pulse, .live-blink, .react-flow__edge.animated path { animation: none !important; }
+}

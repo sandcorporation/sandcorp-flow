@@ -5,33 +5,47 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useAppTheme } from '../hooks/useAppTheme'
+import { liveEdgeKeys, type LiveRun, type LiveStatus } from '@/lib/liveRun'
 import {
   DEFAULT_HANDLE, edgeKey, errorsByNode, fitViewport, panIntoView, kindLabel, nodeStyle, nodeSummary, outHandles, pathTo,
   type FlowError, type FlowGraph, type FlowNodeJson,
 } from '@/lib/flowGraph'
 
 /** 카드 한 장. 가드레일=황·흑 경고띠 머리, 사람 넘김=적색 점선 테두리(시안 .node.guard / .node.human). */
-type CardData = { node: FlowNodeJson; errors: FlowError[]; active: boolean; selected: boolean; readOnly: boolean }
+type CardData = { node: FlowNodeJson; errors: FlowError[]; active: boolean; selected: boolean; readOnly: boolean; live: LiveStatus | null }
+
+const LIVE_LABEL: Record<LiveStatus, string> = { running: '실행 중', done: '끝남', error: '오류' }
 
 function FlowNodeCard({ data }: NodeProps<Node<CardData>>) {
-  const { node, errors, active, selected, readOnly } = data
+  const { node, errors, active, selected, readOnly, live } = data
   const style = nodeStyle(node.kind)
   const handles = outHandles(node)
   const bar = style === 'guard' ? 'hazard-stripe text-[#121412]' : style === 'human' ? 'bg-alarm text-white' : 'bg-head text-head-foreground'
   const box = [
     'relative w-[180px] overflow-visible border bg-raised text-left',
     style === 'human' ? 'border-dashed border-alarm' : 'border-ink',
-    active ? 'outline outline-[3px] outline-run' : selected ? 'outline outline-2 outline-offset-2 outline-ink' : '',
+    active ? 'outline outline-[3px] outline-run'
+      : live === 'running' ? 'live-pulse outline outline-[3px] outline-run'
+      : live === 'error' ? 'outline outline-[3px] outline-alarm'
+      : selected ? 'outline outline-2 outline-offset-2 outline-ink' : '',
   ].join(' ')
   return (
-    <div className={box} data-node-id={node.id} data-style={style} data-active={active ? "true" : undefined} style={{ minHeight: handles.length > 1 ? undefined : 78 }}>
+    <div className={box} data-node-id={node.id} data-style={style} data-active={active ? "true" : undefined} data-live={live ?? undefined} style={{ minHeight: handles.length > 1 ? undefined : 78 }}>
       {node.kind !== 'start' && <Handle type="target" position={Position.Left} isConnectable={!readOnly} />}
       <div className={`flex items-center gap-1.5 px-2 py-1 text-[0.7rem] font-medium ${bar}`}>
         <span className={style === 'guard' ? 'flex items-center gap-1.5 bg-hazard px-1' : 'flex items-center gap-1.5'}>
-          <span className={`lamp ${active ? 'lamp-run' : errors.length ? 'lamp-alarm' : 'lamp-ok'}`} />
+          <span className={`lamp ${active || live === 'running' ? 'lamp-run' : errors.length || live === 'error' ? 'lamp-alarm' : 'lamp-ok'}`} />
           <span className="hmi-code opacity-90">{node.code}</span>
           <span>{kindLabel(node.kind)}</span>
         </span>
+        {live && (
+          <span
+            role="img" aria-label={`${node.code} ${LIVE_LABEL[live]}`} data-live-mark={live}
+            className={`ml-auto px-1 font-mono text-[0.66rem] ${live === 'done' ? 'bg-raised text-ok' : live === 'error' ? 'bg-alarm text-white' : 'live-blink bg-run text-[#121412]'}`}
+          >
+            {live === 'done' ? '✓' : live === 'error' ? '✕' : '…'}
+          </span>
+        )}
         {errors.length > 0 && (
           <span
             role="img"
@@ -74,6 +88,9 @@ export type FlowCanvasProps = {
   /** 호박색으로 강조할 노드·선(시험 대화의 실행 경로 등, #30). 없으면 고른 노드까지 오는 길을 강조한다. */
   activeNodeIds?: ReadonlySet<string>
   activeEdgeKeys?: ReadonlySet<string>
+  /** 시험 대화의 실시간 실행 상태(#240): 실행 중·끝남·오류와 지나간 선. `livePending`이면(턴 진행 중) 지나간 선이 흐른다. */
+  live?: LiveRun
+  livePending?: boolean
   onSelect: (id: string | null) => void
   onMoved: (id: string, position: { x: number; y: number }) => void
   onConnect: (from: string, handle: string, to: string) => void
@@ -124,14 +141,14 @@ function Inner(p: FlowCanvasProps) {
         position: old?.dragging ? old.position : n.position,
         draggable: !readOnly,
         selected: n.id === selectedId,
-        data: { node: n, errors: byNode.get(n.id) ?? [], active: activeNodes.has(n.id) && p.activeNodeIds !== undefined, selected: n.id === selectedId, readOnly },
+        data: { node: n, errors: byNode.get(n.id) ?? [], active: activeNodes.has(n.id) && p.activeNodeIds !== undefined, selected: n.id === selectedId, readOnly, live: p.live?.nodes[n.id]?.status ?? null },
       }
     })
   const [rfNodes, setRfNodes] = useState<Node<CardData>[]>(() => build([])) // 첫 그림부터 노드가 있어야 맞춤 보기가 맞게 계산된다
   useEffect(() => {
     setRfNodes(build)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, byNode, selectedId, readOnly, activeNodes, p.activeNodeIds])
+  }, [graph, byNode, selectedId, readOnly, activeNodes, p.activeNodeIds, p.live])
 
   // 크기는 재었는데 손잡이 자리(handleBounds)가 비어 버린 노드를 다시 재게 한다(#128).
   // 카드 데이터를 새로 만드는 것(build)과 React Flow의 측정 갱신이 한 렌더 안에서 겹치면, 측정값 없는 옛 노드가 한 번 채택되며
@@ -143,6 +160,7 @@ function Inner(p: FlowCanvasProps) {
     if (stale.length > 0) updateNodeInternals(stale)
   }, [rfNodes, rf, updateNodeInternals])
 
+  const liveEdges = useMemo(() => (p.live ? liveEdgeKeys(p.live) : new Set<string>()), [p.live])
   const edges: Edge[] = useMemo(
     () =>
       graph.edges.map((e) => {
@@ -150,7 +168,8 @@ function Inner(p: FlowCanvasProps) {
         const to = graph.nodes.find((n) => n.id === e.to)
         const human = to?.kind === 'handoff' || handle === 'handoff'
         const on = activeEdges.has(edgeKey(e))
-        const color = on ? 'hsl(var(--flow-run))' : human ? 'hsl(var(--flow-alarm))' : 'hsl(var(--flow-muted))'
+        const passed = !on && liveEdges.has(edgeKey(e))
+        const color = on ? 'hsl(var(--flow-run))' : passed ? 'hsl(var(--flow-ok))' : human ? 'hsl(var(--flow-alarm))' : 'hsl(var(--flow-muted))'
         return {
           id: edgeKey(e),
           source: e.from,
@@ -159,12 +178,14 @@ function Inner(p: FlowCanvasProps) {
           label: handle === DEFAULT_HANDLE ? undefined : handle,
           labelStyle: { fontFamily: 'var(--flow-font-mono)', fontSize: 10.5, fill: human ? 'hsl(var(--flow-alarm))' : 'hsl(var(--flow-text))' },
           labelBgStyle: { fill: 'hsl(var(--flow-bg))' },
-          style: { stroke: color, strokeWidth: on ? 3 : 1.5, strokeDasharray: human ? '7 4' : undefined },
+          animated: passed && p.livePending === true,
+          data: { live: passed },
+          style: { stroke: color, strokeWidth: on ? 3 : passed ? 2.5 : 1.5, strokeDasharray: human ? '7 4' : undefined },
           markerEnd: { type: MarkerType.ArrowClosed, color },
           deletable: !readOnly,
         }
       }),
-    [graph, activeEdges, readOnly],
+    [graph, activeEdges, readOnly, liveEdges, p.livePending],
   )
 
   /** 맞춤 보기. 노드 글자가 읽히는 배율(FIT_MIN_ZOOM) 아래로는 줄이지 않고, 넘치면 끌어서 본다. */
@@ -195,6 +216,30 @@ function Inner(p: FlowCanvasProps) {
     return () => clearTimeout(t)
   }, [selectedId, p.coverRef, rf])
 
+  // 시험 대화가 화면 밖 노드를 돌고 있으면 그 노드가 보이게 화면을 옮긴다. 이번 턴에 사용자가 직접 캔버스를 움직였으면 따라가지 않는다(#240).
+  const userMoved = useRef(false)
+  const runningId = useMemo(() => {
+    const run = Object.entries(p.live?.nodes ?? {}).filter(([, n]) => n.status === 'running').sort((a, b) => b[1].step - a[1].step)[0]
+    return run?.[0] ?? null
+  }, [p.live])
+  const liveEmpty = !p.live || Object.keys(p.live.nodes).length === 0
+  useEffect(() => { if (liveEmpty) userMoved.current = false }, [liveEmpty])
+  useEffect(() => {
+    if (!runningId || userMoved.current) return
+    const t = setTimeout(() => {
+      const el = wrap.current
+      const node = el?.querySelector(`.react-flow__node[data-id="${CSS.escape(runningId)}"]`)
+      if (!el || !node || userMoved.current) return
+      const c = el.getBoundingClientRect(), n = node.getBoundingClientRect()
+      const cover = p.coverRef?.current?.getBoundingClientRect()
+      const move = panIntoView(n, { left: c.left, right: c.right, top: c.top, bottom: cover ? Math.min(c.bottom, cover.top) : c.bottom }, 12)
+      if (!move) return
+      const v = rf.getViewport()
+      void rf.setViewport({ x: v.x + move.dx, y: v.y + move.dy, zoom: v.zoom }, { duration: 200 })
+    }, 60)
+    return () => clearTimeout(t)
+  }, [runningId, p.coverRef, rf])
+
   const onNodesChange = useCallback((changes: NodeChange<Node<CardData>>[]) => setRfNodes((ns) => applyNodeChanges(changes, ns)), [])
 
   const onConnect = (c: Connection) => {
@@ -221,6 +266,7 @@ function Inner(p: FlowCanvasProps) {
         onNodesChange={onNodesChange}
         onNodeClick={(_, n) => p.onSelect(n.id)}
         onPaneClick={() => p.onSelect(null)}
+        onMoveStart={(e) => { if (e) userMoved.current = true }}
         onNodeDragStop={(_, n) => p.onMoved(n.id, { x: Math.round(n.position.x), y: Math.round(n.position.y) })}
         onConnect={onConnect}
         onDelete={({ nodes, edges: gone }) => {

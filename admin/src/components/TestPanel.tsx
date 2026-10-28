@@ -9,6 +9,7 @@ import {
   entryLabel, entryPricing, formatCost, formatTokens, notRunMessage, restoredTurns, sessionTotals, turnTotals,
   type SseEvent, type TestTurn, type Totals, type TraceEntry,
 } from '@/lib/testTrace'
+import { applyLiveEvent, emptyLiveRun, type LiveRun } from '@/lib/liveRun'
 import { Button } from './ui/button'
 import { Textarea } from './ui/textarea'
 import { notifyTrialChanged } from './TrialBanner'
@@ -27,6 +28,7 @@ export function useTestSession(flowId: string, beforeSend: () => Promise<void>) 
   const [refusal, setRefusal] = useState<TryRefusal | null>(null) // 체험 한도 사유(done.code) — 마지막 턴 기준
   const [turns, setTurns] = useState<TestTurn[]>([])
   const [busy, setBusy] = useState(false)
+  const [live, setLive] = useState<LiveRun>(emptyLiveRun) // 이번 턴의 노드 실행 상태(#240) — 새 턴·새 대화에 비운다
   const sessionRef = useRef<string | null>(null)
   const nextN = useRef(1)
 
@@ -57,8 +59,10 @@ export function useTestSession(flowId: string, beforeSend: () => Promise<void>) 
     setBusy(true)
     const n = nextN.current++
     setTurns((ts) => [...ts, blank(n, message)])
+    setLive(emptyLiveRun)
     let done: { ran: boolean; note: string; errors: FlowError[]; code: string | null } | null = null
     const onEvent = ({ event, data }: SseEvent) => {
+      setLive((r) => applyLiveEvent(r, { event, data }))
       if (event === 'trace') patchLast((t) => ({ ...t, entries: [...t.entries, data as TraceEntry] }))
       else if (event === 'reply') patchLast((t) => ({ ...t, reply: String(data.text ?? '') }))
       else if (event === 'done') {
@@ -95,8 +99,8 @@ export function useTestSession(flowId: string, beforeSend: () => Promise<void>) 
     return sent
   }, [flowId, beforeSend, backend])
 
-  const reset = useCallback(() => { sessionRef.current = null; if (backend.restoreTraces) remember(flowId, null); nextN.current = 1; setTurns([]); setRefusal(null) }, [flowId, backend])
-  return { turns, busy, send, reset, refusal }
+  const reset = useCallback(() => { sessionRef.current = null; if (backend.restoreTraces) remember(flowId, null); nextN.current = 1; setTurns([]); setRefusal(null); setLive(emptyLiveRun) }, [flowId, backend])
+  return { turns, busy, send, reset, refusal, live }
 }
 
 export function TestChat({ turns, busy, send, reset, readOnly, refusal }: {
