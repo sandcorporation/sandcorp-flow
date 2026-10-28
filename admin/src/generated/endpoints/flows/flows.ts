@@ -14,6 +14,7 @@ import type {
   DraftOut,
   DraftPatchIn,
   DraftPutIn,
+  EmbedIn,
   FlowCreateIn,
   FlowDetailOut,
   FlowOut,
@@ -360,6 +361,42 @@ export const appsFlowsApiFlowsRename = async (flowId: string,
 
 
 /**
+ * 기본 흐름 바꾸기 — 위젯 ``/chatbot/<slug>/``가 이 흐름으로 돈다. 배포됨·보관 아님만(409 ``not_embeddable``).
+ * @summary Flows Set Default
+ */
+export type appsFlowsApiFlowsSetDefaultResponse200 = {
+  data: FlowOut
+  status: 200
+}
+    
+export type appsFlowsApiFlowsSetDefaultResponseSuccess = (appsFlowsApiFlowsSetDefaultResponse200) & {
+  headers: Headers;
+};
+;
+
+export type appsFlowsApiFlowsSetDefaultResponse = (appsFlowsApiFlowsSetDefaultResponseSuccess)
+
+export const getAppsFlowsApiFlowsSetDefaultUrl = (flowId: string,) => {
+
+
+  
+
+  return `/api/tenant/flows/${flowId}/default/`
+}
+
+export const appsFlowsApiFlowsSetDefault = async (flowId: string, options?: RequestInit): Promise<appsFlowsApiFlowsSetDefaultResponse> => {
+  
+  return customInstance<appsFlowsApiFlowsSetDefaultResponse>(getAppsFlowsApiFlowsSetDefaultUrl(flowId),
+  {      
+    ...options,
+    method: 'POST'
+    
+    
+  }
+);}
+
+
+/**
  * 배포. 테넌트가 승인을 요구하면 배포하지 않고 배포 요청을 만들어 202로 돌려준다.
  * @summary Flows Deploy
  */
@@ -474,6 +511,44 @@ export const appsFlowsApiFlowsPutDraft = async (flowId: string,
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
       draftPutIn,)
+  }
+);}
+
+
+/**
+ * 키 주소 임베드 켬/끔. 배포 버전이 없으면 켤 수 없다(409 ``not_embeddable``, 이유는 ``detail``).
+ * @summary Flows Set Embed
+ */
+export type appsFlowsApiFlowsSetEmbedResponse200 = {
+  data: FlowOut
+  status: 200
+}
+    
+export type appsFlowsApiFlowsSetEmbedResponseSuccess = (appsFlowsApiFlowsSetEmbedResponse200) & {
+  headers: Headers;
+};
+;
+
+export type appsFlowsApiFlowsSetEmbedResponse = (appsFlowsApiFlowsSetEmbedResponseSuccess)
+
+export const getAppsFlowsApiFlowsSetEmbedUrl = (flowId: string,) => {
+
+
+  
+
+  return `/api/tenant/flows/${flowId}/embed/`
+}
+
+export const appsFlowsApiFlowsSetEmbed = async (flowId: string,
+    embedIn: EmbedIn, options?: RequestInit): Promise<appsFlowsApiFlowsSetEmbedResponse> => {
+  
+  return customInstance<appsFlowsApiFlowsSetEmbedResponse>(getAppsFlowsApiFlowsSetEmbedUrl(flowId),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      embedIn,)
   }
 );}
 

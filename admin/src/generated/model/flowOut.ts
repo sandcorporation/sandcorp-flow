@@ -5,9 +5,13 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { FlowOutDeployedVersion } from './flowOutDeployedVersion';
+import type { FlowOutEmbedPath } from './flowOutEmbedPath';
 
 export interface FlowOut {
   deployed_version: FlowOutDeployedVersion;
+  embed_enabled: boolean;
+  embed_key: string;
+  embed_path?: FlowOutEmbedPath;
   has_pending_request?: boolean;
   id: string;
   is_public: boolean;

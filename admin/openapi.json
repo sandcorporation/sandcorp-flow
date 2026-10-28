@@ -658,6 +658,19 @@
         "title": "DraftPutIn",
         "type": "object"
       },
+      "EmbedIn": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "EmbedIn",
+        "type": "object"
+      },
       "EscalationMessageOut": {
         "properties": {
           "content": {
@@ -826,6 +839,25 @@
             ],
             "title": "Deployed Version"
           },
+          "embed_enabled": {
+            "title": "Embed Enabled",
+            "type": "boolean"
+          },
+          "embed_key": {
+            "title": "Embed Key",
+            "type": "string"
+          },
+          "embed_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embed Path"
+          },
           "has_pending_request": {
             "default": false,
             "title": "Has Pending Request",
@@ -853,6 +885,8 @@
           "id",
           "name",
           "is_public",
+          "embed_key",
+          "embed_enabled",
           "deployed_version",
           "updated_at"
         ],
@@ -5118,6 +5152,44 @@
         ]
       }
     },
+    "/api/tenant/flows/{flow_id}/default/": {
+      "post": {
+        "description": "기본 흐름 바꾸기 — 위젯 ``/chatbot/<slug>/``가 이 흐름으로 돈다. 배포됨·보관 아님만(409 ``not_embeddable``).",
+        "operationId": "apps_flows_api_flows_set_default",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Set Default",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
     "/api/tenant/flows/{flow_id}/deploy/": {
       "post": {
         "description": "배포. 테넌트가 승인을 요구하면 배포하지 않고 배포 요청을 만들어 202로 돌려준다.",
@@ -5265,6 +5337,54 @@
           }
         ],
         "summary": "Flows Put Draft",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/api/tenant/flows/{flow_id}/embed/": {
+      "post": {
+        "description": "키 주소 임베드 켬/끔. 배포 버전이 없으면 켤 수 없다(409 ``not_embeddable``, 이유는 ``detail``).",
+        "operationId": "apps_flows_api_flows_set_embed",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbedIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Set Embed",
         "tags": [
           "flows"
         ]
