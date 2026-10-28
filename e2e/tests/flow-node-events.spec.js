@@ -75,6 +75,35 @@ test.describe('시험 대화 SSE 노드 이벤트', () => {
     expect(events.at(-1).data.ran).toBe(true)
   })
 
+  test('지식 검색 노드의 node_start는 검색이 끝나기 전에 온다(#256)', async () => {
+    // 실제 uvicorn(요청마다 thread-sensitive 스레드 하나) + 실제 임베딩(ollama bge-m3, CPU). 긴 질의로 임베딩을 느리게 한다.
+    // 고치기 전에는 kb 검색이 요청의 sync 스레드를 차지해 스트림의 이벤트 가림이 그 뒤에 줄 섰고,
+    // kb node_start가 node_end와 같은 ms에 왔다(운영 측정 duration_ms 2810, 도착 5290/5290).
+    test.setTimeout(180_000)
+    const tenant = await provisionTenant(`Node Events KB ${Date.now()}`)
+    const graph = {
+      nodes: [
+        GRAPH.nodes[0],
+        { id: 'kb', kind: 'knowledge_search', code: 'N-03', name: '지식 검색', position: { x: 130, y: 40 }, config: {} },
+        GRAPH.nodes[1],
+      ],
+      edges: [{ from: 'start', to: 'kb' }, { from: 'kb', to: 'answer' }],
+    }
+    const made = await api(tenant.token, 'POST', '/api/tenant/flows/', { name: `kb 이벤트 ${Date.now()}`, graph })
+    expect(made.ok).toBeTruthy()
+    const id = (await made.json()).id
+    const message = '환불 규정과 교환 절차, 배송 기간을 자세히 알려 주세요. '.repeat(100).slice(0, 3900)
+
+    const events = await readEvents(await api(tenant.token, 'POST', `/api/tenant/flows/${id}/test/`, { message }))
+
+    const kbStart = events.find((e) => e.name === 'node_start' && e.data.node_id === 'kb')
+    const kbEnd = events.find((e) => e.name === 'node_end' && e.data.node_id === 'kb')
+    expect(kbEnd.data.duration_ms).toBeGreaterThan(0)
+    // 시작 이벤트가 검색 시간만큼 먼저 왔다(도착 시각 잡음 300ms 여유)
+    expect(kbEnd.at - kbStart.at).toBeGreaterThanOrEqual(kbEnd.data.duration_ms - 300)
+    expect(events.at(-1).data.ran).toBe(true)
+  })
+
   test('LLM 오류면 node_error 뒤 done(turn_error)이 온다', async () => {
     test.setTimeout(120_000)
     const tenant = await provisionTenant(`Node Error ${Date.now()}`)

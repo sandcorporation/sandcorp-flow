@@ -525,13 +525,16 @@ def stream_test_turn(
         if isinstance(turn, services.TestTurnResult):
             result = turn
         else:
+            # 가림 함수는 턴을 띄우기 전에 한 번 만든다 — 이벤트마다 sync 스레드로 건너가면 그 스레드를 쥔 턴(지식 검색)
+            # 뒤에 줄 서서 node_start가 노드가 끝날 때 함께 나갔다(#256, ADR-0035 덧붙임).
+            clean = await sync_to_async(node_events.cleaner)(turn.tenant_id)
             queue: _TurnQueue = asyncio.Queue()
             task = asyncio.create_task(_run_turn(turn, queue, after))
             _running_turns.add(task)
             task.add_done_callback(_forget_turn)
             while (item := await queue.get()) is not None:
                 name, data = item
-                yield _sse(name, await sync_to_async(node_events.clean)(turn.tenant_id, name, data))
+                yield _sse(name, clean(name, data))
             try:
                 result = await task
             except Exception:  # noqa: BLE001 — _run_turn이 로그로 남겼다. 화면에는 node_error 뒤 done으로 알린다

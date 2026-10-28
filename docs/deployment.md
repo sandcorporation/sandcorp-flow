@@ -200,6 +200,7 @@ curl -sN -X POST "https://flow.sandcorp.co.kr/api/tenant/flows/<flow-id>/test/" 
 - **정상**: `event: node_start`(시작 노드)가 곧바로 찍히고, AI 답변 노드의 `node_start`와 `node_end` 사이가 LLM 응답 시간(보통 1초 이상)만큼 벌어진다. `trace`·`reply`·`done`은 끝에 몰려 와도 정상이다(턴이 끝난 뒤 보낸다).
 - **모임(버퍼링)**: 모든 `event:` 줄이 같은 시각에 한꺼번에 찍힌다. NPM Advanced의 `proxy_buffering off`와 nginx가 `X-Accel-Buffering` 헤더를 받는지(`curl -sD- -o/dev/null …`로 응답 헤더 확인), 앞단에 압축(gzip)이 켜졌는지 본다.
 - 같은 확인을 nginx 앞(`http://<A1>:${NGINX_PORT}/api/…`)과 NPM 앞(공개 주소)에서 각각 해 보면 어느 층이 모으는지 가를 수 있다.
+- **지식 검색 노드(#256)**: 지식 검색 노드가 있는 흐름으로 같은 curl을 돌린다. 정상이면 kb `node_start`가 앞 노드 `node_end` 바로 뒤에 찍히고, kb `node_end`는 그 `duration_ms`만큼 뒤에 온다. kb `node_start`·`node_end`가 같은 시각에 함께 찍히면(고치기 전 build 107의 모습) 스트림의 이벤트 가림이 턴의 sync 스레드 뒤에 줄 선 것이다 — `apps/flows/api.py` `stream_test_turn`이 이벤트마다 `sync_to_async`로 가리지 않고 턴 전에 만든 `node_events.cleaner`로 가리는지 본다(ADR-0035 덧붙임).
 
 ## Langfuse 토큰/트레이스 관찰 (선택)
 
