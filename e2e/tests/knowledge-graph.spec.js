@@ -24,11 +24,6 @@ test.describe('Knowledge Graph 인스펙터', () => {
     tenant = ctx.tenant
   })
 
-  test.beforeEach(async ({ page }) => {
-    await page.goto(`${ADMIN_URL}/admin-ui/`)
-    await page.evaluate(() => localStorage.clear())
-  })
-
   test('지식그래프 탭 진입 시 빈 안내가 보인다', async ({ page }) => {
     await loginAsTenantAgent(page, tenant)
     await page.goto(`${ADMIN_URL}/admin-ui/tenant/graph`)

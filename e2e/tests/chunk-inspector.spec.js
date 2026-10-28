@@ -24,11 +24,6 @@ test.describe('Document Chunk Inspector', () => {
     tenant = ctx.tenant
   })
 
-  test.beforeEach(async ({ page }) => {
-    await page.goto(`${ADMIN_URL}/admin-ui/`)
-    await page.evaluate(() => localStorage.clear())
-  })
-
   // ── Tracer Bullet ─────────────────────────────────────────────────────────
   test('"청크 보기" 버튼이 문서 행에 존재한다', async ({ page }) => {
     const api = await request.newContext({ baseURL: API_URL })

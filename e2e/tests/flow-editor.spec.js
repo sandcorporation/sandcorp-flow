@@ -62,19 +62,22 @@ test.describe('흐름 편집기 — 실제 스택', () => {
         { id: 'guardrail_1', kind: 'guardrail', code: 'N-03', name: '가드레일', position: { x: 520, y: 40 }, config: { rules: ['banned_words'], banned_words: ['x'], action: 'block', target: 'output' } },
         { id: 'handoff_1', kind: 'handoff', code: 'N-04', name: '사람 넘김', position: { x: 780, y: 40 }, config: { reason: '필요' } },
       ],
-      edges: [],
+      // 뒤쪽 선(AI 답변 → 가드레일 → 사람 넘김)은 API로 준비하고, 끌어 잇기는 시작 → AI 답변 한 번만 한다(#257: 3초 한도).
+      edges: [
+        { from: 'ai_answer_1', to: 'guardrail_1' },
+        { from: 'guardrail_1', to: 'handoff_1' },
+      ],
     }
     const made = await (await api.post('/api/tenant/flows/', { data: { name: '선 잇기', graph } })).json()
     await api.dispose()
     await openMemberSession(page, ADMIN_URL, tenant.token, `tenant/flows/${made.id}`)
     await expect(page.locator('.react-flow__node')).toHaveCount(4)
-    await expect(page.getByLabel(/N-02 오류 \d건/)).toBeVisible({ timeout: 10000 }) // 이어지지 않은 노드는 검증 오류
+    await expect(page.locator('.react-flow__edge')).toHaveCount(2)
+    await expect(page.getByLabel(/N-02 오류 \d건/)).toBeVisible({ timeout: 10000 }) // 시작에서 이어지지 않은 노드는 검증 오류
 
-    // 선 잇기: 시작 → AI 답변, AI 답변 → 가드레일 → 사람 넘김
+    // 선 잇기: 시작 → AI 답변을 끌어 잇는다(맞춤 보기가 끝나 점 위치가 멈춘 뒤)
+    await settled(page)
     await connect(page, 'start', 'ai_answer_1')
-    await expect(page.locator('.react-flow__edge')).toHaveCount(1)
-    await connect(page, 'ai_answer_1', 'guardrail_1')
-    await connect(page, 'guardrail_1', 'handoff_1')
     await expect(page.locator('.react-flow__edge')).toHaveCount(3)
     await expect(page.getByLabel(/N-02 오류/)).toHaveCount(0, { timeout: 10000 })
 

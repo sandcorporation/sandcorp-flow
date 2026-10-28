@@ -28,11 +28,6 @@ test.describe('Document Label', () => {
     tenant = ctx.tenant
   })
 
-  test.beforeEach(async ({ page }) => {
-    await page.goto(`${ADMIN_URL}/admin-ui/`)
-    await page.evaluate(() => localStorage.clear())
-  })
-
   // ── Tracer Bullet: 파일 선택 시 레이블이 파일명으로 미리 채워진다 ─────────────
   test('파일 선택 시 Document Label 입력이 파일명으로 미리 채워진다', async ({ page }) => {
     await loginAsTenantAgent(page, tenant)

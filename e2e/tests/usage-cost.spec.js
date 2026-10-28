@@ -5,7 +5,7 @@ const fs = require('fs')
 const path = require('path')
 const { test, expect, request } = require('@playwright/test')
 const { provisionTenant, openMemberSession } = require('./memberToken')
-const { openOperatorSession } = require('./operatorToken')
+const { operatorToken } = require('./operatorToken')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const API_URL = process.env.API_URL || 'http://localhost:8000'
@@ -77,7 +77,7 @@ test.describe('사용량 화면 — 비용', () => {
     await expect(page.getByTestId('usage-cost')).toBeVisible()
     expect(await overflow(page)).toEqual([])
 
-    await openOperatorSession(page, ADMIN_URL)
+    await page.addInitScript((t) => sessionStorage.setItem('op_access', t), operatorToken())
     await page.goto(`${ADMIN_URL}/admin-ui/operator/usage`)
     await expect(page.getByTestId('usage-cost')).toHaveText(/^\$\d/)
     await expect(page.getByTestId('daily-cost-row').first()).toContainText('$')
@@ -87,9 +87,8 @@ test.describe('사용량 화면 — 비용', () => {
   // 라이트·다크 × 데스크톱·390폭을 한 시험씩 나눈다 — 한 시험이 네 조합을 다 돌면 3초 한도를 넘는다(#257).
   for (const theme of ['light', 'dark']) {
     for (const [w, h] of [[1280, 900], [390, 844]]) {
-      test(`단가 모름 모델이 있는 큰 금액도 ${w}폭에서 넘치지 않는다(가짜 응답, ${theme}) + 증거 사진`, async ({ page }) => {
+      test(`단가 모름 모델이 있는 큰 금액도 테넌트 사용량 ${w}폭에서 넘치지 않는다(가짜 응답, ${theme}) + 증거 사진`, async ({ page }) => {
         await page.route('**/api/tenant/usage/**', (r) => r.fulfill({ json: MOCK_TENANT }))
-        await page.route('**/api/operator/usage/**', (r) => r.fulfill({ json: MOCK_OPERATOR }))
         const tenant = await provisionTenant(`Usage Cost Mock ${Date.now()}`)
         await page.addInitScript((t) => localStorage.setItem('admin_theme', t), theme)
         await page.setViewportSize({ width: w, height: h })
@@ -98,9 +97,15 @@ test.describe('사용량 화면 — 비용', () => {
         await expect(page.getByTestId('daily-cost-row')).toHaveCount(3)
         expect(await overflow(page)).toEqual([])
         await shot(page, `usage-tenant-${theme}-${w}`)
+      })
 
-        await openOperatorSession(page, ADMIN_URL)
-        await page.goto(`${ADMIN_URL}/admin-ui/operator/usage`)
+      // Operator 화면은 따로 연다 — 한 시험에 화면 둘을 열면 3초 한도 근처까지 간다(#257).
+      test(`단가 모름 모델이 있는 큰 금액도 Operator 사용량 ${w}폭에서 넘치지 않는다(가짜 응답, ${theme}) + 증거 사진`, async ({ page }) => {
+        await page.route('**/api/operator/usage/**', (r) => r.fulfill({ json: MOCK_OPERATOR }))
+        await page.addInitScript((t) => localStorage.setItem('admin_theme', t), theme)
+        await page.setViewportSize({ width: w, height: h })
+        await page.addInitScript((t) => sessionStorage.setItem('op_access', t), operatorToken())
+        await page.goto(`${ADMIN_URL}/admin-ui/operator/usage`) // 첫 화면을 거치지 않고 사용량으로 바로 연다
         await expect(page.getByTestId('tenant-row')).toHaveCount(2)
         expect(await overflow(page)).toEqual([])
         await shot(page, `usage-operator-${theme}-${w}`)

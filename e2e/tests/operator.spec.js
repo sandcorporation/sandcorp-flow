@@ -7,11 +7,6 @@ const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 // Operator 로그인은 sandcorp-auth 콜백뿐이다(#21). 실제 sandcorp-auth를 부를 수 없으므로
 // 로그인 화면은 버튼·거절 화면까지만 보고, 들어간 뒤의 흐름은 시드한 세션(seed_e2e_operator)으로 연다.
 test.describe('Operator 플로우', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto(`${ADMIN_URL}/admin-ui/`)
-    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear() })
-  })
-
   test('로그인 화면은 비밀번호 대신 sandcorp 로그인 버튼을 보여 준다', async ({ page }) => {
     await page.goto(`${ADMIN_URL}/admin-ui/operator`)
 

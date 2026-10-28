@@ -26,9 +26,8 @@ async function setup(page, width) {
   const tenant = await provisionTenant(`Live Canvas ${Date.now()}`)
   const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
   const made = await (await api.post('/api/tenant/flows/', { data: { name: '실시간 흐름', graph: GRAPH } })).json()
+  await page.setViewportSize({ width, height: width < 600 ? 844 : 900 }) // 폭을 먼저 정하고 한 번만 연다(#257)
   await openMemberSession(page, ADMIN_URL, tenant.token, `tenant/flows/${made.id}`)
-  await page.setViewportSize({ width, height: width < 600 ? 844 : 900 })
-  await page.reload()
   await expect(page.locator('.react-flow__node')).toHaveCount(2)
 }
 const live = (page, id) => page.locator(`[data-node-id="${id}"]`)

@@ -77,7 +77,8 @@ test.describe('시험 대화 SSE 노드 이벤트', () => {
 
   test('지식 검색 노드의 node_start는 검색이 끝나기 전에 온다(#256)', async () => {
     // 실제 uvicorn(요청마다 thread-sensitive 스레드 하나) + 실제 HTTP 임베딩 수신부(fake-llm /v1/embeddings, #260).
-    // 가짜는 즉시 답하므로 질의의 `[[delay:1]]` 마커로 임베딩 응답을 1초 늦춘다(옛 ollama 긴 질의 느림의 대체).
+    // 가짜는 즉시 답하므로 질의의 `[[delay:0.6]]` 마커로 임베딩 응답을 0.6초 늦춘다(옛 ollama 긴 질의 느림의 대체).
+    // 마커는 답 노드 LLM 호출도 같이 늦춘다 — 3초 한도 안에 두려고 1초에서 줄였다(#257). 고치기 전 간격은 0ms였으니 0.3초 이상이면 가른다.
     // 고치기 전에는 kb 검색이 요청의 sync 스레드를 차지해 스트림의 이벤트 가림이 그 뒤에 줄 섰고,
     // kb node_start가 node_end와 같은 ms에 왔다(운영 측정 duration_ms 2810, 도착 5290/5290).
     const tenant = await provisionTenant(`Node Events KB ${Date.now()}`)
@@ -92,7 +93,7 @@ test.describe('시험 대화 SSE 노드 이벤트', () => {
     const made = await api(tenant.token, 'POST', '/api/tenant/flows/', { name: `kb 이벤트 ${Date.now()}`, graph })
     expect(made.ok).toBeTruthy()
     const id = (await made.json()).id
-    const message = '환불 규정과 교환 절차, 배송 기간을 자세히 알려 주세요. [[delay:1]]'
+    const message = '환불 규정과 교환 절차, 배송 기간을 자세히 알려 주세요. [[delay:0.6]]'
 
     const events = await readEvents(await api(tenant.token, 'POST', `/api/tenant/flows/${id}/test/`, { message }))
 
