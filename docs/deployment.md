@@ -155,7 +155,7 @@ bridge·relay 5개는 합치면 메모리를 ~250M 더 아끼지만 이벤트 �
 | `CHAT_STREAMING_ENABLED` | ○ | 기본 on. 토큰 스트리밍 킬스위치. |
 | `CHAT_RATE_LIMIT_PER_TENANT`·`_PER_VISITOR` | ○ | 레이트리밋. |
 
-> 쿠키·HTTPS·CORS는 env가 아니라 코드(`config/settings/prod.py`·`base.py`)에 고정돼 있다: `SESSION_COOKIE_SECURE`·`CSRF_COOKIE_SECURE`·`SECURE_SSL_REDIRECT` 켜짐(NPM의 `X-Forwarded-Proto` 신뢰), CORS는 위젯이 고객 사이트에 임베드되므로 모든 출처 허용(Bearer JWT, 쿠키 인증 아님). `/api/health`만 SSL 리다이렉트에서 제외.
+> 쿠키·HTTPS·CORS는 env가 아니라 코드(`config/settings/prod.py`·`base.py`)에 고정돼 있다: `SESSION_COOKIE_SECURE`·`CSRF_COOKIE_SECURE` 켜짐(NPM의 `X-Forwarded-Proto` 신뢰), CORS는 위젯이 고객 사이트에 임베드되므로 모든 출처 허용(Bearer JWT, 쿠키 인증 아님). HTTPS 강제는 NPM(프록시) 몫이다. 앱은 리디렉션하지 않는다(`SecurityMiddleware` 없음).
 > `AUTH_*`(#20·#21, sandcorp-auth)·`PLATFORM_*`(#39, 플랫폼 OpenAI 키)는 해당 티켓이 이름을 정해 `.env.prod.example`에 더한다. 그 전까지 운영 `.env`에 넣지 않는다.
 
 > prod는 `PLATFORM_DEFAULT_PROVIDERS_ENABLED=False`라 `OPEN_ROUTER_*`·`OLLAMA_*`는
@@ -170,11 +170,11 @@ bridge·relay 5개는 합치면 메모리를 ~250M 더 아끼지만 이벤트 �
 
 ## 트러블슈팅
 
-- **무한 리다이렉트(NPM 뒤)**: `SECURE_PROXY_SSL_HEADER`(prod.py) + nginx가 NPM의 `X-Forwarded-Proto` 전달(둘 다 적용됨). NPM이 https 종단하는지 확인.
+- **https가 http로 보임(NPM 뒤)**: `SECURE_PROXY_SSL_HEADER`(prod.py) + nginx가 NPM의 `X-Forwarded-Proto` 전달(둘 다 적용됨). NPM이 https 종단하는지 확인. 앱은 리디렉션하지 않으므로 리다이렉트 루프는 NPM 설정 쪽이다.
 - **NPM이 502/연결 안 됨**: NPM Forward가 `<A1 호스트 IP>:${NGINX_PORT}`인지 확인(컨테이너 NPM이면 host-gateway). nginx 컨테이너가 그 포트로 `up` 됐는지(`docker compose ... ps nginx`)도 확인.
 - **rollout이 안 먹음/명령 없음**: 에이전트에 `docker rollout` 플러그인 미설치. `docker rollout --help | grep 'Rollout new Compose'`로 확인(없으면 일반 도움말이 exit 0으로 나온다).
 - **GHCR pull 403/denied**: A1 `docker login` 만료 또는 PAT 권한/ SSO. classic `read:packages` + org authorize.
-- **스모크/healthcheck가 `/api/health`에서 400**: `ALLOWED_HOSTS`에 `127.0.0.1,localhost` 누락(DisallowedHost). → 추가. (301로 바뀌면 SSL 리다이렉트 문제 — prod.py의 `SECURE_REDIRECT_EXEMPT`가 health를 제외하므로 새 이미지로 배포돼야 적용됨.)
+- **스모크/healthcheck가 `/api/health`에서 400**: `ALLOWED_HOSTS`에 `127.0.0.1,localhost` 누락(DisallowedHost). → 추가.
 - **첫 배포 `migrate` 실패**: `.env`의 `DJANGO_SETTINGS_MODULE`·DB 변수 확인. db 컨테이너 healthy 대기 후 migrate(deploy.sh가 처리).
 - **이벤트 파이프라인 정지**: relay·bridge는 events 마이그레이션 미적용 시 크래시 — migrate가 모든 마이그레이션을 적용하므로 배포에 포함됨.
 
