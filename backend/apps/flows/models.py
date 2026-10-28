@@ -57,6 +57,9 @@ class Flow(models.Model):
     """키 주소 ``/chatbot/<slug>/<embed_key>/``의 키. 만들 때 발급하고 바꾸지 않는다(이름을 바꿔도 붙인 코드가 산다)."""
     embed_enabled = models.BooleanField(default=False)
     """키 주소로 붙일 수 있는가. 열리는 조건은 이것 + 배포 버전 있음 + 보관 아님(``embeddable``). 보관하면 꺼진다."""
+    embed_origins = models.JSONField(default=list, db_default=[], blank=True)
+    """이 흐름의 키 주소를 붙일 수 있는 사이트(#248). 비어 있지 않으면 테넌트 목록(``TenantConfig.embed_origins``)을 대신한다.
+    기본 흐름 주소 ``/chatbot/<slug>/``는 이 목록을 보지 않는다. 검증·정책은 ``embed_policy``."""
     deployed_version = models.ForeignKey(
         "flows.FlowVersion", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )

@@ -14,6 +14,7 @@ export interface TenantConfigOut {
   embed_base_url: string;
   embed_dim: number;
   embed_model: string;
+  embed_origins?: string[];
   embed_provider_type: string;
   extraction_model: string;
   hitl_enabled: boolean;

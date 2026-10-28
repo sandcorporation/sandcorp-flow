@@ -671,6 +671,22 @@
         "title": "EmbedIn",
         "type": "object"
       },
+      "EmbedOriginsIn": {
+        "properties": {
+          "origins": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Origins",
+            "type": "array"
+          }
+        },
+        "required": [
+          "origins"
+        ],
+        "title": "EmbedOriginsIn",
+        "type": "object"
+      },
       "EscalationMessageOut": {
         "properties": {
           "content": {
@@ -846,6 +862,14 @@
           "embed_key": {
             "title": "Embed Key",
             "type": "string"
+          },
+          "embed_origins": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Embed Origins",
+            "type": "array"
           },
           "embed_path": {
             "anyOf": [
@@ -1921,6 +1945,20 @@
             ],
             "title": "Embed Model"
           },
+          "embed_origins": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embed Origins"
+          },
           "embed_provider_type": {
             "anyOf": [
               {
@@ -2210,6 +2248,14 @@
           "embed_model": {
             "title": "Embed Model",
             "type": "string"
+          },
+          "embed_origins": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Embed Origins",
+            "type": "array"
           },
           "embed_provider_type": {
             "title": "Embed Provider Type",
@@ -5337,6 +5383,54 @@
           }
         ],
         "summary": "Flows Put Draft",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/api/tenant/flows/{flow_id}/embed-origins/": {
+      "put": {
+        "description": "이 흐름의 키 주소를 붙일 수 있는 사이트(#248). 비우면 테넌트 목록을 따른다. 틀리면 400 ``invalid_embed_origins``.",
+        "operationId": "apps_flows_api_flows_set_embed_origins",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbedOriginsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "MemberOrTenantKeyAuth": []
+          }
+        ],
+        "summary": "Flows Set Embed Origins",
         "tags": [
           "flows"
         ]

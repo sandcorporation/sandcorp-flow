@@ -11,6 +11,7 @@ import type { TenantConfigInEmbedApiKey } from './tenantConfigInEmbedApiKey';
 import type { TenantConfigInEmbedBaseUrl } from './tenantConfigInEmbedBaseUrl';
 import type { TenantConfigInEmbedDim } from './tenantConfigInEmbedDim';
 import type { TenantConfigInEmbedModel } from './tenantConfigInEmbedModel';
+import type { TenantConfigInEmbedOrigins } from './tenantConfigInEmbedOrigins';
 import type { TenantConfigInEmbedProviderType } from './tenantConfigInEmbedProviderType';
 import type { TenantConfigInExtractionModel } from './tenantConfigInExtractionModel';
 import type { TenantConfigInHitlEnabled } from './tenantConfigInHitlEnabled';
@@ -43,6 +44,7 @@ export interface TenantConfigIn {
   embed_base_url?: TenantConfigInEmbedBaseUrl;
   embed_dim?: TenantConfigInEmbedDim;
   embed_model?: TenantConfigInEmbedModel;
+  embed_origins?: TenantConfigInEmbedOrigins;
   embed_provider_type?: TenantConfigInEmbedProviderType;
   extraction_model?: TenantConfigInExtractionModel;
   hitl_enabled?: TenantConfigInHitlEnabled;

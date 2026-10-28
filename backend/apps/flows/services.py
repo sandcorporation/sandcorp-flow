@@ -239,6 +239,26 @@ def set_embed_enabled(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, enabled: b
     return flow
 
 
+class InvalidEmbedOrigins(FlowServiceError):
+    """허용 사이트 목록이 규칙에 맞지 않는다(``embed_policy.normalize_embed_origins``의 문구 그대로)."""
+
+    code = "invalid_embed_origins"
+
+
+def set_embed_origins(tenant_id: uuid.UUID, flow_id: uuid.UUID | str, origins: list[str]) -> Flow:
+    """흐름의 허용 사이트 목록을 검증·정규화해 저장하고 그 테넌트의 정책 캐시를 지운다(#248)."""
+    from apps.flows.embed_policy import EmbedOriginsInvalid, forget_tenant, normalize_embed_origins
+
+    try:
+        normalized = normalize_embed_origins(origins)
+    except EmbedOriginsInvalid as e:
+        raise InvalidEmbedOrigins(e.message) from e
+    pk = get_flow(tenant_id, flow_id).pk
+    Flow.objects.filter(pk=pk).update(embed_origins=normalized, updated_at=timezone.now())
+    forget_tenant(tenant_id)
+    return get_flow(tenant_id, flow_id)
+
+
 def set_default_flow(tenant_id: uuid.UUID, flow_id: uuid.UUID | str) -> Flow:
     """기본 흐름(``is_public``, 위젯 ``/chatbot/<slug>/``가 도는 흐름)을 바꾼다. 배포됨·보관 아님만 된다.
 
