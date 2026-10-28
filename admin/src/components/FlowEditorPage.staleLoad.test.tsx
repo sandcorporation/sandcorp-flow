@@ -7,6 +7,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import * as api from '../api'
 import FlowEditorPage from './FlowEditorPage'
 import { fakeFlowsApi } from '../flowsFakeApi'
+import { flushAsync } from '../flushAsync'
 
 vi.mock('../api', () => ({ currentAgentRole: vi.fn() }))
 
@@ -32,14 +33,14 @@ describe('편집기 첫 불러오기 경합(#167)', () => {
     )
     await waitFor(() => expect(held.length).toBeGreaterThanOrEqual(2))
     await act(async () => { held[0]() })
-    await new Promise((r) => setTimeout(r, 50))
+    await flushAsync()
     const early = screen.queryByRole('button', { name: '시작' })
     if (early) await userEvent.click(early)
     await act(async () => { held.slice(1).forEach((h) => h()) })
     const start = screen.queryByRole('button', { name: '시작' }) ?? (await screen.findByRole('button', { name: '시작' }))
     if (!early) await userEvent.click(start)
     await waitFor(() => expect(document.querySelectorAll('.react-flow__node').length).toBe(1))
-    await new Promise((r) => setTimeout(r, 100))
+    await flushAsync()
     expect(document.querySelectorAll('.react-flow__node').length).toBe(1)
   })
 })

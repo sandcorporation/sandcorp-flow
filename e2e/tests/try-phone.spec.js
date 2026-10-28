@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const { test, expect } = require('@playwright/test')
 const { provisionTenant, openMemberSession } = require('./memberToken')
+const { settled } = require('./settle')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const SHOTS = process.env.SHOTS_DIR
@@ -79,7 +80,7 @@ test.describe('폰 모드 — 실제 스택', () => {
     await page.mouse.down()
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 10 })
     await page.mouse.up()
-    await page.waitForTimeout(300)
+    await settled(page)
     expect(await page.locator('.react-flow__edge').count()).toBe(edgeCount)
     expect(await nodes.count()).toBe(nodeCount)
     expect(await noScrollDrag(page)).toEqual([])

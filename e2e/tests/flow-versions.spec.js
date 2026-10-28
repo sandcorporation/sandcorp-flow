@@ -5,6 +5,7 @@ const fs = require('fs')
 const path = require('path')
 const { test, expect, request } = require('@playwright/test')
 const { provisionTenant, openMemberSession } = require('./memberToken')
+const { settled } = require('./settle')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const WIDGET_URL = process.env.WIDGET_URL || 'http://localhost:5173'
@@ -18,7 +19,7 @@ async function shot(page, name, { both = false } = {}) {
   if (!both) return page.screenshot({ path: path.join(SHOTS, `${TAG}-${name}.png`) })
   for (const theme of ['light', 'dark']) {
     await page.evaluate((t) => document.documentElement.classList.toggle('dark', t === 'dark'), theme)
-    await page.waitForTimeout(250)
+    await settled(page)
     await page.screenshot({ path: path.join(SHOTS, `${TAG}-${name}-${theme}-1600x900.png`) })
   }
   await page.evaluate(() => document.documentElement.classList.remove('dark'))
@@ -147,7 +148,7 @@ test.describe('흐름 버전·배포 — 실제 스택', () => {
     if (SHOTS) {
       await page.setViewportSize({ width: 768, height: 844 })
       await versions.scrollIntoViewIfNeeded()
-      await page.waitForTimeout(400)
+      await settled(page)
       await shot(page, 'history-768')
       const over = await page.evaluate(() => {
         const bad = []
@@ -177,7 +178,7 @@ test.describe('흐름 버전·배포 — 실제 스택', () => {
     await page.setViewportSize({ width: 1600, height: 900 })
     await openMemberSession(page, ADMIN_URL, tenant.token, `tenant/flows/${made.id}`)
     await expect(page.locator('.react-flow__node')).toHaveCount(4)
-    await page.waitForTimeout(500)
+    await settled(page)
     await shot(page, 'node-overlap')
     const card = page.locator('[data-node-id="ask"]')
     await expect(card.locator('[data-exit]').first()).toBeVisible()

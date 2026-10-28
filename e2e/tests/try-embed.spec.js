@@ -3,6 +3,7 @@
 const fs = require('fs')
 const path = require('path')
 const { test, expect } = require('@playwright/test')
+const { settled } = require('./settle')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const noOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)
@@ -48,12 +49,12 @@ test('임베드 편집기: SPA 이동·새로고침에도 유지, 가입 링크�
   const rootH = () => page.evaluate(() => Math.round(document.getElementById('root').getBoundingClientRect().height))
   const h700 = await rootH()
   await page.setViewportSize({ width: 929, height: 1100 })
-  await page.waitForTimeout(300)
+  await settled(page)
   expect(await rootH()).toBe(h700)
 
   // hello 전에는 아무것도 안 보내고, hello 뒤에는 그 origin 으로 높이를 보낸다
   await page.evaluate(() => { window.__got = []; window.addEventListener('message', (e) => { if (e.data?.type === 'sandcorp-flow:height') window.__got.push(e.data.height) }) })
-  await page.waitForTimeout(300)
+  await settled(page)
   expect(await page.evaluate(() => window.__got.length)).toBe(0)
   await page.evaluate(() => window.postMessage({ type: 'sandcorp-flow:hello' }, location.origin))
   await expect.poll(() => page.evaluate(() => window.__got[0])).toBeGreaterThan(h700 - 2) // 소수 높이: 반올림과 올림이 1px 다를 수 있다

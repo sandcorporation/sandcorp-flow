@@ -3,6 +3,7 @@
 // 부모 HTML 은 page.route 로 서빙한다(스니펫은 docs/deployment.md 「임베드」 절의 것과 같다). 쓰기 Origin 검사를 위해 api-e2e 는 TRY_ALLOWED_ORIGINS 에 FLOW 호스트를 가진다.
 // ④ 다른 사이트에서의 프레임 거부(frame-ancestors)는 e2e 스택(Vite)에 그 헤더가 없어 nginx 계약 시험(scripts/test-nginx-metrics.sh)이 맡는다.
 const { test, expect } = require('@playwright/test')
+const { settled } = require('./settle')
 
 const FLOW = 'http://flow.flowtest.test:5174'
 const PARENT = 'http://portfolio.flowtest.test:9999'
@@ -113,7 +114,8 @@ test('③ 부모가 hello 뒤 height 를 받아 iframe 높이가 바뀐다', asy
 test('③\' hello 를 안 보내면 높이는 오지 않고 iframe 은 처음 높이 그대로', async ({ page }) => {
   const frame = await openParent(page, { hello: false })
   await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
-  await page.waitForTimeout(1000)
+  await settled(page.frame({ url: /flow\.flowtest\.test/ })) // iframe 안 화면이 가라앉은 뒤에도 높이 메시지가 없어야 한다
+  await settled(page)
   expect(await page.evaluate(() => window.__heights.length)).toBe(0)
   expect(await iframeHeight(page)).toBe(300)
 })

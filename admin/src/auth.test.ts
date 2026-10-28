@@ -69,13 +69,17 @@ describe('refresh — single-flight (동시 401 경쟁 방지)', () => {
   it('동시 refresh 호출은 refresh 엔드포인트를 한 번만 치고 결과를 공유한다', async () => {
     clearAccess('agent')
     let calls = 0
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve }) // 회전 지연 — 동시 호출이 in-flight를 공유해야 하니 응답을 붙잡아 둔다
     globalThis.fetch = vi.fn().mockImplementation(async () => {
       calls++
-      await new Promise(r => setTimeout(r, 10)) // 회전 지연 — 동시 호출이 in-flight를 공유해야 함
+      await gate
       return { ok: true, status: 200, json: async () => ({ access_token: 'shared-access' }) }
     })
 
-    const [a, b, c] = await Promise.all([refresh('agent'), refresh('agent'), refresh('agent')])
+    const all = Promise.all([refresh('agent'), refresh('agent'), refresh('agent')])
+    release()
+    const [a, b, c] = await all
 
     expect(a && b && c).toBe(true)
     // single-flight 없으면 같은 refresh 쿠키로 3번 회전 → 서버 reuse 탐지가 family를 폐기(로그아웃).

@@ -2,6 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const { test, expect, request } = require('@playwright/test')
 const { provisionTenant, openMemberSession } = require('./memberToken')
+const { settled, trackRequests } = require('./settle')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const API_URL = process.env.API_URL || 'http://localhost:8000'
@@ -27,6 +28,7 @@ async function connect(page, from, to) {
 test.describe('흐름 편집기 — 실제 스택', () => {
   test('노드 추가 → 선 잇기 → 설정 저장 → 새로고침해도 유지된다', async ({ page }) => {
     test.setTimeout(90_000)
+    const net = trackRequests(page)
     page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) console.log('[console]', m.type(), m.text().slice(0, 300)) })
     const tenant = await provisionTenant(`Flow Editor ${Date.now()}`)
     await openMemberSession(page, ADMIN_URL, tenant.token, 'tenant/flows')
@@ -69,7 +71,7 @@ test.describe('흐름 편집기 — 실제 스택', () => {
     await page.getByLabel('금지어 목록').fill('환불 보장\n공짜')
     await page.getByLabel('금지어 목록').blur()
     await expect(page.getByRole('status').filter({ hasText: '초안 저장됨' })).toBeVisible()
-    await page.waitForTimeout(500)
+    await net.idle()
     await expect(page.getByRole('status').filter({ hasText: '초안 저장됨' })).toBeVisible()
     await shot(page, 'editor-light')
 
@@ -110,16 +112,16 @@ test.describe('흐름 편집기 — 실제 스택', () => {
       await page.goto(showUrl)
       await expect(page.locator('.react-flow__node')).toHaveCount(graph.nodes.length)
       await page.locator('[data-node-id="guard"]').click()
-      await page.waitForTimeout(400)
+      await settled(page)
       await shot(page, 'editor-light')
       await page.locator(`[data-node-id="${http.id}"]`).click()
-      await page.waitForTimeout(300)
+      await settled(page)
       await shot(page, 'editor-error-light')
       await page.evaluate(() => localStorage.setItem('admin_theme', 'dark'))
       await page.reload()
       await expect(page.locator('.react-flow__node')).toHaveCount(graph.nodes.length)
       await page.locator('[data-node-id="guard"]').click()
-      await page.waitForTimeout(400)
+      await settled(page)
       await shot(page, 'editor-dark')
       await page.goto(editorUrl.replace(/flows\/.*/, 'flows'))
       await expect(page.getByRole('link', { name: '홈페이지 상담' })).toBeVisible()
@@ -134,7 +136,7 @@ test.describe('흐름 편집기 — 실제 스택', () => {
       await shot(page, 'list-390')
       await page.goto(showUrl)
       await expect(page.locator('.react-flow__node').first()).toBeVisible()
-      await page.waitForTimeout(500)
+      await settled(page)
       await shot(page, 'editor-390')
     }
     await api.dispose()

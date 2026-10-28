@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const { test, expect } = require('@playwright/test')
 const { provisionTenant } = require('./memberToken')
+const { settled, trackRequests } = require('./settle')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const API_URL = process.env.API_URL || 'http://localhost:8000'
@@ -25,13 +26,14 @@ test.describe('체험 모드 콘솔 정리·폰 시트 팬(#150)', () => {
   test('/try 진입 → 고쳐 보기 → HTTP 노드 시트까지 4xx 응답 0', async ({ page }) => {
     test.setTimeout(120_000)
     const bad = watch4xx(page)
+    const net = trackRequests(page)
     await page.setViewportSize({ width: 1280, height: 800 })
     await page.goto(`${ADMIN_URL}/admin-ui/try`)
     await page.locator('[data-template="shop_support"]').getByRole('link', { name: '고쳐 보기' }).click()
     await expect(page).toHaveURL(/\/try\?template=shop$/)
     await page.locator('[data-node-id="order"]').click()
     await expect(page.getByText('가짜 API').first()).toBeVisible()
-    await page.waitForTimeout(800)
+    await net.idle()
     expect(bad).toEqual([])
   })
 
@@ -50,10 +52,11 @@ test.describe('체험 모드 콘솔 정리·폰 시트 팬(#150)', () => {
     expect((await request.patch(`${API_URL}/api/tenant/config/`, { headers: auth, data: { public_flow_view: true } })).ok()).toBe(true)
 
     const bad = watch4xx(page)
+    const net = trackRequests(page)
     await page.setViewportSize({ width: 1280, height: 800 })
     await page.goto(`${ADMIN_URL}/admin-ui/flows/${slug}`)
     await page.locator('[data-node-id="order"]').click()
-    await page.waitForTimeout(800)
+    await net.idle()
     expect(bad).toEqual([])
   })
 

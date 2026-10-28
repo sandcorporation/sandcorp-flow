@@ -7,6 +7,11 @@
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
+# 시험의 고정 시간 대기 차단(#259) — grep 이라 docker 없이 1초 안에 끝난다.
+if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^(e2e/tests/|admin/src/|widget/src/)'; then
+  bash scripts/lint-fixed-waits.sh || exit 1
+fi
+
 # 백엔드 스키마에 영향 줄 수 있는 변경이 스테이징됐는가?
 #  - admin/orval.config.ts
 #  - backend 비테스트·비마이그레이션 .py 중 이름이 api/schema(s)로 끝나거나(예: api.py, schemas.py),

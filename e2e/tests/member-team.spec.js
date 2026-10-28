@@ -25,7 +25,7 @@ test.describe('팀원 탭 — 초대 링크 → 수락 → 목록 (#56)', () => 
     dropInvite(new URL(url).searchParams.get('invite'))
     await expect.poll(async () => {
       await page.reload()
-      await page.waitForLoadState('networkidle')
+      await page.waitForLoadState('load')
       const pending = await page.getByRole('button', { name: '초대 취소' }).count()
       const rows = await page.getByRole('row', { name: /E2E 초대받은 사람/ }).count()
       return `${pending}|${rows}`

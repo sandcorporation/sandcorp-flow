@@ -421,6 +421,7 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 - **E2E**: Playwright. 챗 LLM은 OpenAI 호환 **Fake LLM 서비스**(`fake_llm/`)로 결정화합니다.
   - **부하 재현(#177)**: `bash scripts/e2e-soak/soak.sh [판 수] [출력 폴더]` — 전체 e2e 판을 여러 번 돌리며 판마다 api 요청별 응답 시간·동시 처리 수, **이벤트 루프 지연과 막힌 순간의 스택**, 컨테이너 CPU, DB 대기를 따로 남기고 표로 요약합니다(`scripts/e2e-soak/README.md`).
   - api 워커는 시작 때 URLconf 와 async 경로의 무거운 지연 import(langgraph·langchain·taskiq)를 미리 불러옵니다(`config/warmup.py`). 첫 요청·첫 시험 턴이 루프 스레드에서 모듈을 불러오며 같은 프로세스의 모든 요청을 1초씩 멈추던 것을 없앴습니다(#177). 함수 안 import 를 새로 더하고 이 목록에 빼먹으면 `backend/tests/test_warmup_guard.py` 가 빨강이 됩니다(#189).
+- **고정 시간 대기 금지(#259)**: e2e·vitest는 `waitForTimeout`·`networkidle`·`setTimeout`/`sleep`으로 기다리지 않고 사건(응답·요소·화면 안정)을 기다립니다. e2e는 `e2e/tests/settle.js`(`settled`·`trackRequests`), admin vitest는 `admin/src/flushAsync.ts`를 씁니다. `bash scripts/lint-fixed-waits.sh`가 막고(pre-commit 훅이 부름, `git config core.hooksPath scripts/hooks`), 사건이 없어 남겨야 하는 줄은 같은 줄 끝 `// wait-ok: 이유`로만 풉니다.
 - 인제스션·추출 프롬프트의 실제 타당성은 실제 OpenRouter로 bring-up 검증합니다.
 
 ---

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import PublicFlowPage from './PublicFlowPage'
 import { fakeFlowsApi } from '../flowsFakeApi'
+import { flushAsync } from '../flushAsync'
 import type { FlowGraph } from '../lib/flowGraph'
 
 // 공개 흐름 보기(#39): 로그인 없이 테넌트의 공개 흐름(배포 버전)을 읽기 전용으로 본다.
@@ -94,7 +95,7 @@ describe('PublicFlowPage — 공개 흐름 보기', () => {
     renderPublic()
     fireEvent.click((await screen.findAllByText('N-03'))[0])
     await screen.findByDisplayValue('주문 조회')
-    await new Promise((r) => setTimeout(r, 20))
+    await flushAsync()
     expect(fake.calls.some((c) => c.path.startsWith('/api/tenant/'))).toBe(false)
   })
 
