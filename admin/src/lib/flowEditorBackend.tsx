@@ -38,6 +38,8 @@ export interface FlowEditorBackend {
   restoreTraces: boolean
   /** 못 돈 턴의 사유를 체험 한도(플랫폼 trial)에서 묻는가. */
   askTrial: boolean
+  /** 머리줄에 「임베드」 메뉴를 두는가 — 키 주소·기본 흐름은 로그인한 테넌트 흐름에만 있다(#247). */
+  embedMenu?: boolean
   /** 왼쪽 위 「목록으로」 링크. */
   back: { to: string; label: string }
   /** 편집 권한이 없을 때 머리줄에 붙일 설명. */
@@ -73,6 +75,7 @@ const tenantBackend: FlowEditorBackend = {
   testChat: true,
   restoreTraces: true,
   askTrial: true,
+  embedMenu: true,
   back: { to: '/tenant/flows', label: '흐름 목록' },
   readOnlyNotice: '읽기 전용 — 흐름 편집 권한이 없습니다',
   tenantLookups: true,

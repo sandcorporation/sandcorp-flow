@@ -58,3 +58,24 @@ describe('EmbedGuideCard', () => {
     expect(document.body.textContent).not.toMatch(/TENANT_KEY\s*=|sk-/)
   })
 })
+
+describe('EmbedGuideCard — 임베드를 켠 흐름(#247)', () => {
+  const flow = (over: object) => ({ id: 'f1', name: '봄 이벤트', is_public: false, embed_key: 'abcd1234', embed_enabled: true, embed_path: '/chatbot/sandcorp/abcd1234/', deployed_version: 1, updated_at: '', ...over }) as never
+  let writeText: ReturnType<typeof vi.fn>
+  beforeEach(() => { writeText = vi.fn().mockResolvedValue(undefined); Object.assign(navigator, { clipboard: { writeText } }) })
+
+  it('켠 흐름마다 코드 복사를 두고, 켜지 않은 흐름과 기본 흐름은 목록에 없다', async () => {
+    render(<EmbedGuideCard origin={ORIGIN} slug="sandcorp" isAdmin={false}
+      flows={[flow({}), flow({ id: 'f2', name: '꺼진 흐름', embed_enabled: false }), flow({ id: 'f3', name: '기본', is_public: true })]} />)
+    expect(screen.getByText('봄 이벤트')).toBeInTheDocument()
+    expect(screen.queryByText('꺼진 흐름')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: '봄 이벤트 코드 복사' }))
+    expect(writeText).toHaveBeenCalledWith('<iframe src="https://flow.example.com/chatbot/sandcorp/abcd1234/" width="400" height="600" style="border:none" allow="microphone"></iframe>')
+  })
+
+  it('켠 흐름이 없으면 안내와 흐름 목록 링크를 보인다', () => {
+    render(<EmbedGuideCard origin={ORIGIN} slug="sandcorp" isAdmin flows={[]} />)
+    expect(screen.getByText(/임베드를 켠 흐름이 없습니다/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /흐름 목록으로/ })).toHaveAttribute('href', '/tenant/flows')
+  })
+})
