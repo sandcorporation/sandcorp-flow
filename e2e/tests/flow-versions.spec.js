@@ -49,29 +49,47 @@ async function visitorSays(browser, slug, visitor) {
   return text
 }
 
+// 한 시험이 시나리오 전체를 걷지 않는다 — 3초 한도 안에서 한 가지씩 본다(#257). 앞 단계는 화면이 아니라 API 로 만든다.
+async function prepare(name) {
+  const tenant = await provisionTenant(`${name} ${Date.now()}`, 15000, { defaultFlow: true })
+  expect(tenant.secondToken).toBeTruthy()
+  const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
+  const slug = `fv-${Date.now()}`
+  expect((await api.patch('/api/tenant/slug/', { data: { slug } })).ok()).toBeTruthy()
+  const flows = await (await api.get('/api/tenant/flows/')).json()
+  const flow = flows.find((f) => f.is_public)
+  const setDraft = async (message) => expect((await api.put(`/api/tenant/flows/${flow.id}/draft/`, { data: { graph: graphSaying(message) } })).ok()).toBeTruthy()
+  const saveVersion = async (note) => {
+    const res = await api.post(`/api/tenant/flows/${flow.id}/versions/`, { data: { note } })
+    expect(res.ok()).toBeTruthy()
+    return (await res.json()).version.number
+  }
+  const deploy = async (version) => expect((await api.post(`/api/tenant/flows/${flow.id}/deploy/`, { data: { version } })).ok()).toBeTruthy()
+  return { tenant, api, slug, flow, setDraft, saveVersion, deploy }
+}
+
+async function openFlow(page, { tenant, flow }, token = tenant.token) {
+  await openMemberSession(page, ADMIN_URL, token, `tenant/flows/${flow.id}`)
+  await expect(page.locator('.react-flow__node')).toHaveCount(2)
+  const versions = page.getByRole('region', { name: '버전 이력' })
+  await expect(versions).toBeVisible()
+  return versions
+}
+
 test.describe('흐름 버전·배포 — 실제 스택', () => {
-  test('버전 저장 → 배포 → 위젯이 새 버전 → 되돌리기 → 옛 버전(새 세션) → 승인 켜고 요청 → 다른 Admin 승인', async ({ page, browser }) => {
-    test.setTimeout(240_000)
+  test.beforeEach(async ({ page }) => {
     page.on('console', (m) => { if (m.type() === 'error') console.log('[console]', m.text().slice(0, 300)) })
     await page.setViewportSize({ width: 1600, height: 900 })
-    const tenant = await provisionTenant(`Flow Versions ${Date.now()}`, 15000, { defaultFlow: true })
-    expect(tenant.secondToken).toBeTruthy()
-    const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
-    const slug = `fv-${Date.now()}`
-    expect((await api.patch('/api/tenant/slug/', { data: { slug } })).ok()).toBeTruthy()
-    const flows = await (await api.get('/api/tenant/flows/')).json()
-    const flow = flows.find((f) => f.is_public)
-    const setDraft = async (message) => expect((await api.put(`/api/tenant/flows/${flow.id}/draft/`, { data: { graph: graphSaying(message) } })).ok()).toBeTruthy()
-    await setDraft('답변-ONE')
+  })
 
-    await openMemberSession(page, ADMIN_URL, tenant.token, `tenant/flows/${flow.id}`)
-    const versions = page.getByRole('region', { name: '버전 이력' })
-    await expect(page.locator('.react-flow__node')).toHaveCount(2)
-    await expect(versions).toBeVisible()
+  test('버전 저장 → 배포(한 번 확인) → 위젯이 새 버전', async ({ page, browser }) => {
+    const ctx = await prepare('Flow Versions Save')
+    await ctx.setDraft('답변-ONE')
+    const versions = await openFlow(page, ctx)
     await expect(versions.locator('li[data-version="1"]')).toContainText('배포 중') // 기본 흐름 v1
     await expect(versions.locator('li[data-version="1"]')).toContainText('시스템(기본 흐름)') // 만든 이 없는 시드 버전
 
-    // 버전 저장(note) → 맨 위에 v1
+    // 버전 저장(note) → 맨 위에 v2
     await versions.getByLabel('버전 메모').fill('첫 배포본')
     await versions.getByRole('button', { name: '버전 저장' }).click()
     await expect(versions.locator('li[data-version="2"]')).toContainText('첫 배포본')
@@ -83,12 +101,15 @@ test.describe('흐름 버전·배포 — 실제 스택', () => {
     await shot(page, 'deploy-confirm', { both: true })
     await versions.getByRole('button', { name: '그래도 배포' }).click()
     await expect(versions.locator('li[data-version="2"]')).toContainText('배포 중')
-    expect(await visitorSays(browser, slug, 'v-one')).toContain('답변-ONE')
+    expect(await visitorSays(browser, ctx.slug, 'v-one')).toContain('답변-ONE')
+  })
 
-    // 두 번째 버전
-    await setDraft('답변-TWO')
-    await page.reload()
-    await expect(page.locator('.react-flow__node')).toHaveCount(2)
+  test('두 번째 버전을 배포하면 이전 버전의 배포 중이 사라지고 위젯이 따른다', async ({ page, browser }) => {
+    const ctx = await prepare('Flow Versions Second')
+    await ctx.setDraft('답변-ONE')
+    await ctx.deploy(await ctx.saveVersion('첫 배포본'))
+    await ctx.setDraft('답변-TWO')
+    const versions = await openFlow(page, ctx)
     await versions.getByLabel('버전 메모').fill('문구를 바꿈')
     await versions.getByRole('button', { name: '버전 저장' }).click()
     await expect(versions.locator('li[data-version="3"]')).toContainText('문구를 바꿈')
@@ -97,9 +118,17 @@ test.describe('흐름 버전·배포 — 실제 스택', () => {
     await expect(versions.locator('li[data-version="3"]')).toContainText('배포 중')
     await expect(versions.locator('li[data-version="2"]')).not.toContainText('배포 중')
     await shot(page, 'history', { both: true })
-    expect(await visitorSays(browser, slug, 'v-two')).toContain('답변-TWO')
+    expect(await visitorSays(browser, ctx.slug, 'v-two')).toContain('답변-TWO')
+  })
 
-    // 버전 보기(읽기 전용)
+  test('버전 보기(읽기 전용) → 초안으로 → 되돌리기 한 번 → 새 세션은 옛 문구', async ({ page, browser }) => {
+    const ctx = await prepare('Flow Versions Back')
+    await ctx.setDraft('답변-ONE')
+    await ctx.deploy(await ctx.saveVersion('첫 배포본'))
+    await ctx.setDraft('답변-TWO')
+    await ctx.deploy(await ctx.saveVersion('문구를 바꿈'))
+    const versions = await openFlow(page, ctx)
+
     await versions.getByRole('button', { name: 'v2 보기' }).click()
     await expect(page.getByText('v2 보는 중')).toBeVisible()
     await expect(page.locator('.react-flow__node')).toHaveCount(2)
@@ -107,43 +136,9 @@ test.describe('흐름 버전·배포 — 실제 스택', () => {
     await page.getByRole('button', { name: '초안으로 돌아가기' }).click()
     await expect(page.getByText('v2 보는 중')).toHaveCount(0)
 
-    // 되돌리기 한 번 → v1 이 배포 중, 새 세션은 옛 문구
     await versions.getByRole('button', { name: '되돌리기' }).click()
     await expect(versions.locator('li[data-version="2"]')).toContainText('배포 중')
-    expect(await visitorSays(browser, slug, 'v-back')).toContain('답변-ONE')
-
-    // 승인 옵션을 켜면 배포는 요청이 되고, 요청자 본인은 승인할 수 없다
-    expect((await api.patch('/api/tenant/config/', { data: { deploy_requires_approval: true } })).ok()).toBeTruthy()
-    await setDraft('답변-THREE')
-    await page.reload()
-    await expect(page.locator('.react-flow__node')).toHaveCount(2)
-    await versions.getByLabel('버전 메모').fill('승인 받을 버전')
-    await versions.getByRole('button', { name: '버전 저장' }).click()
-    await expect(versions.locator('li[data-version="4"]')).toBeVisible()
-    await versions.getByRole('button', { name: 'v4 배포 요청' }).click()
-    await versions.getByRole('button', { name: '그래도 배포 요청' }).click()
-    await expect(versions.getByText('v4 승인 대기')).toBeVisible()
-    await expect(versions.getByRole('button', { name: '승인' })).toBeDisabled()
-    await expect(versions.getByText(/다른 관리자가 승인/)).toBeVisible()
-    await shot(page, 'request', { both: true })
-    expect(await visitorSays(browser, slug, 'v-pending')).toContain('답변-ONE') // 아직 배포 전
-
-    // 다른 Admin 이 승인
-    const other = await browser.newContext({ viewport: { width: 1600, height: 900 } })
-    const p2 = await other.newPage()
-    await openMemberSession(p2, ADMIN_URL, tenant.secondToken, 'tenant/flows')
-    const requests = p2.getByRole('region', { name: '배포 요청' })
-    await expect(requests).toContainText('v4 승인 대기')
-    await shot(p2, 'approve-list', { both: true })
-    await requests.getByRole('button', { name: '승인' }).click()
-    await expect(p2.getByRole('region', { name: '배포 요청' })).toHaveCount(0)
-    await expect(p2.getByText('v4 배포 중')).toBeVisible()
-    await other.close()
-    expect(await visitorSays(browser, slug, 'v-approved')).toContain('답변-THREE')
-
-    // 요청자 화면도 갱신하면 v4 배포 중
-    await page.reload()
-    await expect(versions.locator('li[data-version="4"]')).toContainText('배포 중')
+    expect(await visitorSays(browser, ctx.slug, 'v-back')).toContain('답변-ONE')
 
     if (SHOTS) {
       await page.setViewportSize({ width: 768, height: 844 })
@@ -161,8 +156,49 @@ test.describe('흐름 버전·배포 — 실제 스택', () => {
     }
   })
 
+  test('승인을 켜면 배포는 요청이 되고 요청자 본인은 승인할 수 없다', async ({ page, browser }) => {
+    const ctx = await prepare('Flow Versions Request')
+    await ctx.setDraft('답변-ONE')
+    await ctx.deploy(await ctx.saveVersion('첫 배포본'))
+    expect((await ctx.api.patch('/api/tenant/config/', { data: { deploy_requires_approval: true } })).ok()).toBeTruthy()
+    await ctx.setDraft('답변-THREE')
+    const versions = await openFlow(page, ctx)
+    await versions.getByLabel('버전 메모').fill('승인 받을 버전')
+    await versions.getByRole('button', { name: '버전 저장' }).click()
+    await expect(versions.locator('li[data-version="3"]')).toBeVisible()
+    await versions.getByRole('button', { name: 'v3 배포 요청' }).click()
+    await versions.getByRole('button', { name: '그래도 배포 요청' }).click()
+    await expect(versions.getByText('v3 승인 대기')).toBeVisible()
+    await expect(versions.getByRole('button', { name: '승인' })).toBeDisabled()
+    await expect(versions.getByText(/다른 관리자가 승인/)).toBeVisible()
+    await shot(page, 'request', { both: true })
+    expect(await visitorSays(browser, ctx.slug, 'v-pending')).toContain('답변-ONE') // 아직 배포 전
+  })
+
+  test('다른 Admin 이 승인하면 배포되고 요청자 화면도 배포 중이 된다', async ({ page, browser }) => {
+    const ctx = await prepare('Flow Versions Approve')
+    await ctx.setDraft('답변-ONE')
+    await ctx.deploy(await ctx.saveVersion('첫 배포본'))
+    expect((await ctx.api.patch('/api/tenant/config/', { data: { deploy_requires_approval: true } })).ok()).toBeTruthy()
+    await ctx.setDraft('답변-THREE')
+    const requested = await ctx.api.post(`/api/tenant/flows/${ctx.flow.id}/deploy/`, { data: { version: await ctx.saveVersion('승인 받을 버전') } })
+    expect(requested.status()).toBe(202)
+
+    await openMemberSession(page, ADMIN_URL, ctx.tenant.secondToken, 'tenant/flows')
+    const requests = page.getByRole('region', { name: '배포 요청' })
+    await expect(requests).toContainText('v3 승인 대기')
+    await shot(page, 'approve-list', { both: true })
+    await requests.getByRole('button', { name: '승인' }).click()
+    await expect(page.getByRole('region', { name: '배포 요청' })).toHaveCount(0)
+    await expect(page.getByText('v3 배포 중')).toBeVisible()
+    expect(await visitorSays(browser, ctx.slug, 'v-approved')).toContain('답변-THREE')
+
+    // 요청자 화면도 열면 v3 배포 중
+    const versions = await openFlow(page, ctx)
+    await expect(versions.locator('li[data-version="3"]')).toContainText('배포 중')
+  })
+
   test('노드 카드: 제목과 갈래 이름이 겹치지 않는다(#98)', async ({ page }) => {
-    test.setTimeout(90_000)
     const tenant = await provisionTenant(`Flow Overlap ${Date.now()}`)
     const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
     const graph = {

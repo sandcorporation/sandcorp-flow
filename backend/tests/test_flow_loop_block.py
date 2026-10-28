@@ -62,7 +62,7 @@ def slow_embeddings(settings) -> Iterator[SlowEmbeddings]:
             pass
 
     srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
     settings.OLLAMA_BASE_URL = f"http://127.0.0.1:{srv.server_address[1]}"
     yield state
     srv.shutdown()

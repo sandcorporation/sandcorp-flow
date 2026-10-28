@@ -13,8 +13,7 @@ const shot = async (page, name) => {
   await page.screenshot({ path: path.join(SHOTS, `${process.env.SHOT_TAG || 'after'}-${name}.png`) })
 }
 
-test('/try?template=home → 곧바로 편집기(세션 없음) → 노드 설정(첫 저장 = 세션) → 새로고침 → 시험 대화 → 판단 기록', async ({ page }) => {
-  test.setTimeout(180_000)
+test('/try 카드 고르기 → 「고쳐 보기」는 이동만(세션 없음), 예전 /try/view 주소는 같은 템플릿 편집기로', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 })
   const sessionNow = () => page.evaluate(async () => (await fetch('/api/try/session/')).json())
 
@@ -36,6 +35,13 @@ test('/try?template=home → 곧바로 편집기(세션 없음) → 노드 설�
   await expect(page).toHaveURL(/\/try\?template=home$/)
   await expect(page.locator('.react-flow__node').first()).toBeVisible()
   await expect(page.getByText(/읽기 전용/)).toHaveCount(0)
+
+})
+
+// 한 시험이 고르기·편집·시험 대화·만료를 다 걷지 않는다 — 3초 한도 안에서 단계별로 나눈다(#257).
+test('/try?template=home → 곧바로 편집기(세션 없음) → 노드 설정(첫 저장 = 세션) → 새로고침 → 시험 대화 → 판단 기록', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 })
+  const sessionNow = () => page.evaluate(async () => (await fetch('/api/try/session/')).json())
 
   // 방문 즉시 편집기(#195): 카드·버튼 없이 편집기, 세션은 아직 없다
   const statuses = []
@@ -103,11 +109,10 @@ test('/try?template=home → 곧바로 편집기(세션 없음) → 노드 설�
     await shot(page, 'try-picker-390')
   }
 
-  // 쿠키가 사라지면 템플릿 고르기로 돌아온다
-  await page.goBack().catch(() => {})
-  await page.goto(page.url())
-  await page.context().clearCookies()
-  await page.goto(`${ADMIN_URL}/admin-ui/try`)
+})
+
+// 쿠키가 사라지면(새 브라우저 문맥 = 체험 쿠키 없음) 옛 사본 주소는 만료 안내로 돌아온다
+test('/try 쿠키가 없으면 사본 주소는 만료 안내(템플릿 고르기)로 돌아온다', async ({ page }) => {
   await page.goto(`${ADMIN_URL}/admin-ui/try/flow/00000000-0000-0000-0000-000000000000`)
   await expect(page).toHaveURL(/\/try\?expired=1/)
   await expect(page.getByText(/체험이 끝났거나 만료/)).toBeVisible()

@@ -11,11 +11,6 @@ async function setup() {
   return { tenant }
 }
 
-async function loginAsTenantAgent(page, tenant) {
-  await openMemberSession(page, ADMIN_URL, tenant.token)
-  await expect(page.locator('a:has-text("문서")')).toBeVisible({ timeout: 10000 })
-}
-
 test.describe('Knowledge Graph 인스펙터', () => {
   let tenant
 
@@ -24,14 +19,8 @@ test.describe('Knowledge Graph 인스펙터', () => {
     tenant = ctx.tenant
   })
 
-  test.beforeEach(async ({ page }) => {
-    await page.goto(`${ADMIN_URL}/admin-ui/`)
-    await page.evaluate(() => localStorage.clear())
-  })
-
   test('지식그래프 탭 진입 시 빈 안내가 보인다', async ({ page }) => {
-    await loginAsTenantAgent(page, tenant)
-    await page.goto(`${ADMIN_URL}/admin-ui/tenant/graph`)
+    await openMemberSession(page, ADMIN_URL, tenant.token, 'tenant/graph') // 첫 화면을 거치지 않고 곧바로(#257)
     await expect(page.locator('[data-testid="kg-empty"]')).toBeVisible({ timeout: 5000 })
     await expect(page.locator('[data-testid="kg-search"]')).toBeVisible()
   })
@@ -59,11 +48,10 @@ test.describe('Knowledge Graph 인스펙터', () => {
         headers: { Authorization: `Bearer ${agentToken}` },
       })).json()
       return docs.find(d => d.id === docId)?.status
-    }, { timeout: 60_000, intervals: [250, 500, 1000] }).toBe('ready') // 서버 비동기 작업이라 알릴 사건이 없다 — 상태를 다시 본다
+    }, { timeout: 60_000, intervals: [100] }).toBe('ready') // 서버 비동기 작업이라 알릴 사건이 없다 — 상태를 다시 본다
     await api.dispose()
 
-    await loginAsTenantAgent(page, tenant)
-    await page.goto(`${ADMIN_URL}/admin-ui/tenant/graph`)
+    await openMemberSession(page, ADMIN_URL, tenant.token, 'tenant/graph') // 첫 화면을 거치지 않고 곧바로(#257)
 
     await page.fill('[data-testid="kg-search"]', `KGDOC-${ts}`)
     await page.keyboard.press('Enter')

@@ -13,11 +13,6 @@ test.describe('고객 Admin 플로우', () => {
     tenant = await provisionTenant(`E2E Tenant ${Date.now()}`)
   })
 
-  test.beforeEach(async ({ page }) => {
-    await page.goto(`${ADMIN_URL}/admin-ui/`)
-    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear() })
-  })
-
   test('로그인 화면은 비밀번호 대신 sandcorp 로그인 버튼을 보여 주고 누르면 인증 서버로 보낸다', async ({ page }) => {
     await page.goto(`${ADMIN_URL}/admin-ui/tenant`)
     await expect(page.locator('input[type="password"]')).toHaveCount(0)

@@ -126,7 +126,7 @@ def net(settings, monkeypatch, tool_pki: Pki) -> Iterator[Net]:
     ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     ctx.load_cert_chain(str(tool_pki.cert_file), str(tool_pki.key_file))
     srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
     port = srv.server_address[1]
     dns = FakeDns({
         API: [[PUBLIC_IP]], CDN: [[OTHER_PUBLIC_IP]], EVIL: [[OTHER_PUBLIC_IP]],

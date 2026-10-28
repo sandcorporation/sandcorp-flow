@@ -48,12 +48,13 @@ test('루트용 favicon.ico 파일이 위젯 public 에 있다(nginx /favicon.ic
   expect(res.status()).toBe(200)
 })
 
-test('랜딩·admin 로그인 화면에 Flow 로고가 실제로 그려진다 (라이트/다크, 데스크톱/390)', async ({ page }) => {
-  for (const scheme of ['light', 'dark']) {
-    await page.emulateMedia({ colorScheme: scheme })
-    // admin 은 class 기반 테마(admin_theme 키) — 같은 키를 랜딩도 읽는다.
-    await page.addInitScript((t) => { try { localStorage.setItem('admin_theme', t) } catch (e) {} }, scheme)
-    for (const [w, h] of [[1280, 800], [390, 800]]) {
+// 라이트·다크 × 데스크톱·390을 한 시험씩 나눈다 — 한 시험이 화면 12개를 열면 3초 한도를 넘는다(#257).
+for (const scheme of ['light', 'dark']) {
+  for (const [w, h] of [[1280, 800], [390, 800]]) {
+    test(`랜딩·admin 로그인 화면에 Flow 로고가 실제로 그려진다 (${scheme}, ${w})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme })
+      // admin 은 class 기반 테마(admin_theme 키) — 같은 키를 랜딩도 읽는다.
+      await page.addInitScript((t) => { try { localStorage.setItem('admin_theme', t) } catch (e) {} }, scheme)
       await page.setViewportSize({ width: w, height: h })
       await page.goto(`${WIDGET_URL}/embed/landing.html`)
       const img = page.locator('a.brand img.flow-mark')
@@ -76,6 +77,6 @@ test('랜딩·admin 로그인 화면에 Flow 로고가 실제로 그려진다 (�
       await expect.poll(() => tryMark.evaluate((i) => i.complete && i.naturalWidth > 0)).toBe(true)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
       await shot(page, `try-${scheme}-${w}`)
-    }
+    })
   }
-})
+}

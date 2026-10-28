@@ -16,7 +16,6 @@ async function shot(page, name) {
 
 test.describe('흐름 보관 — 실제 스택 (#126)', () => {
   test('목록에서 보관(확인 한 번) → 새로고침해도 없음 · 위젯 흐름엔 버튼이 없음 · 390폭 넘침 없음', async ({ page }) => {
-    test.setTimeout(120_000)
     const tenant = await provisionTenant(`Archive ${Date.now()}`, 15000, { defaultFlow: true })
     const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
     const name = `보관할 흐름 ${Date.now()}`

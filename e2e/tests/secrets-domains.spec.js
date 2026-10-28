@@ -9,7 +9,6 @@ const ROUTE = 'tenant/config?section=secrets'
 // 스펙마다 자기 조직(provisionTenant)을 써서 고정 계정 상태를 공유하지 않는다(#113).
 test.describe('설정 > 비밀·허용 도메인 (#113)', () => {
   test('Admin: 도메인 추가·IP 거부·삭제, 비밀 추가 → 새로고침 → 이름만 보이고 값은 페이지 어디에도 없다', async ({ page }) => {
-    test.setTimeout(90_000)
     const tenant = await provisionTenant(`Secrets ${Date.now()}`)
     const value = `sv-${Date.now()}-ZXCVBNM-98765`
     await openMemberSession(page, ADMIN_URL, tenant.token, ROUTE)
@@ -55,7 +54,6 @@ test.describe('설정 > 비밀·허용 도메인 (#113)', () => {
   })
 
   test('Member 로 강등된 계정은 (토큰은 옛 Admin 이어도) 목록만 보이고 쓰기 컨트롤이 없다', async ({ page }) => {
-    test.setTimeout(90_000)
     const tenant = await provisionTenant(`Secrets Member ${Date.now()}`)
     const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
     const members = await (await api.get('/api/tenant/members/')).json()
@@ -75,7 +73,6 @@ test.describe('설정 > 비밀·허용 도메인 (#113)', () => {
   })
 
   test('강등된 계정은 팀원·흐름 화면에서도 Admin 전용 컨트롤이 없다(#120)', async ({ page }) => {
-    test.setTimeout(90_000)
     const tenant = await provisionTenant(`Role Server ${Date.now()}`)
     const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
     const members = await (await api.get('/api/tenant/members/')).json()
@@ -91,7 +88,6 @@ test.describe('설정 > 비밀·허용 도메인 (#113)', () => {
   })
 
   test('390폭: 긴 이름·긴 패턴이 있어도 어떤 요소도 가로로 넘치지 않는다', async ({ page }) => {
-    test.setTimeout(90_000)
     const tenant = await provisionTenant(`Secrets Narrow ${Date.now()}`)
     const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
     const longName = 'A_VERY_LONG_SECRET_NAME_' + 'X'.repeat(40)
@@ -126,7 +122,6 @@ test.describe('설정 > 비밀·허용 도메인 (#113)', () => {
   // 증거 사진 전용(SHOTS_DIR 이 있을 때만): 비밀 2개·도메인 2개 상태를 라이트·다크·390폭으로.
   test('증거 사진', async ({ page }) => {
     test.skip(!SHOTS, 'SHOTS_DIR 이 있을 때만')
-    test.setTimeout(90_000)
     const tenant = await provisionTenant(`Secrets Shots ${Date.now()}`)
     const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
     await api.put('/api/tenant/secrets/CRM_TOKEN', { data: { value: 'value-aaaa-1111' } })

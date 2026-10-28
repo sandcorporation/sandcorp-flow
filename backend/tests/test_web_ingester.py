@@ -43,7 +43,7 @@ def _serve_html(html: str):
             pass
 
     server = HTTPServer(("127.0.0.1", 0), _H)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
     return f"http://127.0.0.1:{server.server_address[1]}", server
 
 

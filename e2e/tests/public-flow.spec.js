@@ -47,7 +47,6 @@ async function publicTenant(request, { publicView }) {
 
 test.describe('공개 흐름 보기 — 실제 스택', () => {
   test('익명으로 읽기 전용 보기 → 노드 설정 → 「고쳐 보기」가 체험 템플릿으로 간다', async ({ page, request }) => {
-    test.setTimeout(120_000)
     const { slug, flowName } = await publicTenant(request, { publicView: true })
 
     // 데스크톱: 끌기·선 잇기·저장·시험 대화 없음
@@ -95,7 +94,6 @@ test.describe('공개 흐름 보기 — 실제 스택', () => {
   })
 
   test('공개 보기를 끈 조직은 없는 slug 와 같은 404 — 화면은 「공개된 흐름이 없습니다」', async ({ page, request }) => {
-    test.setTimeout(120_000)
     const { slug } = await publicTenant(request, { publicView: false })
     const off = await request.get(`${API_URL}/api/public/flows/${slug}/`)
     const none = await request.get(`${API_URL}/api/public/flows/${slugOf()}/`)

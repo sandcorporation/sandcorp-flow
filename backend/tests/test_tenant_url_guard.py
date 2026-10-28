@@ -119,7 +119,7 @@ def servers(guard_pki: Pki) -> Iterator[Servers]:
     ctx.load_cert_chain(str(guard_pki.cert_file), str(guard_pki.key_file))
     tls.socket = ctx.wrap_socket(tls.socket, server_side=True)
     for srv in (plain, tls):
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
     yield Servers(plain.server_address[1], tls.server_address[1], hits, str(guard_pki.ca_file))
     for srv in (plain, tls):
         srv.shutdown()

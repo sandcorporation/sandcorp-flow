@@ -107,7 +107,7 @@ def openai_stub() -> Iterator[str]:
     _OpenAIStub.bodies = []
     _OpenAIStub.context_sufficient = True
     server = HTTPServer(("127.0.0.1", 0), _OpenAIStub)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
     try:
         yield f"http://127.0.0.1:{server.server_port}/v1"
     finally:

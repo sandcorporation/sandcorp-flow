@@ -47,7 +47,6 @@ async function startTry(page, width) {
 
 for (const [label, width, scheme] of [['1600-light', 1600, 'light'], ['390-dark', 390, 'dark']]) {
   test(`새 가입자: 편집 없이 가입(세션 없음 → /try/signup 이 세션을 만든다) → 새 테넌트 → 옮긴 흐름이 초안으로(${label})`, async ({ page, context }) => {
-    test.setTimeout(120_000)
     await page.addInitScript((th) => localStorage.setItem('admin_theme', th), scheme)
     await startTry(page, width)
     const link = signupControl(page)
@@ -79,9 +78,10 @@ for (const [label, width, scheme] of [['1600-light', 1600, 'light'], ['390-dark'
     if (width < 600) await noOverflow(page)
     await shot(page, `claimed-editor-${label}`)
 
-    // 테넌트 흐름 목록: 기본 흐름(위젯) 옆에 옮긴 흐름
-    await page.goto(`${ADMIN_URL}/admin-ui/tenant/flows`)
-    await expect(page.getByText('쇼핑몰 배송·반품 상담')).toBeVisible()
+    // 테넌트 흐름 목록: 기본 흐름(위젯) 옆에 옮긴 흐름 — 화면을 다시 열지 않고 목록 API로 본다(#257: 3초 한도. 목록 화면은 flow-editor 시험 몫)
+    const flows = await page.evaluate(async () => (await (await fetch('/api/tenant/flows/', { headers: { Authorization: `Bearer ${sessionStorage.getItem('agent_access')}` } })).json()))
+    expect(flows.map((f) => f.name)).toContain('쇼핑몰 배송·반품 상담')
+    expect(flows.length).toBeGreaterThanOrEqual(2)
     // 체험 세션은 지워졌다
     const gone = await page.evaluate(async () => (await fetch('/api/try/session/', { credentials: 'include' })).status)
     expect(gone).toBe(200)
@@ -90,7 +90,6 @@ for (const [label, width, scheme] of [['1600-light', 1600, 'light'], ['390-dark'
 }
 
 test('고친 뒤 가입: 첫 쓰기로 세션이 생긴 뒤에는 중간 페이지 없이 곧바로 로그인으로, 고친 이름이 옮겨진다', async ({ page, context }) => {
-  test.setTimeout(120_000)
   await startTry(page, 1600)
   const second = page.locator('.react-flow__node').nth(1)
   await second.click()
@@ -110,7 +109,6 @@ test('고친 뒤 가입: 첫 쓰기로 세션이 생긴 뒤에는 중간 페이�
 })
 
 test('기존 Admin 테넌트에 추가: 「기존 테넌트에 추가」를 골라 그 테넌트 편집기로', async ({ page }) => {
-  test.setTimeout(120_000)
   const { name, token } = await provisionTenant(`E2E 기존 ${Date.now().toString(36)}`)
   await startTry(page, 1600)
   // 콜백 표의 테넌트 목록·선택은 대역(이 사용자는 시드 조직의 Admin) — 선택이 그 조직의 실제 세션 토큰을 준다.

@@ -56,11 +56,6 @@ test.describe('Visitors 탭', () => {
     slug = ctx.slug
   })
 
-  test.beforeEach(async ({ page }) => {
-    await page.goto(`${ADMIN_URL}/admin-ui/`)
-    await page.evaluate(() => localStorage.clear())
-  })
-
   // ── Tracer Bullet ───────────────────────────────────────────────────────
   test('Visitors 탭이 탭 목록에 표시된다', async ({ page }) => {
     await loginAsTenantAgent(page, tenant)

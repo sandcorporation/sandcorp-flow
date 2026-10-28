@@ -17,7 +17,6 @@ test.describe('비용 표시 증거 사진', () => {
   test.skip(!SHOTS, 'SHOTS_DIR 이 있을 때만')
 
   test('Provider 도움말·판단 기록 복원 — 라이트·다크', async ({ page }) => {
-    test.setTimeout(120_000)
     const tenant = await provisionTenant(`Cost Shots ${Date.now()}`)
     const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
     const graph = { nodes: [

@@ -13,7 +13,6 @@ const TAG = process.env.SHOT_TAG || 'after'
 
 for (const [w, h] of [[1600, 900], [1280, 720]]) {
   test(`배너 있는 ${w}x${h}: 캔버스 컨트롤이 뷰포트 안`, async ({ page }) => {
-    test.setTimeout(90_000)
     const tenant = await provisionTenant(`Editor Height ${Date.now()}`)
     const graph = JSON.parse(fs.readFileSync(path.join(__dirname, 'flow-showcase.json'), 'utf8'))
     const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })

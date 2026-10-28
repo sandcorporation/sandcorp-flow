@@ -16,7 +16,6 @@ async function rename(page, name) {
 }
 
 test('진입 직후 세션 POST 0 → 첫 저장 POST 1 → 둘째 저장에도 POST 1', async ({ page }) => {
-  test.setTimeout(120_000)
   await page.setViewportSize({ width: 1400, height: 900 })
   const posts = []
   page.on('request', (r) => { if (isPost(r)) posts.push(r.postData()) })
@@ -42,7 +41,6 @@ test('진입 직후 세션 POST 0 → 첫 저장 POST 1 → 둘째 저장에도 
 })
 
 test('IP 한도로 세션 생성이 거절돼도 고친 내용은 화면에 남고 새로고침 뒤에도 남는다', async ({ page }) => {
-  test.setTimeout(120_000)
   await page.setViewportSize({ width: 1400, height: 900 })
   await page.route(/\/api\/try\/sessions\/$/, (route) => route.request().method() === 'POST'
     ? route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ detail: '오늘 이 네트워크에서 만들 수 있는 체험을 모두 만들었어요. 내일 다시 찾아 주세요.', code: 'try_ip_limit' }) })

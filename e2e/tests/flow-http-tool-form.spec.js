@@ -35,17 +35,16 @@ async function overflowing(page) {
 }
 
 test.describe('HTTP 도구 노드 폼 — 실제 스택 (#123)', () => {
-  test('노드 추가 → 허용 밖 주소 경고 → 도메인 등록 뒤 경고 사라짐 → 저장·새로고침 유지 → 390폭 넘침 없음', async ({ page }) => {
-    test.setTimeout(120_000)
+  test('노드 추가 → 허용 밖 주소 경고 → 저장·새로고침 유지', async ({ page }) => {
     const tenant = await provisionTenant(`Http Form ${Date.now()}`)
     const host = `api.http-form-${Date.now()}.example.org`
+    // 빈 흐름은 API로 만들고 편집기를 곧바로 연다(목록에서 만들기는 flow-editor 시험 몫, #257: 3초 한도)
     const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
-    await openMemberSession(page, ADMIN_URL, tenant.token, 'tenant/flows')
+    const made = await (await api.post('/api/tenant/flows/', { data: { name: '주문 조회 연동' } })).json()
+    await api.dispose()
+    const net = trackRequests(page)
+    await openMemberSession(page, ADMIN_URL, tenant.token, `tenant/flows/${made.id}`)
 
-    await page.getByLabel('새 흐름 이름').fill('주문 조회 연동')
-    await page.getByRole('button', { name: '만들기' }).click()
-    await page.waitForURL(/\/tenant\/flows\/[0-9a-f-]{36}$/)
-    const editorUrl = page.url()
     await page.getByRole('button', { name: '시작', exact: true }).click()
     await page.getByRole('button', { name: 'HTTP 도구', exact: true }).click()
     await expect(page.locator('.react-flow__node')).toHaveCount(2)
@@ -82,15 +81,7 @@ test.describe('HTTP 도구 노드 폼 — 실제 스택 (#123)', () => {
     await warn.scrollIntoViewIfNeeded()
     await shot(page, 'http-warn-light')
 
-    // 다른 탭에서 도메인·비밀을 등록하고 돌아오면(포커스) 경고가 사라진다
-    expect((await api.post('/api/tenant/allowed-domains/', { data: { pattern: host } })).status()).toBe(201)
-    expect((await api.put('/api/tenant/secrets/shop_key', { data: { value: 'sv-e2e-value-123456' } })).ok()).toBeTruthy()
-    const net = trackRequests(page)
-    await page.evaluate(() => window.dispatchEvent(new Event('focus')))
-    await expect(page.getByRole('status').filter({ hasText: '허용 도메인에 없습니다' })).toHaveCount(0)
-    await expect(page.getByRole('status').filter({ hasText: '등록되지 않은 비밀' })).toHaveCount(0)
-    await expect(page.getByText(/등록된 비밀:/)).toContainText('shop_key')
-    await net.idle()
+    await net.idle() // 저장 요청이 모두 끝난 뒤 새로고침
     await expect(page.getByRole('status').filter({ hasText: '초안 저장됨' })).toBeVisible()
 
     // 새로고침해도 유지
@@ -103,29 +94,68 @@ test.describe('HTTP 도구 노드 폼 — 실제 스택 (#123)', () => {
     await expect(page.getByLabel('본문 틀')).toHaveValue('{"q":"{{state.user_message}}"}')
     await expect(page.getByLabel('상태 이름')).toHaveValue('order_status')
     await expect(page.getByLabel('응답 경로')).toHaveValue('$.data.status')
-    await expect(page.getByRole('status').filter({ hasText: '허용 도메인에 없습니다' })).toHaveCount(0)
 
-    // 다크
-    await page.evaluate(() => localStorage.setItem('admin_theme', 'dark'))
-    await page.reload()
+  })
+
+  // 다크·390폭은 API로 만든 같은 폼(허용 밖 주소 경고가 보이는 상태)을 따로 연다 — 한 시험에 다 담으면 3초 한도를 넘는다(#257).
+  async function warnFlow({ secret = true } = {}) {
+    const tenant = await provisionTenant(`Http Form ${Date.now()}`) // 상단 조직 이름이 길면 말줄임(truncate) span 이 넘침 검사에 걸린다
+    const host = `api.http-form-${Date.now()}.example.org`
+    const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
+    const graph = {
+      nodes: [
+        { id: 'start', kind: 'start', code: 'N-01', name: '시작', position: { x: 0, y: 40 }, config: {} },
+        { id: 'http_tool_1', kind: 'http_tool', code: 'N-02', name: 'HTTP 도구', position: { x: 260, y: 40 }, config: {
+          method: 'POST', url: `https://${host}/orders/{{state.fields.order_id}}`, headers: { Authorization: 'Bearer {{secret.shop_key}}' },
+          body_template: '{"q":"{{state.user_message}}"}', save: { order_status: '$.data.status' },
+        } },
+      ],
+      edges: [{ from: 'start', to: 'http_tool_1' }],
+    }
+    const made = await (await api.post('/api/tenant/flows/', { data: { name: '주문 조회 연동', graph } })).json()
+    // 위 시험이 끝난 상태와 같게: 비밀은 등록돼 있고 허용 도메인만 없다
+    if (secret) expect((await api.put('/api/tenant/secrets/shop_key', { data: { value: 'sv-e2e-value-123456' } })).ok()).toBeTruthy()
+    await api.dispose()
+    return { tenant, host, url: `tenant/flows/${made.id}` }
+  }
+
+  test('다크: HTTP 도구 폼이 보인다 + 증거 사진', async ({ page }) => {
+    const { tenant, url } = await warnFlow()
+    await page.addInitScript(() => localStorage.setItem('admin_theme', 'dark'))
+    await openMemberSession(page, ADMIN_URL, tenant.token, url)
     await page.locator('[data-node-id="http_tool_1"]').click()
     await expect(page.getByLabel('응답 경로')).toBeVisible()
     await page.getByLabel('메서드').scrollIntoViewIfNeeded()
     await page.getByLabel('응답 경로').scrollIntoViewIfNeeded()
     await shot(page, 'http-form-dark')
-    await page.evaluate(() => localStorage.setItem('admin_theme', 'light'))
+  })
 
-    // 390폭: 경고가 보이는 상태(허용 도메인을 지운 뒤)에서 폼 안쪽까지 넘침 없음
-    const domains = await (await api.get('/api/tenant/allowed-domains/')).json()
-    for (const d of domains) await api.delete(`/api/tenant/allowed-domains/${d.id}`)
+  test('390폭: 허용 밖 주소 경고가 보이는 상태에서 폼 안쪽까지 넘침 없음', async ({ page }) => {
+    const { tenant, url } = await warnFlow()
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto(editorUrl)
+    await openMemberSession(page, ADMIN_URL, tenant.token, url)
     await page.locator('[data-node-id="http_tool_1"]').click()
     await expect(page.getByRole('status').filter({ hasText: '허용 도메인에 없습니다' })).toBeVisible()
     await page.getByLabel('응답 경로').scrollIntoViewIfNeeded()
     expect(await overflowing(page)).toEqual([])
     await page.getByRole('status').filter({ hasText: '허용 도메인에 없습니다' }).scrollIntoViewIfNeeded()
     await shot(page, 'http-form-390')
+  })
+
+  test('허용 밖 주소·등록 안 된 비밀 경고 → 다른 탭에서 도메인·비밀을 등록하고 돌아오면(포커스) 경고가 사라진다', async ({ page }) => {
+    const { tenant, host, url } = await warnFlow({ secret: false })
+    await openMemberSession(page, ADMIN_URL, tenant.token, url)
+    await page.locator('[data-node-id="http_tool_1"]').click()
+    await expect(page.getByRole('status').filter({ hasText: '허용 도메인에 없습니다' })).toContainText(host)
+    await expect(page.getByRole('status').filter({ hasText: '등록되지 않은 비밀' })).toContainText('shop_key')
+
+    const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
+    expect((await api.post('/api/tenant/allowed-domains/', { data: { pattern: host } })).status()).toBe(201)
+    expect((await api.put('/api/tenant/secrets/shop_key', { data: { value: 'sv-e2e-value-123456' } })).ok()).toBeTruthy()
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+    await expect(page.getByRole('status').filter({ hasText: '허용 도메인에 없습니다' })).toHaveCount(0)
+    await expect(page.getByRole('status').filter({ hasText: '등록되지 않은 비밀' })).toHaveCount(0)
+    await expect(page.getByText(/등록된 비밀:/)).toContainText('shop_key')
     await api.dispose()
   })
 })

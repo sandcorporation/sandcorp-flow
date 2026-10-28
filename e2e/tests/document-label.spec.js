@@ -28,11 +28,6 @@ test.describe('Document Label', () => {
     tenant = ctx.tenant
   })
 
-  test.beforeEach(async ({ page }) => {
-    await page.goto(`${ADMIN_URL}/admin-ui/`)
-    await page.evaluate(() => localStorage.clear())
-  })
-
   // ── Tracer Bullet: 파일 선택 시 레이블이 파일명으로 미리 채워진다 ─────────────
   test('파일 선택 시 Document Label 입력이 파일명으로 미리 채워진다', async ({ page }) => {
     await loginAsTenantAgent(page, tenant)
@@ -75,7 +70,7 @@ test.describe('Document Label', () => {
     const token = await agentToken(tenant)
     const ts = Date.now()
     const api = await request.newContext({ baseURL: API_URL })
-    await api.post('/api/tenant/documents/', {
+    const upload = await api.post('/api/tenant/documents/', {
       headers: { Authorization: `Bearer ${token}` },
       multipart: {
         file: {
@@ -85,12 +80,19 @@ test.describe('Document Label', () => {
         },
       },
     })
+    // 색인은 서버 비동기 작업이라 알릴 사건이 없다 — API 로 ready 를 다시 보고, 화면은 ready 인 채로 연다
+    // (화면 목록은 3초 주기로 새로고침해 3초 한도 안에 ready 를 기다릴 수 없다, #257).
+    const docId = (await upload.json()).id
+    await expect.poll(async () => {
+      const docs = await (await api.get('/api/tenant/documents/', { headers: { Authorization: `Bearer ${token}` } })).json()
+      return docs.find((d) => d.id === docId)?.status
+    }, { timeout: 30_000, intervals: [50, 100, 200, 400] }).toBe('ready')
     await api.dispose()
 
     await loginAsTenantAgent(page, tenant)
     const docRow = page.locator('tr', { has: page.locator(`text=editme-${ts}.txt`) })
     await expect(docRow).toBeVisible({ timeout: 10000 })
-    await expect(docRow.locator('text=ready')).toBeVisible({ timeout: 30000 })
+    await expect(docRow.locator('text=ready')).toBeVisible()
 
     await docRow.locator('[data-testid="edit-label"]').click()
     // 편집 모드에서는 셀의 파일명 텍스트가 input으로 대체되므로 페이지 레벨로 찾는다

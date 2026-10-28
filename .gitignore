@@ -20,3 +20,6 @@ langfuse.env
 .playwright-mcp/
 async-smoke-widget.png
 .e2e-soak/
+
+# 시험 junit(scripts/test.sh) — 느린 시험 찾기용 산출물
+backend/.junit/

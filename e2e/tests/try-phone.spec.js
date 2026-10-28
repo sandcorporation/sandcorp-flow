@@ -49,7 +49,6 @@ const viewportOf = (page) => page.locator('.react-flow__viewport').evaluate((el)
 
 test.describe('폰 모드 — 실제 스택', () => {
   test('/try 고쳐 보기: 팬은 되고 선 잇기·노드 추가는 안 된다 → 노드 설정 시트 → 시험 대화 한 턴', async ({ page }) => {
-    test.setTimeout(180_000)
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto(`${ADMIN_URL}/admin-ui/try?template=home`)
     const nodes = page.locator('.react-flow__node')
@@ -134,7 +133,6 @@ test.describe('폰 모드 — 실제 스택', () => {
   })
 
   test('로그인 편집기도 같은 규칙: 폰 폭에서 팔레트가 없고 끌기·연결이 꺼진다 / PC 폭은 그대로', async ({ page }) => {
-    test.setTimeout(90_000)
     const tenant = await provisionTenant(`Phone ${Date.now()}`)
     await openMemberSession(page, ADMIN_URL, tenant.token, 'tenant/flows')
     await page.getByLabel('새 흐름 이름').fill('폰 규칙')

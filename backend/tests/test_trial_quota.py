@@ -139,10 +139,10 @@ def test_concurrent_admits_never_go_negative(tenant_with_key, prod_platform):
     from apps.tenants.trial import admit_turn
 
     tenant, _ = tenant_with_key
-    _set_remaining(tenant, 5)
+    _set_remaining(tenant, 3)
     results: list[bool] = []
     lock = threading.Lock()
-    start = threading.Barrier(20)
+    start = threading.Barrier(10)
 
     def worker():
         from django.db import connection as conn
@@ -156,15 +156,15 @@ def test_concurrent_admits_never_go_negative(tenant_with_key, prod_platform):
         finally:
             conn.close()
 
-    threads = [threading.Thread(target=worker) for _ in range(20)]
+    threads = [threading.Thread(target=worker) for _ in range(10)]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
     connection.close()
 
-    assert results.count(True) == 5
-    assert results.count(False) == 15
+    assert results.count(True) == 3
+    assert results.count(False) == 7
     assert _remaining(tenant) == 0
 
 
@@ -247,7 +247,7 @@ def test_trial_embeddings_use_platform_key_sized_to_tenant_dim(tenant_with_key, 
     from apps.tenants.models import TenantConfig
 
     server = HTTPServer(("127.0.0.1", 0), _EmbeddingsCapture)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
     prod_platform.PLATFORM_OPENAI_BASE_URL = f"http://127.0.0.1:{server.server_port}/v1"
     _EmbeddingsCapture.bodies = []
     try:

@@ -57,5 +57,5 @@ fi
 MSYS_NO_PATHCONV=1 docker compose "${COMPOSE_FILES[@]}" build fake-llm >/dev/null || exit 1
 
 MSYS_NO_PATHCONV=1 docker compose "${COMPOSE_FILES[@]}" run --rm \
-    "${RUN_USER[@]}" -v "${HOST_BACKEND}:/app" test \
-    python -m pytest -p no:cacheprovider "${PYTEST_MARK[@]+"${PYTEST_MARK[@]}"}" "${TARGET[@]}" -v --tb=short
+    "${RUN_USER[@]}" -e TEST_CPU_LIMIT -v "${HOST_BACKEND}:/app" test \
+    python -m pytest -p no:cacheprovider "${PYTEST_MARK[@]+"${PYTEST_MARK[@]}"}" "${TARGET[@]}" -v --tb=short --junitxml=/app/.junit/backend.xml
