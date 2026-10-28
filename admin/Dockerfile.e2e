@@ -1,7 +1,10 @@
+# e2e는 dev 서버가 아니라 빌드본을 `vite preview`로 서빙한다(#280). dev는 화면을 처음 열 때 모듈을 변환해 시험 시간을 부풀린다.
+# preview는 vite.config.js의 server.proxy(/api, changeOrigin)와 allowedHosts를 그대로 물려받는다 — 프록시 동작이 dev와 같다.
 FROM node:20-alpine
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+RUN npm run build
 EXPOSE 5174
-CMD ["npm", "run", "dev"]
+CMD ["npx", "vite", "preview", "--host", "0.0.0.0", "--port", "5174", "--strictPort"]
