@@ -7,6 +7,7 @@
 import type {
   ActionOut,
   AppsEscalationApiEscalationStreamParams,
+  AppsEscalationApiListEscalationsParams,
   DetailOut,
   EscalationMessageOut,
   EscalationOut,
@@ -30,17 +31,24 @@ export type appsEscalationApiListEscalationsResponseSuccess = (appsEscalationApi
 
 export type appsEscalationApiListEscalationsResponse = (appsEscalationApiListEscalationsResponseSuccess)
 
-export const getAppsEscalationApiListEscalationsUrl = () => {
+export const getAppsEscalationApiListEscalationsUrl = (params?: AppsEscalationApiListEscalationsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
+    
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
 
-  
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/tenant/escalations/`
+  return stringifiedParams.length > 0 ? `/api/tenant/escalations/?${stringifiedParams}` : `/api/tenant/escalations/`
 }
 
-export const appsEscalationApiListEscalations = async ( options?: RequestInit): Promise<appsEscalationApiListEscalationsResponse> => {
+export const appsEscalationApiListEscalations = async (params?: AppsEscalationApiListEscalationsParams, options?: RequestInit): Promise<appsEscalationApiListEscalationsResponse> => {
   
-  return customInstance<appsEscalationApiListEscalationsResponse>(getAppsEscalationApiListEscalationsUrl(),
+  return customInstance<appsEscalationApiListEscalationsResponse>(getAppsEscalationApiListEscalationsUrl(params),
   {      
     ...options,
     method: 'GET'

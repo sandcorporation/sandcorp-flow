@@ -29,6 +29,8 @@ class SessionListItemOut(Schema):
     active: bool                   # presence(SSE 연결됨)
     created_at: str
     last_activity: str
+    flow_id: str | None = None    # ChatSession.flow — 옛 세션은 null
+    flow_name: str | None = None
 
 
 # 콘솔 기본 작업 집합: 최근 N일 세션 + escalation/활성은 창과 무관하게 항상 포함(issue 139).
@@ -36,7 +38,7 @@ SESSION_WINDOW_DAYS = 7
 
 
 @session_router.get("/", response=List[SessionListItemOut])
-def list_sessions(request, limit: int = 50, offset: int = 0):
+def list_sessions(request, limit: int = 50, offset: int = 0, flow_id: str | None = None):
     """세션 콘솔용 전체 세션 목록 — escalation(pending→claimed) → 활성(SSE) → 나머지(최근순).
 
     escalation·활성 세션은 최근창 밖이라도 상단에 고정. 나머지는 최근 N일 + 페이지네이션.
@@ -44,7 +46,7 @@ def list_sessions(request, limit: int = 50, offset: int = 0):
     from datetime import timedelta
     from django.utils import timezone
     cutoff = timezone.now() - timedelta(days=SESSION_WINDOW_DAYS)
-    rows = services.list_session_rows(request.auth.tenant.id, since=cutoff)
+    rows = services.list_session_rows(request.auth.tenant.id, since=cutoff, flow_id=flow_id)
     return [
         {
             "session_id": r.session_id,
@@ -54,6 +56,8 @@ def list_sessions(request, limit: int = 50, offset: int = 0):
             "active": r.active,
             "created_at": r.created_at.isoformat(),
             "last_activity": r.last_activity.isoformat(),
+            "flow_id": r.flow_id,
+            "flow_name": r.flow_name,
         }
         for r in rows[offset:offset + limit]
     ]
@@ -130,6 +134,8 @@ class VisitorSessionOut(Schema):
     visitor_id: str
     is_hitl: bool
     created_at: str
+    flow_id: str | None = None
+    flow_name: str | None = None
 
 
 # checkpoint의 200 body는 LangGraph channel_values라 그래프 상태에 따라 구조가 달라지는
@@ -246,19 +252,26 @@ class MemoryIn(Schema):
 
 
 @memory_router.get("/{visitor_id}/sessions/", response=List[VisitorSessionOut])
-def list_visitor_sessions(request, visitor_id: str):
+def list_visitor_sessions(request, visitor_id: str, flow_id: str | None = None):
     from apps.chat.models import ChatSession
 
     tenant = request.auth.tenant
     sessions = ChatSession.objects.filter(
         tenant_id=tenant.id, visitor_id=visitor_id, is_test=False
-    ).order_by("-created_at")
+    ).select_related("flow").order_by("-created_at")
+    if flow_id:
+        flow_uuid = services.parse_flow_id(flow_id)
+        if flow_uuid is None:
+            return []
+        sessions = sessions.filter(flow_id=flow_uuid)
     return [
         {
             "session_id": str(s.id),
             "visitor_id": s.visitor_id,
             "is_hitl": s.is_hitl,
             "created_at": s.created_at.isoformat(),
+            "flow_id": str(s.flow_id) if s.flow_id else None,
+            "flow_name": s.flow.name if s.flow else None,
         }
         for s in sessions
     ]
