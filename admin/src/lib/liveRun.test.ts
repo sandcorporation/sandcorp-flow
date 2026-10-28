@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyLiveEvent, emptyLiveRun, liveEdgeKeys, liveStatusOf } from './liveRun'
+import { applyLiveEvent, emptyLiveRun, liveEdgeKeys, liveRunFromEntries, liveStatusOf } from './liveRun'
 
 const end = (id: string, step: number, handle = 'next', extra = {}) => ({
   event: 'node_end',
@@ -53,5 +53,21 @@ describe('liveRun', () => {
 
   it('아직 안 돈 노드는 상태가 없다', () => {
     expect(liveStatusOf(emptyLiveRun, 'zzz')).toBeNull()
+  })
+})
+
+describe('liveRunFromEntries', () => {
+  const entry = (node_id: string, o = {}) => ({ node_id, kind: 'ai_answer', handle: 'default', record: {}, duration_ms: 50, input_tokens: 4, output_tokens: 2, cost_usd: '0.0001', calls: [], ...o })
+  it('저장된 마지막 턴을 끝난 상태로 되살린다(summary 없이, 같은 노드는 ×N)', () => {
+    const run = liveRunFromEntries([entry('a'), entry('b', { cost_usd: null, calls: [{ model: 'm', input_tokens: 4, output_tokens: 2, cost_usd: null }] }), entry('a'), entry('__flow_finish__')])
+    expect(run.finished).toBe(true)
+    expect(Object.keys(run.nodes).sort()).toEqual(['a', 'b'])
+    expect(run.nodes.a).toMatchObject({ status: 'done', count: 2 })
+    expect(run.nodes.a.end).toMatchObject({ duration_ms: 50, summary: null, cost_usd: '0.0001' })
+    expect(run.nodes.b.end).toMatchObject({ cost_usd: null, unpriced_models: ['m'] })
+    expect(run.edges).toEqual(['a:default', 'b:default'])
+  })
+  it('항목이 없으면 빈 상태', () => {
+    expect(liveRunFromEntries([])).toBe(emptyLiveRun)
   })
 })

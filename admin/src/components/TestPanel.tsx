@@ -9,7 +9,7 @@ import {
   entryLabel, entryPricing, formatCost, formatTokens, notRunMessage, restoredTurns, sessionTotals, turnTotals,
   type SseEvent, type TestTurn, type Totals, type TraceEntry,
 } from '@/lib/testTrace'
-import { applyLiveEvent, emptyLiveRun, type LiveRun } from '@/lib/liveRun'
+import { applyLiveEvent, emptyLiveRun, liveRunFromEntries, type LiveRun } from '@/lib/liveRun'
 import { Button } from './ui/button'
 import { Textarea } from './ui/textarea'
 import { notifyTrialChanged } from './TrialBanner'
@@ -46,6 +46,7 @@ export function useTestSession(flowId: string, beforeSend: () => Promise<void>) 
         sessionRef.current = id
         nextN.current = restored[restored.length - 1].n + 1
         setTurns(restored)
+        setLive(liveRunFromEntries(restored[restored.length - 1].entries)) // 마지막 턴으로 배지를 다시 그린다(#241)
       })
       .catch(() => { if (alive) remember(flowId, null) }) // 세션이 없어졌다 — 기억을 지운다
     return () => { alive = false }

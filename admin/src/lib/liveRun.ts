@@ -1,7 +1,7 @@
 // 시험 대화 실시간 노드 상태의 순수 규칙(#240): SSE node_start/node_end/node_error 를 노드별 상태·지나간 선으로 접는다.
 // 캔버스가 이 상태를 그리고, 노드 배지(#241)는 `end` 값을 읽는다.
 import { DEFAULT_HANDLE, edgeKey } from './flowGraph'
-import { FINISH_NODE, type SseEvent } from './testTrace'
+import { FINISH_NODE, type SseEvent, type TraceEntry, entryPricing } from './testTrace'
 
 export type LiveStatus = 'running' | 'done' | 'error'
 
@@ -74,3 +74,19 @@ export function applyLiveEvent(run: LiveRun, { event, data }: SseEvent): LiveRun
 export const liveStatusOf = (run: LiveRun, id: string): LiveStatus | null => run.nodes[id]?.status ?? null
 export const liveEdgeKeys = (run: LiveRun): ReadonlySet<string> => new Set(run.edges)
 export const liveIsEmpty = (run: LiveRun): boolean => Object.keys(run.nodes).length === 0
+
+/** 저장된 판단 기록(마지막 턴)에서 배지용 상태를 되살린다(새로고침 복원, #241). 저장 기록엔 summary 가 없어 null — 시간·토큰·비용만 보인다. */
+export function liveRunFromEntries(entries: readonly TraceEntry[]): LiveRun {
+  let run: LiveRun = emptyLiveRun
+  entries.forEach((e, i) => {
+    if (e.node_id === FINISH_NODE) return
+    const price = entryPricing(e)
+    const common = { node_id: e.node_id, kind: e.kind, step: i + 1 }
+    run = applyLiveEvent(run, { event: 'node_start', data: common })
+    run = applyLiveEvent(run, {
+      event: 'node_end',
+      data: { ...common, handle: e.handle, duration_ms: e.duration_ms, input_tokens: e.input_tokens, output_tokens: e.output_tokens, cost_usd: price.known, unpriced_models: price.unpriced },
+    })
+  })
+  return entries.length > 0 ? { ...run, finished: true } : run
+}
