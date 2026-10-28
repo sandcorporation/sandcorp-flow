@@ -2,6 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const { test, expect, request } = require('@playwright/test')
 const { provisionTenant, openMemberSession } = require('./memberToken')
+const { trackRequests } = require('./settle')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const API_URL = process.env.API_URL || 'http://localhost:8000'
@@ -84,11 +85,12 @@ test.describe('HTTP 도구 노드 폼 — 실제 스택 (#123)', () => {
     // 다른 탭에서 도메인·비밀을 등록하고 돌아오면(포커스) 경고가 사라진다
     expect((await api.post('/api/tenant/allowed-domains/', { data: { pattern: host } })).status()).toBe(201)
     expect((await api.put('/api/tenant/secrets/shop_key', { data: { value: 'sv-e2e-value-123456' } })).ok()).toBeTruthy()
+    const net = trackRequests(page)
     await page.evaluate(() => window.dispatchEvent(new Event('focus')))
     await expect(page.getByRole('status').filter({ hasText: '허용 도메인에 없습니다' })).toHaveCount(0)
     await expect(page.getByRole('status').filter({ hasText: '등록되지 않은 비밀' })).toHaveCount(0)
     await expect(page.getByText(/등록된 비밀:/)).toContainText('shop_key')
-    await page.waitForTimeout(500)
+    await net.idle()
     await expect(page.getByRole('status').filter({ hasText: '초안 저장됨' })).toBeVisible()
 
     // 새로고침해도 유지

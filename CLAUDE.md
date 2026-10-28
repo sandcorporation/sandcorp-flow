@@ -9,6 +9,7 @@
 - 예외: 비결정적인 외부 경계(예: LLM/OpenRouter 호출)는 결정적 Fake/Mock으로 교체하세요. 테스트는 외부 모델의 판단 품질이 아니라 우리 코드의 동작을 검증해야 합니다. 단, DB·SSE·HTTP 수신부 등 결정적으로 만들 수 있는 것은 실제 객체를 사용하세요. **임베딩은 기본 시험에서 결정적 가짜**(`fake_llm`의 `/v1/embeddings` — 같은 글이면 같은 1024차원 정규화 벡터, HTTP·사용량 기록 경로는 실제)를 쓰고, 실제 bge-m3(ollama)는 `real_embedding` 마커 시험에서 **수동으로만** 돌립니다(`TEST_REAL_EMBEDDING=1 bash scripts/test.sh`).
 - 가능한한 모든 유저 스토리를 테스트하세요. (예: 로그인, 로그아웃, 회원가입 등)
 - 테스트는 독립적이어야 합니다. 다른 테스트에 의존하지 마세요.
+- **고정 시간 대기 금지, 사건을 기다리세요.** `waitForTimeout`·`networkidle`·`setTimeout`/`sleep` 대신 web-first 단언, `waitForResponse`(동작 전에 걸기), `e2e/tests/settle.js`의 `settled`(화면 가라앉음)·`trackRequests().idle()`(요청 끝남), vitest는 `findBy*`/`waitFor`/`admin/src/flushAsync.ts`를 쓰세요. `scripts/lint-fixed-waits.sh`(pre-commit 훅)가 막고, 정말 사건이 없을 때만 같은 줄 끝에 `// wait-ok: 이유`로 풉니다. fake 지연 마커(`[[delay:N]]`)는 의도된 지연이라 해당 없습니다.
 
 # 테스트 실행 (무조건 Docker)
 

@@ -8,6 +8,7 @@ import ConfigTab from './ConfigTab'
 import AgentsTab from './AgentsTab'
 import FlowsTab from './FlowsTab'
 import { setRole } from '../roleStore'
+import { flushAsync } from '../flushAsync'
 
 function jwt(role: string): string {
   return `h.${btoa(JSON.stringify({ role }))}.s`
@@ -80,7 +81,7 @@ describe('역할은 서버 진실(members/me)에서 읽는다', () => {
     const calls = stubServer({ serverRole: 'member' })
     render(<MemoryRouter><FlowsTab /></MemoryRouter>)
     await waitFor(() => expect(calls.some((c) => c.endsWith('/members/me'))).toBe(true))
-    await new Promise((r) => setTimeout(r, 50))
+    await flushAsync()
     expect(screen.queryByText(/새 흐름/)).toBeNull()
   })
 

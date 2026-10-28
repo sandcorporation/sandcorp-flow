@@ -3,6 +3,7 @@
 const fs = require('fs')
 const path = require('path')
 const { test, expect } = require('@playwright/test')
+const { settled } = require('./settle')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const SHOTS = process.env.SHOTS_DIR
@@ -139,7 +140,7 @@ test('세션 전에 옮긴 노드 위치가 새로고침 뒤에도 남고 세션
   await page.goto(`${ADMIN_URL}/admin-ui/try?template=home`)
   const node = page.locator('[data-node-id="general"]')
   await expect(node).toBeVisible()
-  await page.waitForTimeout(1200) // 화면 맞춤 애니메이션이 끝난 뒤에 잰다
+  await settled(page) // 화면 맞춤 애니메이션이 끝난 뒤에 잰다
   const other = page.locator('[data-node-id="start"]')
   const rel = async () => { const a = await page.locator('[data-node-id="general"]').boundingBox(); const b = await other.boundingBox(); return { dx: (a.x - b.x) / a.width, dy: (a.y - b.y) / a.width } } // 다시 열면 화면 맞춤이 달라 이웃 노드와의 상대 위치로 잰다
   const relBefore = await rel()
@@ -147,19 +148,19 @@ test('세션 전에 옮긴 노드 위치가 새로고침 뒤에도 남고 세션
   for (let attempt = 0; attempt < 4 && (await dist()) < 0.08; attempt++) { // 끌기 시작이 간혹 씹혀 몇 번 다시 시도한다
     const box = await node.boundingBox()
     await page.mouse.move(box.x + 20, box.y + 12)
-    await page.waitForTimeout(100)
+    await settled(page)
     await page.mouse.down()
     await page.mouse.move(box.x + 20 + 90, box.y + 12 + 70, { steps: 12 })
     await page.mouse.up()
-    await page.waitForTimeout(200)
+    await settled(page)
   }
   expect(await dist()).toBeGreaterThan(0.08)
-  await page.waitForTimeout(300)
+  await settled(page)
   const relMoved = await rel()
   expect(await sessionNow()).toBeNull() // 끌기만으로는 체험을 시작하지 않는다
   await page.reload()
   await expect(page.locator('[data-node-id="general"]')).toBeVisible()
-  await page.waitForTimeout(1500)
+  await settled(page)
   const relAfter = await rel()
   expect(Math.abs(relAfter.dx - relMoved.dx)).toBeLessThan(0.05)
   expect(Math.abs(relAfter.dy - relMoved.dy)).toBeLessThan(0.05)

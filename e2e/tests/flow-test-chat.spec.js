@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const { test, expect, request } = require('@playwright/test')
 const { provisionTenant, openMemberSession } = require('./memberToken')
+const { settled } = require('./settle')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const API_URL = process.env.API_URL || 'http://localhost:8000'
@@ -97,12 +98,12 @@ test.describe('흐름 편집기 — 시험 대화·판단 기록(실제 스택)'
         await shot(page, `chat-${theme}-1600x900`)
         await aside.getByRole('tab', { name: '판단 기록' }).click()
         await aside.getByRole('region', { name: '판단 기록' }).getByRole('button', { name: /N-03 초안 답변/ }).first().click()
-        await page.waitForTimeout(400)
+        await settled(page)
         await shot(page, `log-${theme}-1600x900`)
         if (theme === 'light') {
           await page.setViewportSize({ width: 768, height: 844 })
           await aside.scrollIntoViewIfNeeded()
-          await page.waitForTimeout(400)
+          await settled(page)
           await shot(page, 'log-768')
           const over = await page.evaluate(() => {
             const bad = []

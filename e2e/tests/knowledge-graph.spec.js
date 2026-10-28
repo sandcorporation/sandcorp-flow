@@ -54,14 +54,12 @@ test.describe('Knowledge Graph 인스펙터', () => {
     const docId = (await upRes.json()).id
 
     // 비동기 그래프 인제스션이 끝날 때까지(status=ready) 대기
-    for (let i = 0; i < 30; i++) {
+    await expect.poll(async () => {
       const docs = await (await api.get('/api/tenant/documents/', {
         headers: { Authorization: `Bearer ${agentToken}` },
       })).json()
-      const doc = docs.find(d => d.id === docId)
-      if (doc && doc.status === 'ready') break
-      await new Promise(r => setTimeout(r, 1000))
-    }
+      return docs.find(d => d.id === docId)?.status
+    }, { timeout: 60_000, intervals: [250, 500, 1000] }).toBe('ready') // 서버 비동기 작업이라 알릴 사건이 없다 — 상태를 다시 본다
     await api.dispose()
 
     await loginAsTenantAgent(page, tenant)

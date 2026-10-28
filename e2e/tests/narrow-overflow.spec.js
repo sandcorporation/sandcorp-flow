@@ -3,6 +3,7 @@ const fs = require('fs')
 const path = require('path')
 const { operatorToken } = require('./operatorToken')
 const { memberToken } = require('./memberToken')
+const { settled, trackRequests } = require('./settle')
 const ROUTES = require('./narrow-routes.json')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
@@ -134,14 +135,16 @@ for (const theme of ['light', 'dark']) {
         const pub = role === 'public' // 로그인 없는 화면 — 토큰을 심지 않는다
         const key = role === 'operator' ? 'op_access' : 'agent_access'
         const token = pub ? '' : role === 'operator' ? operatorToken() : memberToken()
+        const net = trackRequests(page)
         await page.addInitScript(([k, t, th]) => {
           if (t) sessionStorage.setItem(k, t)
           localStorage.setItem('admin_theme', th)
         }, [key, token, theme])
         await mockApi(page)
         await page.goto(`${ADMIN_URL}/admin-ui/${pub ? '' : role + '/'}${url}`)
-        await page.waitForLoadState('load') // HITL 은 SSE 가 열려 있어 networkidle 이 오지 않는다
-        await page.waitForTimeout(800)
+        await page.waitForLoadState('load') // HITL 은 SSE 가 열려 있어 network idle 이 오지 않는다
+        await net.idle()
+        await settled(page)
         if (SHOTS) {
           fs.mkdirSync(SHOTS, { recursive: true })
           await page.screenshot({ path: path.join(SHOTS, `${process.env.SHOT_TAG || 'after'}-${theme}-${role}-${route.replace(/[/:]/g, '_')}.png`), fullPage: true })
@@ -172,7 +175,7 @@ test('HITL 진입: window.scrollY == 0', async ({ page }) => {
   await mockApi(page)
   await page.goto(`${ADMIN_URL}/admin-ui/tenant/hitl`)
   await expect(page.getByText('긴 대화 0').first()).toBeVisible()
-  await page.waitForTimeout(1200) // smooth 스크롤이 끝날 시간
+  await settled(page) // smooth 스크롤이 끝날 때까지(스크롤 위치가 프레임마다 같아질 때)
   expect(await page.evaluate(() => window.scrollY)).toBe(0)
   expect(await page.evaluate(() => document.querySelector('main').scrollTop)).toBe(0)
 })
@@ -203,7 +206,7 @@ for (const [name, size] of [['390', { width: 390, height: 844 }], ['데스크톱
       }
       await page.goto(`${ADMIN_URL}/admin-ui/tenant/hitl`)
       await expect(page.getByRole('heading', { name: /상담 콘솔/ })).toBeVisible()
-      await page.waitForTimeout(1500)
+      await settled(page)
       const mainOverflows = await page.evaluate(() => { const m = document.querySelector('main'); const d = document.documentElement; return m.scrollHeight > m.clientHeight || d.scrollHeight > d.clientHeight })
       if (short) expect(mainOverflows).toBe(true) // 시험이 의미를 가지려면 main 또는 문서가 스크롤 가능해야 한다
       if (SHOTS) {

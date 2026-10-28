@@ -2,6 +2,7 @@
 // IP 한도로 거절돼도 편집은 화면에 남고 새로고침 뒤에도 남는다.
 // 한도(429 try_ip_limit)는 실제로 소진하면 같은 IP 를 쓰는 다른 시험과 간섭하므로, 세션 생성 응답만 서버가 준 모양 그대로 대역으로 낸다.
 const { test, expect } = require('@playwright/test')
+const { trackRequests } = require('./settle')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const isPost = (r) => r.method() === 'POST' && new URL(r.url()).pathname === '/api/try/sessions/'
@@ -19,9 +20,10 @@ test('진입 직후 세션 POST 0 → 첫 저장 POST 1 → 둘째 저장에도 
   await page.setViewportSize({ width: 1400, height: 900 })
   const posts = []
   page.on('request', (r) => { if (isPost(r)) posts.push(r.postData()) })
+  const net = trackRequests(page)
   await page.goto(`${ADMIN_URL}/admin-ui/try?template=home`)
   await expect(page.locator('.react-flow__node').first()).toBeVisible()
-  await page.waitForTimeout(500)
+  await net.idle()
   expect(posts).toHaveLength(0)
 
   await rename(page, '첫 저장 이름')
@@ -33,7 +35,7 @@ test('진입 직후 세션 POST 0 → 첫 저장 POST 1 → 둘째 저장에도 
   const patched = page.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().includes(`/api/try/flows/${first.flow_id}/`))
   await rename(page, '둘째 저장 이름')
   expect((await patched).status()).toBeLessThan(300)
-  await page.waitForTimeout(300)
+  await net.idle()
   expect(posts).toHaveLength(1) // 세션은 한 번만 만든다
   const second = await page.evaluate(async () => (await fetch('/api/try/session/')).json())
   expect(second.flow_id).toBe(first.flow_id)

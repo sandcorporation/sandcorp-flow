@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const { test, expect, request } = require('@playwright/test')
 const { provisionTenant, openMemberSession } = require('./memberToken')
+const { settled } = require('./settle')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const API_URL = process.env.API_URL || 'http://localhost:8000'
@@ -23,7 +24,7 @@ for (const [w, h] of [[1600, 900], [1280, 720]]) {
     await page.reload()
     await expect(page.locator('.react-flow__node')).toHaveCount(graph.nodes.length)
     await expect(page.getByTestId('trial-banner')).toBeVisible()
-    await page.waitForTimeout(500)
+    await settled(page)
     const m = await page.evaluate(() => {
       const c = document.querySelector('.react-flow__controls').getBoundingClientRect()
       const canvas = document.querySelector('[data-testid=flow-canvas]').getBoundingClientRect()
