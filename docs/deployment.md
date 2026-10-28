@@ -188,6 +188,8 @@ bridge·relay 5개는 합치면 메모리를 ~250M 더 아끼지만 이벤트 �
 - nginx `location /api/`에는 버퍼링 지시문이 없지만, 응답 헤더 `X-Accel-Buffering: no`가 그 응답의 `proxy_buffering`을 끈다. gzip 지시문 없음.
 - NPM은 Advanced에 `proxy_buffering off`(위 「NPM」 절). NPM이 `X-Accel-Buffering` 헤더를 지우지 않는 한 둘 중 하나로도 충분하다.
 
+**하트비트·timeout(#253)**: 노드 이벤트가 없는 동안 앱이 `TEST_SSE_HEARTBEAT_SECONDS`(기본 15초)마다 SSE 주석 줄(`: heartbeat`)을 보내고, nginx는 시험 SSE 경로(`/api/(tenant|try)/flows/{id}/test/`)에만 `proxy_read_timeout 300s`를 둔다(기본 60초면 LLM 호출 하나가 길 때 끊긴다). 운영 턴 경로 `/api/chat/stream`은 그대로(3600s). 소비자(`parseSse`)는 `data:` 없는 블록을 건너뛴다.
+
 **운영 확인 절차**(배포 뒤 한 번, 설정을 바꿨을 때마다): Admin 토큰과 시험할 흐름 id를 준비하고(시험 한 턴은 체험 턴 1과 실제 LLM 비용을 쓴다), 이벤트마다 도착 시각을 찍는다.
 
 ```bash

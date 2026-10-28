@@ -35,6 +35,7 @@ async function readEvents(response) {
     while ((cut = buffer.indexOf('\n\n')) >= 0) {
       const block = buffer.slice(0, cut)
       buffer = buffer.slice(cut + 2)
+      if (block.startsWith(':')) continue // SSE 주석 하트비트(#253)
       const lines = Object.fromEntries(block.split('\n').map((l) => [l.slice(0, l.indexOf(': ')), l.slice(l.indexOf(': ') + 2)]))
       events.push({ at: Date.now(), name: lines.event, data: JSON.parse(lines.data) })
     }

@@ -118,6 +118,33 @@ async def test_first_node_start_arrives_before_the_last_node_ends(tenant_with_ke
     assert [name for _, name, _ in seen][-1] == "done"
 
 
+@pytest.mark.django_db(transaction=True)
+async def test_heartbeat_comment_lines_come_between_node_events(tenant_with_key, tenant_admin_token, fake_chat_llm, settings):
+    """LLM을 기다리는 동안 SSE 주석 줄(`:`)이 간격마다 오고, 이벤트 이름·순서는 그대로다(#253)."""
+    from tests.test_flow_services import make_flow
+
+    tenant, _ = tenant_with_key
+    flow = await adb(make_flow)(tenant)
+    settings.TEST_SSE_HEARTBEAT_SECONDS = 0.1
+    fake_chat_llm.delay = 0.7
+
+    response = await _apost(tenant_admin_token, str(flow.id), "안녕하세요")
+    buffer, blocks = "", []
+    async for chunk in response.streaming_content:
+        buffer += chunk.decode() if isinstance(chunk, bytes) else chunk
+        while "\n\n" in buffer:
+            block, buffer = buffer.split("\n\n", 1)
+            blocks.append(block)
+
+    names = [b.splitlines()[0].removeprefix("event: ") for b in blocks if b.startswith("event: ")]
+    assert names == ["start", "node_start", "node_end", "node_start", "node_end", "trace", "trace", "reply", "done"]
+    beats = [i for i, b in enumerate(blocks) if b.startswith(":")]
+    assert len(beats) >= 3
+    answer_start = next(i for i, b in enumerate(blocks) if b.startswith("event: node_start") and '"answer"' in b)
+    answer_end = next(i for i, b in enumerate(blocks) if b.startswith("event: node_end") and '"answer"' in b)
+    assert all(answer_start < i < answer_end for i in beats)  # 노드가 끝난 뒤(trace 이후)에는 오지 않는다
+
+
 # ── 종류별 summary ───────────────────────────────────────────────────────────
 
 

@@ -94,6 +94,10 @@ CHAT_RATE_LIMIT_PER_TENANT = int(os.environ.get("CHAT_RATE_LIMIT_PER_TENANT", "3
 # 공개 흐름 보기(#39, 익명 읽기 전용 GET) — IP당 분당 요청 수. 응답은 60초 캐시되므로 사람이 보는 데는 넉넉하다.
 PUBLIC_FLOW_RATE_LIMIT_PER_MINUTE = int(os.environ.get("PUBLIC_FLOW_RATE_LIMIT_PER_MINUTE", "60"))
 
+# 시험 대화 SSE(``stream_test_turn``) 하트비트 — 노드 이벤트가 없는 동안 이 간격(초)마다 SSE 주석 줄을 보낸다(#253).
+# LLM 호출이 길어도 nginx·NPM 같은 중간 프록시가 유휴 연결로 보고 끊지 않게 한다. 운영 턴 SSE(/api/chat/stream)와 무관.
+TEST_SSE_HEARTBEAT_SECONDS = float(os.environ.get("TEST_SSE_HEARTBEAT_SECONDS", "15"))
+
 # 공개 Self-Signup 레이트리밋 — IP당 윈도우(기본 1시간) 1회(성공 가입만 소비, ADR-0025)
 SIGNUP_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("SIGNUP_RATE_LIMIT_WINDOW_SECONDS", "3600"))
 

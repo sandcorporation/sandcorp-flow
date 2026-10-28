@@ -20,4 +20,14 @@ describe('streamTestTurn — 체험 경로(#37)', () => {
     expect(init.credentials).toBe('include')
     expect(seen).toEqual([{ event: 'done', data: { ran: false, note: '내일', errors: [], code: 'try_daily_budget' } }])
   })
+
+  it('SSE 주석 하트비트(`: heartbeat`)는 이벤트로 넘기지 않고 건너뛴다(#253)', async () => {
+    const text = 'event: start\ndata: {"flow_id":"f1"}\n\n: heartbeat\n\n: heartbeat\n\nevent: done\ndata: {"ran":true,"errors":[]}\n\n'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(text, { status: 200 })))
+    const seen: { event: string }[] = []
+
+    await streamTestTurn('f1', '안녕', null, (e) => seen.push(e), undefined, '/api/try')
+
+    expect(seen.map((e) => e.event)).toEqual(['start', 'done'])
+  })
 })
