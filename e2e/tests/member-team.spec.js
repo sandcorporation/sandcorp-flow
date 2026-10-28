@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test')
 const { memberToken, inviteeToken, dropInvite, openMemberSession } = require('./memberToken')
+const { trackRequests } = require('./settle')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 
@@ -23,9 +24,13 @@ test.describe('팀원 탭 — 초대 링크 → 수락 → 목록 (#56)', () => 
 
     // 초대를 연 사람이 sandcorp 로그인을 마치면 콜백이 수락한다 — 대역에 원문을 넘긴다.
     dropInvite(new URL(url).searchParams.get('invite'))
+    const net = trackRequests(page)
     await expect.poll(async () => {
+      // 다시 읽은 멤버·초대 목록이 도착한 뒤에 센다 — 바로 세면 아직 그려지지 않은 화면을 세고 곧 다시 새로고침해 영영 못 본다
+      const listed = Promise.all(['members', 'invites'].map((name) => page.waitForResponse((r) => new URL(r.url()).pathname === `/api/tenant/${name}/` && r.request().method() === 'GET')))
       await page.reload()
-      await page.waitForLoadState('load')
+      await listed
+      await net.idle()
       const pending = await page.getByRole('button', { name: '초대 취소' }).count()
       const rows = await page.getByRole('row', { name: /E2E 초대받은 사람/ }).count()
       return `${pending}|${rows}`
