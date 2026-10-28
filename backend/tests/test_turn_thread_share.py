@@ -7,6 +7,9 @@
 느린 임베딩은 실제 HTTP 수신부(``slow_embeddings``, 0.8초)다. 고치기 전에는 kb 턴의 임베딩 HTTP가 그 스레드를 쥐어
 kb 없는 턴의 DB 단계가 임베딩 시간만큼(kb 턴이 N개면 N배) 기다렸고, kb 턴끼리도 임베딩이 줄을 섰다.
 
+http_tool(#268)의 외부 요청은 처음부터 ``asyncio.to_thread``로 나가 그 스레드를 쥐지 않는다 — 같은 꼴로 재어 고정한다
+(느린 외부 API는 ``tests.test_flow_http_tool``의 실제 HTTPS 수신부 ``/slow``, 1.5초).
+
 기준: kb 없는 턴 0.4초 — 혼자 돌 때(0.05초 안팎)와 Docker CPU 잡음보다 넉넉히 크고, 넣은 지연 0.8초보다 충분히 작다.
 kb 턴 끝 시각 0.8 + 0.8초 — 임베딩이 겹쳐 돌면 0.8초 남짓, 줄을 서면 N × 0.8초라 둘이 갈린다.
 """
@@ -18,18 +21,29 @@ import time
 
 import pytest
 
+from asgiref.sync import sync_to_async as adb
+
+from tests.test_flow_http_tool import API, _setup, net, tool_pki  # noqa: F401 — 픽스처
+from tests.test_flow_http_tool import _flow as _http_graph
 from tests.test_flow_loop_block import EMBED_DELAY, _flow, _kb_graph, _plain_graph, slow_embeddings  # noqa: F401
 
 PLAIN_TURN_LIMIT = 0.4
 KB_TURNS_LIMIT = EMBED_DELAY + 0.8
+HTTP_DELAY = 1.5
+"""``tests.test_flow_http_tool`` 수신부의 ``/slow``가 답하기까지."""
+HTTP_TURNS_LIMIT = HTTP_DELAY + 0.8
 
 
-async def _timed_turn(tenant_id, flow_id, message: str, t0: float) -> float:
+async def _run_turn(tenant_id, flow_id, message: str, t0: float):
     from apps.flows import services
 
     result = await services.run_test_turn(tenant_id, flow_id, message)
     assert result.ran, result
-    return time.monotonic() - t0
+    return result, time.monotonic() - t0
+
+
+async def _timed_turn(tenant_id, flow_id, message: str, t0: float) -> float:
+    return (await _run_turn(tenant_id, flow_id, message, t0))[1]
 
 
 @pytest.mark.django_db(transaction=True)
@@ -57,6 +71,39 @@ async def test_plain_turn_does_not_wait_for_concurrent_kb_embeddings(tenant_with
     assert len(slow_embeddings.calls) >= n_kb
     assert plain < PLAIN_TURN_LIMIT, (plain, kb_done)
     assert max(kb_done) < KB_TURNS_LIMIT, kb_done
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("n_http", [5, 10])
+async def test_plain_turn_does_not_wait_for_concurrent_http_tool_calls(tenant_with_key, fake_chat_llm, net, n_http):
+    """http_tool 턴 N개가 느린 외부 API(1.5초)를 기다리는 동안 띄운 kb 없는 턴은 그 시간만큼 기다리지 않는다(#268).
+
+    외부 요청은 ``asyncio.to_thread``(기본 실행기 풀)로 나가 thread-sensitive 스레드를 쥐지 않는다. 그 스레드로 보내면
+    kb 없는 턴이 1.5초 넘게, http 턴끼리도 N × 1.5초 줄을 선다 — 이 시험이 그 되돌림을 잡는다."""
+    from apps.flows import services
+
+    tenant, _ = tenant_with_key
+    await adb(_setup)(tenant.id, domains=(API,))
+    http_flow = await _flow(tenant, _http_graph({"url": f"https://{API}/slow"}))
+    plain_flow = await _flow(tenant, _plain_graph())
+    await services.run_test_turn(tenant.id, plain_flow.id, "워밍업")
+    alone = await _timed_turn(tenant.id, plain_flow.id, "안녕하세요", time.monotonic())
+
+    t0 = time.monotonic()
+    http_turns = [asyncio.create_task(_run_turn(tenant.id, http_flow.id, f"주문 {i}", t0)) for i in range(n_http)]
+    while not net.hits.items:  # 첫 http 턴이 외부 요청에 들어간 뒤에 kb 없는 턴을 띄운다
+        await asyncio.sleep(0.005)
+    plain = await _timed_turn(tenant.id, plain_flow.id, "안녕하세요", time.monotonic())
+    done = await asyncio.gather(*http_turns)
+    ends = [at for _, at in done]
+
+    print(f"\n[#268] N={n_http} alone={alone:.3f}s plain={plain:.3f}s http_max={max(ends):.3f}s http_min={min(ends):.3f}s")
+    assert len(net.hits.items) == n_http
+    for result, _ in done:  # 운영 동작 그대로: 2xx 응답 → next 갈래, 판단 기록에 상태 코드
+        assert [s["node_id"] for s in result.trace] == ["s", "h", "ok"]
+        assert next(s for s in result.trace if s["kind"] == "http_tool")["record"]["status"] == 200
+    assert plain < PLAIN_TURN_LIMIT, (plain, ends)
+    assert max(ends) < HTTP_TURNS_LIMIT, ends
 
 
 # ── 운영 동작 고정: 사용량·무중단 ─────────────────────────────────────────────
