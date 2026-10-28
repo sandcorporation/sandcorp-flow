@@ -76,9 +76,9 @@ for p in / /terms /privacy /admin-ui/ /admin-ui/try /embed/ /chatbot/sandcorp/; 
   [ "$code" = 200 ] && echo "ok   $p 200 유지" || { echo "FAIL $p: 200 기대, 실제 $code"; FAILS=$((FAILS+1)); }
 done
 # 리다이렉트 응답엔 스니펫이 없고(HTML 본문이 아님), 도착한 admin 페이지에는 한 번만 붙는다.
-n=$(curl -sL "http://127.0.0.1:$PORT/try?template=home" | grep -o '<script defer src=' | wc -l)
+n=$(curl -sL "http://127.0.0.1:$PORT/try?template=home" | grep -o '<script defer src=' | wc -l | tr -d ' ')
 [ "$n" = 1 ] && echo "ok   /try 를 따라가 도착한 페이지에 스니펫 1개" || { echo "FAIL 짧은 주소 스니펫 수: $n"; FAILS=$((FAILS+1)); }
-n=$(curl -sL "http://127.0.0.1:$PORT/flows/sandcorp" | grep -o '<script defer src=' | wc -l)
+n=$(curl -sL "http://127.0.0.1:$PORT/flows/sandcorp" | grep -o '<script defer src=' | wc -l | tr -d ' ')
 [ "$n" = 1 ] && echo "ok   /flows/sandcorp 를 따라가 스니펫 1개" || { echo "FAIL 흐름 보기 스니펫 수: $n"; FAILS=$((FAILS+1)); }
 
 echo "== iframe 허용(#179): CSP frame-ancestors 만, X-Frame-Options 는 앱이 내지 않는다 =="
@@ -127,7 +127,7 @@ og_img() { # $1=메타의 경로 $2=그 메타를 가진 페이지
     && echo "ok   $2 의 og:image = $1" || { echo "FAIL $2 의 og:image 가 $1 아님"; FAILS=$((FAILS+1)); }
   local ct dim
   ct=$(curl -sI "http://127.0.0.1:$PORT$1" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print $2}')
-  dim=$(curl -s "http://127.0.0.1:$PORT$1" | head -c 24 | tail -c 8 | od -An -tu1 | awk '{print ($1*16777216+$2*65536+$3*256+$4) "x" ($5*16777216+$6*65536+$7*256+$8)}')
+  dim=$(curl -s "http://127.0.0.1:$PORT$1" | head -c 24 | tail -c 8 | od -An -tu1 | awk '{for(i=1;i<=NF;i++)b[n++]=$i} END{print (b[0]*16777216+b[1]*65536+b[2]*256+b[3]) "x" (b[4]*16777216+b[5]*65536+b[6]*256+b[7])}')
   [ "$ct" = "image/png" ] && [ "$dim" = "1200x630" ] && echo "ok   $1 200 $ct $dim" || { echo "FAIL $1: type='$ct' 크기='$dim'"; FAILS=$((FAILS+1)); }
 }
 og_img /embed/flow/og.png /
