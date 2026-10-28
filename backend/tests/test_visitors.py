@@ -66,7 +66,7 @@ def test_list_visitor_sessions(client, tenant_with_key, tenant_admin_token):
     assert str(s2.id) in session_ids
 
     # 와이어 포맷 회귀(issue 109): VisitorSessionOut 키가 그대로
-    assert set(data[0].keys()) == {"session_id", "visitor_id", "is_hitl", "created_at"}
+    assert set(data[0].keys()) == {"session_id", "visitor_id", "is_hitl", "created_at", "flow_id", "flow_name"}
 
 
 @pytest.mark.django_db

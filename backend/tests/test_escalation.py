@@ -50,7 +50,7 @@ def test_list_escalations_returns_pending_and_claimed(client, tenant_with_key, t
 
     # 와이어 포맷 회귀(issue 108): Schema 정비 후에도 EscalationOut 키가 그대로
     row = next(e for e in data if e["id"] == str(esc1.id))
-    assert set(row.keys()) == {"id", "session_id", "trigger_type", "reason", "status", "created_at"}
+    assert set(row.keys()) == {"id", "session_id", "trigger_type", "reason", "status", "created_at", "flow_id", "flow_name"}
     assert str(esc2.id) in ids
 
 
