@@ -5,6 +5,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useAppTheme } from '../hooks/useAppTheme'
+import { nodeBadge, type NodeBadge } from '@/lib/nodeBadge'
 import { liveEdgeKeys, type LiveRun, type LiveStatus } from '@/lib/liveRun'
 import {
   DEFAULT_HANDLE, edgeKey, errorsByNode, fitViewport, panIntoView, kindLabel, nodeStyle, nodeSummary, outHandles, pathTo,
@@ -12,12 +13,12 @@ import {
 } from '@/lib/flowGraph'
 
 /** 카드 한 장. 가드레일=황·흑 경고띠 머리, 사람 넘김=적색 점선 테두리(시안 .node.guard / .node.human). */
-type CardData = { node: FlowNodeJson; errors: FlowError[]; active: boolean; selected: boolean; readOnly: boolean; live: LiveStatus | null }
+type CardData = { node: FlowNodeJson; errors: FlowError[]; active: boolean; selected: boolean; readOnly: boolean; live: LiveStatus | null; badge: NodeBadge | null }
 
 const LIVE_LABEL: Record<LiveStatus, string> = { running: '실행 중', done: '끝남', error: '오류' }
 
 function FlowNodeCard({ data }: NodeProps<Node<CardData>>) {
-  const { node, errors, active, selected, readOnly, live } = data
+  const { node, errors, active, selected, readOnly, live, badge } = data
   const style = nodeStyle(node.kind)
   const handles = outHandles(node)
   const bar = style === 'guard' ? 'hazard-stripe text-[#121412]' : style === 'human' ? 'bg-alarm text-white' : 'bg-head text-head-foreground'
@@ -31,6 +32,21 @@ function FlowNodeCard({ data }: NodeProps<Node<CardData>>) {
   ].join(' ')
   return (
     <div className={box} data-node-id={node.id} data-style={style} data-active={active ? "true" : undefined} data-live={live ?? undefined} style={{ minHeight: handles.length > 1 ? undefined : 78 }}>
+      {badge && (
+        // 카드 위에 뜨는 작은 표. 클릭·끌기·연결을 막지 않게 pointer-events 를 끄고, 폰 폭에서는 감춘다(#241).
+        <div
+          data-testid="node-badge" aria-label={`${node.code} ${badge.text}`} title={badge.text}
+          className="pointer-events-none absolute bottom-full left-0 mb-1 flex max-w-[260px] flex-col border border-line-soft bg-raised px-1.5 py-0.5 font-mono text-[0.64rem] leading-tight text-muted-foreground max-sm:hidden"
+        >
+          <span className="truncate">
+            {badge.times && <b className="mr-1 text-ink">{badge.times}</b>}
+            <span data-badge="time">{badge.time}</span>
+            {badge.tokens && <span data-badge="tokens">{` · 토큰 ${badge.tokens}`}</span>}
+            {badge.cost && <span data-badge="cost" className={badge.cost.startsWith('단가 모름') || badge.cost.includes('일부 미포함') ? 'text-alarm' : undefined}>{` · ${badge.cost}`}</span>}
+          </span>
+          {badge.summary && <span data-badge="summary" className="truncate text-ink">{badge.summary}</span>}
+        </div>
+      )}
       {node.kind !== 'start' && <Handle type="target" position={Position.Left} isConnectable={!readOnly} />}
       <div className={`flex items-center gap-1.5 px-2 py-1 text-[0.7rem] font-medium ${bar}`}>
         <span className={style === 'guard' ? 'flex items-center gap-1.5 bg-hazard px-1' : 'flex items-center gap-1.5'}>
@@ -141,7 +157,7 @@ function Inner(p: FlowCanvasProps) {
         position: old?.dragging ? old.position : n.position,
         draggable: !readOnly,
         selected: n.id === selectedId,
-        data: { node: n, errors: byNode.get(n.id) ?? [], active: activeNodes.has(n.id) && p.activeNodeIds !== undefined, selected: n.id === selectedId, readOnly, live: p.live?.nodes[n.id]?.status ?? null },
+        data: { node: n, errors: byNode.get(n.id) ?? [], active: activeNodes.has(n.id) && p.activeNodeIds !== undefined, selected: n.id === selectedId, readOnly, live: p.live?.nodes[n.id]?.status ?? null, badge: nodeBadge(p.live?.nodes[n.id]) },
       }
     })
   const [rfNodes, setRfNodes] = useState<Node<CardData>[]>(() => build([])) // 첫 그림부터 노드가 있어야 맞춤 보기가 맞게 계산된다

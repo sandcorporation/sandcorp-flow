@@ -258,4 +258,34 @@ describe('캔버스 실시간 노드 상태(#240)', () => {
     expect(card('start')).toHaveAttribute('data-live', 'done')
     expect(card('ai1').querySelector('[data-live-mark="error"]')).toHaveAttribute('aria-label', 'N-02 오류')
   })
+
+  it('노드 배지: 시간·토큰·비용·summary 를 보이고 단가 모름을 알리며 새 대화에서 비운다(#241)', async () => {
+    const end = (id: string, extra: object) => ({ event: 'node_end', data: { node_id: id, kind: 'x', step: 1, handle: 'next', duration_ms: 1500, input_tokens: 0, output_tokens: 0, cost_usd: null, unpriced_models: [], summary: null, ...extra } })
+    fakeFlowsApi({ graph: GRAPH, testTurns: [[
+      { event: 'start', data: { flow_id: 'f1' } },
+      { event: 'node_start', data: { node_id: 'start', kind: 'start', step: 0 } }, end('start', {}),
+      { event: 'node_start', data: { node_id: 'ai1', kind: 'ai_answer', step: 1 } },
+      end('ai1', { input_tokens: 10, output_tokens: 5, unpriced_models: ['gpt-x'], summary: '답 12자' }),
+      ...turn('답', '0.0001').slice(1),
+    ]] })
+    renderEditor()
+    await openTab('시험 대화')
+    await say('안녕')
+    await waitFor(() => expect(card('ai1').querySelector('[data-testid="node-badge"]')).not.toBeNull())
+    const badge = card('ai1').querySelector('[data-testid="node-badge"]') as HTMLElement
+    expect(badge).toHaveClass('pointer-events-none')
+    expect(badge).toHaveTextContent('1.5초 · 토큰 10/5 · 단가 모름 (모델 gpt-x)')
+    expect(badge).toHaveTextContent('답 12자')
+    expect(card('start').querySelector('[data-testid="node-badge"]')).toHaveTextContent('1.5초')
+    await userEvent.click(screen.getByRole('button', { name: '새 대화' }))
+    await waitFor(() => expect(card('ai1').querySelector('[data-testid="node-badge"]')).toBeNull())
+  })
+
+  it('노드 배지: 새로고침 복원 때 마지막 턴 기록으로 시간·토큰·비용만 다시 그린다(#241)', async () => {
+    window.localStorage.setItem('flow-test-session:f1', 's1')
+    fakeFlowsApi({ graph: GRAPH, traces: { s1: { turns: [{ turn: 1, entries: [{ node_id: 'ai1', kind: 'ai_answer', handle: 'next', record: { input: '하나', output: '첫 답' }, duration_ms: 40, input_tokens: 120, output_tokens: 30, cost_usd: '0.0001', calls: [] }] }] } } })
+    renderEditor()
+    await waitFor(() => expect(card('ai1').querySelector('[data-testid="node-badge"]')).not.toBeNull())
+    expect(card('ai1').querySelector('[data-testid="node-badge"]')).toHaveTextContent('40ms · 토큰 120/30 · $0.0001')
+  })
 })
