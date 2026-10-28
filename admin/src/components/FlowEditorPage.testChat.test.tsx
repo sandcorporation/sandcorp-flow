@@ -218,3 +218,44 @@ describe('편집기 — 새로고침 뒤 판단 기록 복원', () => {
     expect(fake.calls.some((c) => c.path.includes('/decision-traces'))).toBe(false)
   })
 })
+
+describe('캔버스 실시간 노드 상태(#240)', () => {
+  const nodeEnd = (id: string, step: number, handle = 'next') => ({ event: 'node_end', data: { node_id: id, kind: 'x', step, handle, duration_ms: 5, input_tokens: 0, output_tokens: 0, cost_usd: null, unpriced_models: [], summary: null } })
+  const card = (id: string) => document.querySelector(`[data-node-id="${id}"]`) as HTMLElement
+
+  it('지나간 노드는 끝남이고 호박색 경로로 이어지며 새 대화에서 비워진다', async () => {
+    fakeFlowsApi({ graph: GRAPH, testTurns: [[
+      { event: 'start', data: { flow_id: 'f1' } },
+      { event: 'node_start', data: { node_id: 'start', kind: 'start', step: 0 } }, nodeEnd('start', 0),
+      { event: 'node_start', data: { node_id: 'ai1', kind: 'ai_answer', step: 1 } }, nodeEnd('ai1', 1),
+      ...turn('답', '0.0001').slice(1),
+    ]] })
+    renderEditor()
+    await openTab('시험 대화')
+    await say('안녕')
+    await screen.findByText('답')
+    await waitFor(() => expect(card('ai1')).toHaveAttribute('data-live', 'done'))
+    expect(card('start')).toHaveAttribute('data-live', 'done')
+    expect(card('side')).not.toHaveAttribute('data-live')
+    // 턴이 끝났으니 시험 대화 탭에서 호박색 경로로 이어진다
+    expect(card('ai1')).toHaveAttribute('data-active', 'true')
+    await userEvent.click(screen.getByRole('button', { name: '새 대화' }))
+    await waitFor(() => expect(card('ai1')).not.toHaveAttribute('data-live'))
+  })
+
+  it('오류가 난 노드는 턴이 끝난 뒤에도 오류로 남는다(trace 없음)', async () => {
+    fakeFlowsApi({ graph: GRAPH, testTurns: [[
+      { event: 'start', data: { flow_id: 'f1' } },
+      { event: 'node_start', data: { node_id: 'start', kind: 'start', step: 0 } }, nodeEnd('start', 0),
+      { event: 'node_start', data: { node_id: 'ai1', kind: 'ai_answer', step: 1 } },
+      { event: 'node_error', data: { node_id: 'ai1', kind: 'ai_answer', step: 1, message: '모델 호출 실패' } },
+      { event: 'done', data: { ran: false, code: 'turn_error', note: '', errors: [], session_id: 's1' } },
+    ]] })
+    renderEditor()
+    await openTab('시험 대화')
+    await say('안녕')
+    await waitFor(() => expect(card('ai1')).toHaveAttribute('data-live', 'error'))
+    expect(card('start')).toHaveAttribute('data-live', 'done')
+    expect(card('ai1').querySelector('[data-live-mark="error"]')).toHaveAttribute('aria-label', 'N-02 오류')
+  })
+})

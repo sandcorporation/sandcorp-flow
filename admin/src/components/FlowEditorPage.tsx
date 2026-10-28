@@ -169,6 +169,10 @@ export default function FlowEditorPage() {
       {tab === 'versions' && versionsBody}
     </>
   )
+  // 호박색 경로: 판단 기록 탭에서는 고른 턴, 시험 대화 탭에서는 방금 끝난 턴(실시간 표시에서 이어진다, #240).
+  const lastTurn = testSession.turns[testSession.turns.length - 1]
+  const activePath = tab === 'log' ? highlight ?? undefined
+    : tab === 'test' && !testSession.busy && lastTurn && lastTurn.entries.length > 0 ? turnPath(lastTurn.entries) : undefined
   const canvas = (
     <FlowCanvas
       key={viewing ? `v${viewing.number}` : 'draft'}
@@ -178,8 +182,10 @@ export default function FlowEditorPage() {
       readOnly={readOnly || narrow}
       spotRef={spotRef}
       coverRef={narrow ? sheetRef : undefined}
-      activeNodeIds={tab === 'log' ? highlight?.nodes : undefined}
-      activeEdgeKeys={tab === 'log' ? highlight?.edges : undefined}
+      activeNodeIds={activePath?.nodes}
+      activeEdgeKeys={activePath?.edges}
+      live={testSession.live}
+      livePending={testSession.busy}
       onSelect={(nid) => {
         setSelectedId(nid)
         if (narrow) setSheet(nid ? 'config' : (s) => (s === 'config' ? null : s))
