@@ -8,9 +8,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from datetime import datetime
 from typing import Literal
 
@@ -20,13 +22,16 @@ from ninja import Router, Schema
 from ninja.errors import HttpError
 from pydantic import Field
 
-from apps.flows import services
+from apps.flows import node_events, services
+from apps.flows.node_events import NodeEventName
 from apps.flows.models import DeployRequest, Flow, FlowVersion
 from apps.flows.schema import JSON, NODE_CONFIG_MODELS
 from apps.flows.services import PatchOp
 from apps.tenants.auth import active_membership_for_token, member_or_tenant_key_auth
 from apps.tenants.models import Membership, Tenant
 from apps.tenants.permissions import FLOW_APPROVE, FLOW_DEPLOY, FLOW_EDIT, has_permission, require_permission
+
+logger = logging.getLogger(__name__)
 
 flow_router = Router(tags=["flows"], auth=member_or_tenant_key_auth)
 deploy_request_router = Router(tags=["flows"], auth=member_or_tenant_key_auth)
@@ -409,7 +414,7 @@ def deploy_requests_reject(request, request_id: str, body: DecisionIn):
 # ── 시험 대화(SSE) ───────────────────────────────────────────────────────────
 
 
-def _sse(event: str, data: dict[str, object]) -> str:
+def _sse(event: str, data: Mapping[str, object]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
@@ -430,28 +435,80 @@ async def _authenticate(request: HttpRequest) -> Membership | Tenant | None:
 async def flows_test_conversation(request: HttpRequest, flow_id: str, body: TestTurnIn):
     """초안으로 시험 한 턴을 돌려 SSE로 흘려보낸다. 실제 사람 넘김·알림은 없고 세션은 ``is_test``다.
 
-    이벤트: ``start``{flow_id} → ``trace``{노드 항목}×N → ``reply``{text} → ``done``{ran, handoff, note, code, errors, session_id}.
-    초안이 무효이면 ``trace``·``reply`` 없이 ``done``(ran=false, errors)만 온다. 판단 기록 전체는 ``session_id``로
-    ``GET /api/tenant/sessions/{id}/decision-traces``에서 다시 읽는다. 체험 턴을 1 쓴다(ADR-0026).
+    이벤트: ``start``{flow_id} → (``node_start`` → ``node_end``|``node_error``)×N(턴 도중, 실시간) → ``trace``{노드 항목}×N
+    → ``reply``{text} → ``done``{ran, handoff, note, code, errors, session_id}. 노드 이벤트 필드는 ``stream_test_turn`` 참조.
+    초안이 무효이면 ``done``(ran=false, errors)만 온다. 노드가 예외를 내면 ``node_error`` 뒤 ``done``(ran=false,
+    code=``turn_error``). 판단 기록 전체는 ``session_id``로 ``GET /api/tenant/sessions/{id}/decision-traces``에서 다시
+    읽는다. 체험 턴을 1 쓴다(ADR-0026).
     """
     subject = await _authenticate(request)
     if subject is None:
         return HttpResponse(json.dumps({"detail": "Unauthorized"}), status=401, content_type="application/json")
     require_permission(subject, FLOW_EDIT)
-    result = await services.run_test_turn(_tenant_id(subject), flow_id, body.message, session_id=body.session_id)
-    return stream_test_turn(flow_id, result)
+    begun = await services.begin_test_turn(_tenant_id(subject), flow_id, body.message, session_id=body.session_id)
+    return stream_test_turn(flow_id, begun)
 
 
-def stream_test_turn(flow_id: str, result: services.TestTurnResult, *, code: str | None = None) -> StreamingHttpResponse:
-    """시험 한 턴 결과를 SSE로 — 편집기와 체험(``apps.tenants.try_api``)이 같이 쓴다. ``code``는 돌지 않은 사유(체험 한도)."""
+TURN_ERROR = "turn_error"
+"""``done.code`` — 턴이 노드 예외 등으로 멈췄다(``node_error``가 먼저 온다)."""
+TURN_ERROR_NOTE = "시험 한 턴이 오류로 멈췄습니다. 오류 난 노드를 확인하세요."
 
-    async def events() -> AsyncIterator[str]:
-        yield _sse("start", {"flow_id": flow_id})
-        for entry in result.trace:
-            yield _sse("trace", dict(entry))
-        if result.ran:
-            yield _sse("reply", {"text": result.reply})
-        yield _sse(
+_running_turns: set[asyncio.Task[services.TestTurnResult]] = set()
+"""스트림과 따로 도는 시험 턴 작업 — 연결이 끊겨 스트림이 닫혀도 끝까지 돌도록 강한 참조를 쥔다."""
+
+_TurnQueue = asyncio.Queue[tuple[NodeEventName, dict[str, JSON]] | None]
+
+
+async def _run_turn(
+    prepared: services.PreparedTestTurn,
+    queue: _TurnQueue,
+    after: Callable[[services.TestTurnResult], Awaitable[None]] | None,
+) -> services.TestTurnResult:
+    """시험 턴을 끝까지 돌리며 노드 이벤트를 큐에 넣는다. 끝나면(성공·예외 모두) ``None``을 넣어 스트림에 알린다."""
+    try:
+        result = await services.finish_test_turn(prepared, on_node_event=lambda name, data: queue.put_nowait((name, data)))
+        if after is not None:
+            try:
+                await after(result)
+            except Exception:  # noqa: BLE001 — 뒤처리(체험 비용 적립) 실패가 이미 돈 턴의 결과를 지우지 않게
+                logger.exception("시험 턴 뒤처리 실패 session=%s", prepared.session.id)
+        return result
+    except Exception:
+        logger.exception("시험 턴 실패 session=%s", prepared.session.id)
+        raise
+    finally:
+        queue.put_nowait(None)
+
+
+def _forget_turn(task: asyncio.Task[services.TestTurnResult]) -> None:
+    _running_turns.discard(task)
+    if not task.cancelled():
+        task.exception()  # 이미 로그로 남겼다 — 스트림이 먼저 닫혀 아무도 결과를 읽지 않아도 경고가 나지 않게
+
+
+def stream_test_turn(
+    flow_id: str,
+    turn: services.TestTurnResult | services.PreparedTestTurn,
+    *,
+    code: str | None = None,
+    after: Callable[[services.TestTurnResult], Awaitable[None]] | None = None,
+) -> StreamingHttpResponse:
+    """시험 한 턴을 SSE로 — 편집기와 체험(``apps.tenants.try_api``)이 같이 쓴다. ``code``는 돌지 않은 사유(체험 한도).
+
+    ``turn``이 돌지 않은 결과면 ``start`` → ``done``. 준비된 턴(``PreparedTestTurn``)이면 턴을 스트림과 따로 도는
+    작업으로 띄우고, 실행기 노드 이벤트를 큐에서 꺼내 그때그때 보낸다(#239, ADR-0035):
+
+    - ``node_start`` {node_id, kind, step} — handler 직전. ``step``은 턴 안 0부터의 순번(= ``trace`` 순번).
+    - ``node_end`` {node_id, kind, step, handle, duration_ms, input_tokens, output_tokens, cost_usd, unpriced_models,
+      summary} — trace 항목을 만든 직후. ``summary``는 종류별 한 줄(``node_events.summary``, 시작 노드는 null).
+    - ``node_error`` {node_id, kind, step, message} — handler 예외. 뒤에 ``done``(ran=false, code=``turn_error``).
+
+    노드 이벤트 문자열은 판단 기록과 같은 비밀 가림·자름을 거친다. 연결이 끊겨도 작업은 끝까지 돌아 판단 기록이 남고
+    ``after``(체험 비용 적립 같은 뒤처리)도 돈다.
+    """
+
+    def done(result: services.TestTurnResult, code: str | None) -> str:
+        return _sse(
             "done",
             {
                 "ran": result.ran,
@@ -462,6 +519,30 @@ def stream_test_turn(flow_id: str, result: services.TestTurnResult, *, code: str
                 "session_id": str(result.session_id) if result.session_id else None,
             },
         )
+
+    async def events() -> AsyncIterator[str]:
+        yield _sse("start", {"flow_id": flow_id})
+        if isinstance(turn, services.TestTurnResult):
+            result = turn
+        else:
+            queue: _TurnQueue = asyncio.Queue()
+            task = asyncio.create_task(_run_turn(turn, queue, after))
+            _running_turns.add(task)
+            task.add_done_callback(_forget_turn)
+            while (item := await queue.get()) is not None:
+                name, data = item
+                yield _sse(name, await sync_to_async(node_events.clean)(turn.tenant_id, name, data))
+            try:
+                result = await task
+            except Exception:  # noqa: BLE001 — _run_turn이 로그로 남겼다. 화면에는 node_error 뒤 done으로 알린다
+                failed = services.TestTurnResult(ran=False, session_id=turn.session.id, note=TURN_ERROR_NOTE)
+                yield done(failed, TURN_ERROR)
+                return
+        for entry in result.trace:
+            yield _sse("trace", dict(entry))
+        if result.ran:
+            yield _sse("reply", {"text": result.reply})
+        yield done(result, code)
 
     response = StreamingHttpResponse(events(), content_type="text/event-stream")  # pyright: ignore[reportArgumentType]
     response["Cache-Control"] = "no-cache"

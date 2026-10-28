@@ -7,6 +7,11 @@ HITL/chat 단언을 결정적으로 만든다. 절대 외부 호출을 하지 �
 - 마지막 사용자(role=user) 메시지에 인간 상담원 키워드('상담원')가 있으면 needs_hitl=true.
 - system 프롬프트는 판정에서 제외(상담원 안내문이 포함될 수 있으므로).
 
+시험용 마커(마지막 사용자 메시지 안, #239):
+- ``[[delay:N]]`` — 응답 전에 N초(최대 10) 기다린다. 시험 대화 노드 이벤트가 턴 도중에 실시간으로 나가는지
+  네트워크 수준에서 보려는 것이다. 서버가 스레드라 다른 요청은 막지 않는다.
+- ``[[fail]]`` — 400 오류를 돌려준다(재시도 없는 클라이언트 오류). 노드 예외 → ``node_error`` 시험용.
+
 응답 형식:
 - 요청 response_format.type == "json_schema" (langchain with_structured_output) →
   스키마 JSON을 message.content 문자열로 반환.
@@ -14,6 +19,8 @@ HITL/chat 단언을 결정적으로 만든다. 절대 외부 호출을 하지 �
 """
 import json
 import os
+import re
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HUMAN_AGENT_KEYWORD = os.environ.get("FAKE_LLM_HITL_KEYWORD", "상담원")
@@ -25,6 +32,16 @@ NORMAL_REPLY = os.environ.get(
 def _last_user_message(messages):
     texts = [m.get("content", "") for m in messages if m.get("role") == "user"]
     return texts[-1] if texts else ""
+
+
+DELAY_MARKER = re.compile(r"\[\[delay:(\d+(?:\.\d+)?)\]\]")
+FAIL_MARKER = "[[fail]]"
+MAX_DELAY_SECONDS = 10.0
+
+
+def _marker_text(body: dict) -> str:
+    content = _last_user_message(body.get("messages", []) or [])
+    return content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
 
 
 _GLOBAL_KEYWORDS = ("공통", "전체", "요약", "전반", "모든 문서")
@@ -147,6 +164,13 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             body = {}
         if self.path.rstrip("/").endswith("/chat/completions"):
+            marked = _marker_text(body)
+            delay = DELAY_MARKER.search(marked)
+            if delay:
+                time.sleep(min(float(delay.group(1)), MAX_DELAY_SECONDS))
+            if FAIL_MARKER in marked:
+                self._send_json(400, {"error": {"message": "fake-llm: [[fail]] 마커로 일부러 낸 오류", "type": "invalid_request_error"}})
+                return
             completion = build_completion(body)
             if body.get("stream"):
                 self._send_stream(completion, bool((body.get("stream_options") or {}).get("include_usage")))

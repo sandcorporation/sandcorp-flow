@@ -553,9 +553,11 @@ export const appsFlowsApiFlowsRollback = async (flowId: string, options?: Reques
 /**
  * 초안으로 시험 한 턴을 돌려 SSE로 흘려보낸다. 실제 사람 넘김·알림은 없고 세션은 ``is_test``다.
 
-이벤트: ``start``{flow_id} → ``trace``{노드 항목}×N → ``reply``{text} → ``done``{ran, handoff, note, code, errors, session_id}.
-초안이 무효이면 ``trace``·``reply`` 없이 ``done``(ran=false, errors)만 온다. 판단 기록 전체는 ``session_id``로
-``GET /api/tenant/sessions/{id}/decision-traces``에서 다시 읽는다. 체험 턴을 1 쓴다(ADR-0026).
+이벤트: ``start``{flow_id} → (``node_start`` → ``node_end``|``node_error``)×N(턴 도중, 실시간) → ``trace``{노드 항목}×N
+→ ``reply``{text} → ``done``{ran, handoff, note, code, errors, session_id}. 노드 이벤트 필드는 ``stream_test_turn`` 참조.
+초안이 무효이면 ``done``(ran=false, errors)만 온다. 노드가 예외를 내면 ``node_error`` 뒤 ``done``(ran=false,
+code=``turn_error``). 판단 기록 전체는 ``session_id``로 ``GET /api/tenant/sessions/{id}/decision-traces``에서 다시
+읽는다. 체험 턴을 1 쓴다(ADR-0026).
  * @summary Flows Test Conversation
  */
 export type appsFlowsApiFlowsTestConversationResponse200 = {

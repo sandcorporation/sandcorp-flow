@@ -284,7 +284,7 @@ def test_test_conversation_streams_trace_reply_done(client, tenant_with_key, adm
 
     assert r.status_code == 200 and r["Content-Type"].startswith("text/event-stream")
     events = sse_events(r)
-    names = [n for n, _ in events]
+    names = [n for n, _ in events if not n.startswith("node_")]  # 턴 도중 노드 이벤트(#239)는 test_flow_node_events
     assert names == ["start", "trace", "trace", "reply", "done"]
     assert [d["node_id"] for n, d in events if n == "trace"] == ["start", "answer"]
     assert dict(events)["reply"]["text"] == "안녕하세요! 무엇을 도와드릴까요?"

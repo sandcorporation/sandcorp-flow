@@ -178,6 +178,29 @@ bridge·relay 5개는 합치면 메모리를 ~250M 더 아끼지만 이벤트 �
 - **첫 배포 `migrate` 실패**: `.env`의 `DJANGO_SETTINGS_MODULE`·DB 변수 확인. db 컨테이너 healthy 대기 후 migrate(deploy.sh가 처리).
 - **이벤트 파이프라인 정지**: relay·bridge는 events 마이그레이션 미적용 시 크래시 — migrate가 모든 마이그레이션을 적용하므로 배포에 포함됨.
 
+## 시험 대화 SSE 실시간 확인 (#239)
+
+시험 대화(`POST /api/tenant/flows/{id}/test/`, /try는 `/api/try/flows/{id}/test/`)는 턴 도중에 노드마다 `node_start`·`node_end`를 보낸다(ADR-0035). 중간 어딘가가 응답을 모았다가 한 번에 보내면 편집기 캔버스의 「실행 중」 표시가 턴이 끝난 뒤에야 한꺼번에 바뀐다.
+
+**코드로 본 경로(2026-10 기준)**: NPM → nginx(`backend/nginx/nginx.oracle.conf`) → uvicorn(`docker-compose.prod.oracle.yml`, `--workers 2`, ASGI) → Django.
+- Django 미들웨어는 `CorsMiddleware`·`CommonMiddleware` 둘뿐이고 GZip 등 응답 본문을 읽는 미들웨어가 없다 — 스트리밍 응답을 모으지 않는다.
+- uvicorn은 ASGI `more_body` 청크를 그대로 흘린다. 시험 대화 응답은 `Cache-Control: no-cache`·`X-Accel-Buffering: no`를 단다.
+- nginx `location /api/`에는 버퍼링 지시문이 없지만, 응답 헤더 `X-Accel-Buffering: no`가 그 응답의 `proxy_buffering`을 끈다. gzip 지시문 없음.
+- NPM은 Advanced에 `proxy_buffering off`(위 「NPM」 절). NPM이 `X-Accel-Buffering` 헤더를 지우지 않는 한 둘 중 하나로도 충분하다.
+
+**운영 확인 절차**(배포 뒤 한 번, 설정을 바꿨을 때마다): Admin 토큰과 시험할 흐름 id를 준비하고(시험 한 턴은 체험 턴 1과 실제 LLM 비용을 쓴다), 이벤트마다 도착 시각을 찍는다.
+
+```bash
+curl -sN -X POST "https://flow.sandcorp.co.kr/api/tenant/flows/<flow-id>/test/" \
+  -H "Authorization: Bearer <admin-token>" -H "Content-Type: application/json" \
+  -d '{"message":"영업시간이 어떻게 되나요?"}' \
+  | while IFS= read -r line; do case "$line" in event:*) echo "$(date +%H:%M:%S.%N | cut -c1-12) $line";; esac; done
+```
+
+- **정상**: `event: node_start`(시작 노드)가 곧바로 찍히고, AI 답변 노드의 `node_start`와 `node_end` 사이가 LLM 응답 시간(보통 1초 이상)만큼 벌어진다. `trace`·`reply`·`done`은 끝에 몰려 와도 정상이다(턴이 끝난 뒤 보낸다).
+- **모임(버퍼링)**: 모든 `event:` 줄이 같은 시각에 한꺼번에 찍힌다. NPM Advanced의 `proxy_buffering off`와 nginx가 `X-Accel-Buffering` 헤더를 받는지(`curl -sD- -o/dev/null …`로 응답 헤더 확인), 앞단에 압축(gzip)이 켜졌는지 본다.
+- 같은 확인을 nginx 앞(`http://<A1>:${NGINX_PORT}/api/…`)과 NPM 앞(공개 주소)에서 각각 해 보면 어느 층이 모으는지 가를 수 있다.
+
 ## Langfuse 토큰/트레이스 관찰 (선택)
 
 테넌트별 토큰 추적은 앱 자체(우리 DB + `/usage` 화면)로 동작하며 Langfuse 없이도 무방하다.
