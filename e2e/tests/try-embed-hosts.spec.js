@@ -43,7 +43,6 @@ const iframeHeight = (page) => page.evaluate(() => document.getElementById('flow
 const sessionOf = (frame) => frame.evaluate(async () => (await fetch('/api/try/session/')).json())
 
 test('① iframe 안 고쳐 보기: 곧바로 편집기(세션 없음) → 노드 바꾸기(세션 생김) → 시험 대화 → iframe 새로고침 뒤 같은 세션', async ({ page }) => {
-  test.setTimeout(180_000)
   const frame = await openParent(page)
   await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
   await expect(frame.getByRole('banner')).toHaveCount(0)
@@ -77,7 +76,6 @@ test('① iframe 안 고쳐 보기: 곧바로 편집기(세션 없음) → 노�
 })
 
 test('② 세션 없는 iframe 에서 「이 흐름으로 가입」: 새 탭이 signup 을 거쳐 authorize 에 닿고, 그 뒤 iframe 의 세션이 새 탭과 같다', async ({ page, context }) => {
-  test.setTimeout(120_000)
   // sandcorp-auth 왕복은 외부 경계 — 새 탭이 닿는 authorize 주소를 가로채 같은 호스트의 빈 문서로 대신한다
   await context.route(/\/api\/auth\/authorize\/member/, (route) =>
     route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>auth stub</title>' }))

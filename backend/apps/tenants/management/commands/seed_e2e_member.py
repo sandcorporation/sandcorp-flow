@@ -108,7 +108,7 @@ class Command(BaseCommand):
                     tmp = directory / f"{req.stem}.{suffix}.tmp"
                     tmp.write_text(create_member_access_token(m))
                     tmp.rename(directory / f"{req.stem}.{suffix}")
-            time.sleep(0.3)
+            time.sleep(0.05)
 
     def _serve_tickets(self, ticket_file: Path, wait_seconds: int) -> None:
         """표는 10분짜리라, 파일이 비면 그때 새 사용자의 표를 쓴다(오래된 표는 5분마다 갈아 끼운다)."""
@@ -127,7 +127,7 @@ class Command(BaseCommand):
                 user = member_user(settings.AUTH_ISSUER, sub, identity)
                 ticket_file.write_text(issue_member_ticket(user))
                 written_at = time.monotonic()
-            time.sleep(0.5)
+            time.sleep(0.1)
 
     def _serve_invites(self, user: User, invite_file: Path, token_file: Path, wait_seconds: int, once: bool) -> None:
         """파일에 떨어진 초대 원문을 수락하는 대역. 다시 수락해도(내보낸 뒤 재초대) 같은 사람으로 돌아온다."""
@@ -136,7 +136,7 @@ class Command(BaseCommand):
         while time.monotonic() < deadline:
             raw = invite_file.read_text().strip() if invite_file.exists() else ""
             if not raw:
-                time.sleep(0.5)
+                time.sleep(0.1)
                 continue
             invite_file.unlink(missing_ok=True)
             try:

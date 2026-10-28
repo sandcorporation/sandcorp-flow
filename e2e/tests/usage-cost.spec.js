@@ -57,7 +57,6 @@ const MOCK_OPERATOR = {
 
 test.describe('사용량 화면 — 비용', () => {
   test('시험 한 턴 뒤 테넌트·Operator 사용량에 비용이 보이고(단가 모름 아님) 390폭에서 넘치지 않는다', async ({ page }) => {
-    test.setTimeout(150_000)
     const tenant = await provisionTenant(`Usage Cost ${Date.now()}`)
     const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
     const made = await (await api.post('/api/tenant/flows/', { data: { name: '비용 흐름', graph: GRAPH } })).json()
@@ -85,18 +84,16 @@ test.describe('사용량 화면 — 비용', () => {
     expect(await overflow(page)).toEqual([])
   })
 
-  test('단가 모름 모델이 있는 큰 금액도 390폭에서 넘치지 않는다(가짜 응답) + 증거 사진', async ({ page }) => {
-    test.setTimeout(90_000)
-    await page.route('**/api/tenant/usage/**', (r) => r.fulfill({ json: MOCK_TENANT }))
-    await page.route('**/api/operator/usage/**', (r) => r.fulfill({ json: MOCK_OPERATOR }))
-    const tenant = await provisionTenant(`Usage Cost Mock ${Date.now()}`)
-    for (const theme of ['light', 'dark']) {
-      await page.addInitScript((t) => localStorage.setItem('admin_theme', t), theme)
-      for (const [w, h] of [[1280, 900], [390, 844]]) {
+  // 라이트·다크 × 데스크톱·390폭을 한 시험씩 나눈다 — 한 시험이 네 조합을 다 돌면 3초 한도를 넘는다(#257).
+  for (const theme of ['light', 'dark']) {
+    for (const [w, h] of [[1280, 900], [390, 844]]) {
+      test(`단가 모름 모델이 있는 큰 금액도 ${w}폭에서 넘치지 않는다(가짜 응답, ${theme}) + 증거 사진`, async ({ page }) => {
+        await page.route('**/api/tenant/usage/**', (r) => r.fulfill({ json: MOCK_TENANT }))
+        await page.route('**/api/operator/usage/**', (r) => r.fulfill({ json: MOCK_OPERATOR }))
+        const tenant = await provisionTenant(`Usage Cost Mock ${Date.now()}`)
+        await page.addInitScript((t) => localStorage.setItem('admin_theme', t), theme)
         await page.setViewportSize({ width: w, height: h })
         await openMemberSession(page, ADMIN_URL, tenant.token, 'tenant/usage')
-        await page.evaluate((t) => localStorage.setItem('admin_theme', t), theme)
-        await page.reload()
         await expect(page.getByTestId('usage-cost-unknown')).toContainText('my-custom-model-v2')
         await expect(page.getByTestId('daily-cost-row')).toHaveCount(3)
         expect(await overflow(page)).toEqual([])
@@ -107,7 +104,7 @@ test.describe('사용량 화면 — 비용', () => {
         await expect(page.getByTestId('tenant-row')).toHaveCount(2)
         expect(await overflow(page)).toEqual([])
         await shot(page, `usage-operator-${theme}-${w}`)
-      }
+      })
     }
-  })
+  }
 })

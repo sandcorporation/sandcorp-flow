@@ -47,7 +47,6 @@ async function startTry(page, width) {
 
 for (const [label, width, scheme] of [['1600-light', 1600, 'light'], ['390-dark', 390, 'dark']]) {
   test(`새 가입자: 편집 없이 가입(세션 없음 → /try/signup 이 세션을 만든다) → 새 테넌트 → 옮긴 흐름이 초안으로(${label})`, async ({ page, context }) => {
-    test.setTimeout(120_000)
     await page.addInitScript((th) => localStorage.setItem('admin_theme', th), scheme)
     await startTry(page, width)
     const link = signupControl(page)
@@ -90,7 +89,6 @@ for (const [label, width, scheme] of [['1600-light', 1600, 'light'], ['390-dark'
 }
 
 test('고친 뒤 가입: 첫 쓰기로 세션이 생긴 뒤에는 중간 페이지 없이 곧바로 로그인으로, 고친 이름이 옮겨진다', async ({ page, context }) => {
-  test.setTimeout(120_000)
   await startTry(page, 1600)
   const second = page.locator('.react-flow__node').nth(1)
   await second.click()
@@ -110,7 +108,6 @@ test('고친 뒤 가입: 첫 쓰기로 세션이 생긴 뒤에는 중간 페이�
 })
 
 test('기존 Admin 테넌트에 추가: 「기존 테넌트에 추가」를 골라 그 테넌트 편집기로', async ({ page }) => {
-  test.setTimeout(120_000)
   const { name, token } = await provisionTenant(`E2E 기존 ${Date.now().toString(36)}`)
   await startTry(page, 1600)
   // 콜백 표의 테넌트 목록·선택은 대역(이 사용자는 시드 조직의 Admin) — 선택이 그 조직의 실제 세션 토큰을 준다.

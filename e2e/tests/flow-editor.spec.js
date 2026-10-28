@@ -27,7 +27,6 @@ async function connect(page, from, to) {
 
 test.describe('흐름 편집기 — 실제 스택', () => {
   test('노드 추가 → 선 잇기 → 설정 저장 → 새로고침해도 유지된다', async ({ page }) => {
-    test.setTimeout(90_000)
     const net = trackRequests(page)
     page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) console.log('[console]', m.type(), m.text().slice(0, 300)) })
     const tenant = await provisionTenant(`Flow Editor ${Date.now()}`)

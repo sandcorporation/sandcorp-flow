@@ -26,7 +26,7 @@ async function takeOnboardingTicket(timeoutMs = 15000) {
       fs.unlinkSync(file)
       if (raw) return raw
     }
-    await new Promise((r) => setTimeout(r, 300)) // wait-ok: 시드 프로세스가 파일을 쓰는 것을 알릴 사건이 없다(파일 인계) — 상한 있는 폴링
+    await new Promise((r) => setTimeout(r, 50)) // wait-ok: 시드 프로세스가 파일을 쓰는 것을 알릴 사건이 없다(파일 인계) — 상한 있는 폴링
   }
   throw new Error('onboarding_ticket이 시드되지 않았습니다(api-e2e 로그 확인)')
 }
@@ -54,7 +54,7 @@ async function provisionTenant(name, timeoutMs = 15000, { defaultFlow = false } 
       const second = path.join(dir, `${id}.admin2.token`)
       return { name, token: fs.readFileSync(tokenFile, 'utf8').trim(), secondToken: fs.existsSync(second) ? fs.readFileSync(second, 'utf8').trim() : null }
     }
-    await new Promise((r) => setTimeout(r, 200)) // wait-ok: 위와 같다(조직 요청 파일 인계)
+    await new Promise((r) => setTimeout(r, 50)) // wait-ok: 위와 같다(조직 요청 파일 인계)
   }
   throw new Error('조직 요청이 처리되지 않았습니다(api-e2e 로그 확인)')
 }

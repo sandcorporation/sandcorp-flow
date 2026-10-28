@@ -24,7 +24,6 @@ function watch4xx(page) {
 
 test.describe('체험 모드 콘솔 정리·폰 시트 팬(#150)', () => {
   test('/try 진입 → 고쳐 보기 → HTTP 노드 시트까지 4xx 응답 0', async ({ page }) => {
-    test.setTimeout(120_000)
     const bad = watch4xx(page)
     const net = trackRequests(page)
     await page.setViewportSize({ width: 1280, height: 800 })
@@ -38,7 +37,6 @@ test.describe('체험 모드 콘솔 정리·폰 시트 팬(#150)', () => {
   })
 
   test('공개 흐름 보기도 4xx 응답 0', async ({ page, request }) => {
-    test.setTimeout(120_000)
     const { token } = await provisionTenant(`401정리 ${Date.now()}`, 15000, { defaultFlow: true })
     const auth = { Authorization: `Bearer ${token}` }
     const slug = `pub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
@@ -62,7 +60,6 @@ test.describe('체험 모드 콘솔 정리·폰 시트 팬(#150)', () => {
 
   for (const scheme of ['light', 'dark']) {
     test(`390폭 ${scheme}: 노드를 누르면 그 노드가 시트 위 보이는 영역 안으로 온다`, async ({ page }) => {
-      test.setTimeout(120_000)
       await page.emulateMedia({ colorScheme: scheme })
       await page.setViewportSize({ width: 390, height: 844 })
       await page.goto(`${ADMIN_URL}/admin-ui/try`)

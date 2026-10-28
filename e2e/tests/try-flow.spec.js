@@ -14,7 +14,6 @@ const shot = async (page, name) => {
 }
 
 test('/try?template=home → 곧바로 편집기(세션 없음) → 노드 설정(첫 저장 = 세션) → 새로고침 → 시험 대화 → 판단 기록', async ({ page }) => {
-  test.setTimeout(180_000)
   await page.setViewportSize({ width: 1600, height: 900 })
   const sessionNow = () => page.evaluate(async () => (await fetch('/api/try/session/')).json())
 

@@ -33,7 +33,6 @@ async function overflow(page) {
 
 test.describe('설정 > 내 사이트에 붙이기 (#166)', () => {
   test('slug 없음 안내 → 저장하면 코드 → 복사한 코드를 빈 HTML에 붙이면 위젯이 뜬다', async ({ page, context }) => {
-    test.setTimeout(90_000)
     const tenant = await provisionTenant(`Embed ${Date.now()}`)
     // 시험 스택의 admin 은 http://admin-e2e(비보안 컨텍스트)라 navigator.clipboard 가 없다 — 운영(https)과 달리.
     // 앱이 writeText 에 넘기는 값을 가로채 그대로 검사한다.
@@ -72,7 +71,6 @@ test.describe('설정 > 내 사이트에 붙이기 (#166)', () => {
   for (const theme of ['light', 'dark']) {
     for (const [name, size] of [['390', { width: 390, height: 844 }], ['desktop', { width: 1280, height: 800 }]]) {
       test(`가로 넘침 없음·사진 — ${theme} ${name}`, async ({ page }) => {
-        test.setTimeout(60_000)
         await page.setViewportSize(size)
         const tenant = await provisionTenant(`EmbedNarrow ${Date.now()}`)
         await setSlug(tenant.token, `긴-${Date.now()}${Math.random().toString(36).slice(2, 6)}-${'abcdefghij'.repeat(3)}`)

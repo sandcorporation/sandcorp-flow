@@ -21,7 +21,6 @@ for (const width of [390, 768, 1200]) {
 }
 
 test('임베드 편집기: SPA 이동·새로고침에도 유지, 가입 링크는 새 탭, 높이는 뷰포트와 무관, hello→height', async ({ page }) => {
-  test.setTimeout(120_000)
   await page.setViewportSize({ width: 929, height: 700 })
   await page.goto(`${ADMIN_URL}/admin-ui/try?embed=1&template=home`)
   await expect(page.locator('.react-flow__node').first()).toBeVisible()

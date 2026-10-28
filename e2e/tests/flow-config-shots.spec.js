@@ -19,7 +19,6 @@ test.describe('흐름 편집기 증거 사진', () => {
   test.skip(!SHOTS, 'SHOTS_DIR 이 있을 때만')
 
   test('맞춤 보기·높이, 종류별 폼', async ({ page }) => {
-    test.setTimeout(120_000)
     const net = trackRequests(page)
     const tenant = await provisionTenant(`Flow Shots ${Date.now()}`)
     const graph = JSON.parse(fs.readFileSync(path.join(__dirname, 'flow-showcase.json'), 'utf8'))

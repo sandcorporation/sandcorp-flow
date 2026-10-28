@@ -48,7 +48,6 @@ const badge = (page, id) => live(page, id).locator('[data-testid="node-badge"]')
 
 test.describe('노드 배지', () => {
   test('시험 한 턴 뒤 노드마다 시간과 핵심 결과가 뜨고 노드 조작을 막지 않으며 새 대화에서 사라진다', async ({ page }) => {
-    test.setTimeout(120_000)
     await setup(page, 1600)
     const aside = page.locator('aside[aria-label="노드 설정"]')
     await aside.getByRole('tab', { name: '시험 대화' }).click()
@@ -73,7 +72,6 @@ test.describe('노드 배지', () => {
   })
 
   test('실패한 노드에는 배지가 없고 끝난 노드에는 있다', async ({ page }) => {
-    test.setTimeout(120_000)
     await setup(page, 1600)
     const aside = page.locator('aside[aria-label="노드 설정"]')
     await aside.getByRole('tab', { name: '시험 대화' }).click()
@@ -85,7 +83,6 @@ test.describe('노드 배지', () => {
   })
 
   test('다크 모드에서도 배지가 읽힌다', async ({ page }) => {
-    test.setTimeout(120_000)
     await page.addInitScript(() => localStorage.setItem('admin_theme', 'dark'))
     await setup(page, 1600)
     const aside = page.locator('aside[aria-label="노드 설정"]')
@@ -97,7 +94,6 @@ test.describe('노드 배지', () => {
   })
 
   test('폰 폭: 배지는 감추고 가로로 넘치지 않는다', async ({ page }) => {
-    test.setTimeout(120_000)
     await setup(page, 390)
     await page.getByRole('navigation', { name: '하단 탭' }).getByRole('button', { name: '시험 대화' }).click()
     const chat = page.getByRole('dialog', { name: '시험 대화' })

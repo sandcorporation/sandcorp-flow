@@ -36,7 +36,6 @@ async function overflowing(page) {
 
 test.describe('HTTP 도구 노드 폼 — 실제 스택 (#123)', () => {
   test('노드 추가 → 허용 밖 주소 경고 → 도메인 등록 뒤 경고 사라짐 → 저장·새로고침 유지 → 390폭 넘침 없음', async ({ page }) => {
-    test.setTimeout(120_000)
     const tenant = await provisionTenant(`Http Form ${Date.now()}`)
     const host = `api.http-form-${Date.now()}.example.org`
     const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })

@@ -28,7 +28,6 @@ const GRAPH = {
 
 test.describe('흐름 편집기 — 시험 대화·판단 기록(실제 스택)', () => {
   test('두 턴을 돌리면 판단 기록에 노드별 항목·토큰·비용이 쌓이고, 항목을 누르면 캔버스 노드가 강조된다', async ({ page }) => {
-    test.setTimeout(150_000)
     const tenant = await provisionTenant(`Flow Test Chat ${Date.now()}`)
     const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
     const made = await (await api.post('/api/tenant/flows/', { data: { name: '시험 흐름', graph: GRAPH } })).json()

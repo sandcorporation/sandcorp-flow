@@ -6,7 +6,7 @@ const API_URL = process.env.API_URL || 'http://localhost:8000'
 
 module.exports = defineConfig({
   testDir: './tests',
-  timeout: 30_000,
+  timeout: 3_000, // 시험 하나(앞뒤 걸이 포함) 3초. 스펙에서 test.setTimeout/slow 로 올리지 않는다(#257)
   retries: 0,
   globalSetup: require.resolve('./global-setup'),
   use: {

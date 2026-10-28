@@ -45,11 +45,10 @@ const noOverflow = (page) => page.evaluate(() => {
 
 test.describe('캔버스 실시간 노드 상태', () => {
   test('느린 답변 노드는 실행 중으로 보였다가 끝남이 되고, 턴이 끝나면 호박색 경로로 이어진다', async ({ page }) => {
-    test.setTimeout(120_000)
     await setup(page, 1600)
     const aside = page.locator('aside[aria-label="노드 설정"]')
     await aside.getByRole('tab', { name: '시험 대화' }).click()
-    await aside.getByLabel('시험 메시지').fill('안녕하세요 [[delay:4]]')
+    await aside.getByLabel('시험 메시지').fill('안녕하세요 [[delay:1]]')
     await aside.getByRole('button', { name: '보내기' }).click()
 
     await expect(live(page, 'answer')).toHaveAttribute('data-live', 'running', { timeout: 20_000 })
@@ -69,7 +68,6 @@ test.describe('캔버스 실시간 노드 상태', () => {
   })
 
   test('실패한 노드는 빨갛게 남고 새 턴이 시작되면 비워진다', async ({ page }) => {
-    test.setTimeout(120_000)
     await setup(page, 1600)
     const aside = page.locator('aside[aria-label="노드 설정"]')
     await aside.getByRole('tab', { name: '시험 대화' }).click()
@@ -80,18 +78,17 @@ test.describe('캔버스 실시간 노드 상태', () => {
     await expect(live(page, 'answer').locator('[data-live-mark="error"]')).toHaveAttribute('aria-label', 'N-02 오류')
     await shot(page, 'live-error')
 
-    await aside.getByLabel('시험 메시지').fill('다시 [[delay:3]]')
+    await aside.getByLabel('시험 메시지').fill('다시 [[delay:1]]')
     await aside.getByRole('button', { name: '보내기' }).click()
     await expect(live(page, 'answer')).not.toHaveAttribute('data-live', 'error', { timeout: 20_000 })
   })
 
   test('다크 모드에서도 상태 표시가 보인다', async ({ page }) => {
-    test.setTimeout(120_000)
     await page.addInitScript(() => localStorage.setItem('admin_theme', 'dark'))
     await setup(page, 1600)
     const aside = page.locator('aside[aria-label="노드 설정"]')
     await aside.getByRole('tab', { name: '시험 대화' }).click()
-    await aside.getByLabel('시험 메시지').fill('안녕하세요 [[delay:4]]')
+    await aside.getByLabel('시험 메시지').fill('안녕하세요 [[delay:1]]')
     await aside.getByRole('button', { name: '보내기' }).click()
     await expect(live(page, 'answer')).toHaveAttribute('data-live', 'running', { timeout: 20_000 })
     await shot(page, 'live-running-dark')
@@ -100,12 +97,11 @@ test.describe('캔버스 실시간 노드 상태', () => {
   })
 
   test('움직임 줄이기: 애니메이션 없이 색만 바뀐다', async ({ page }) => {
-    test.setTimeout(120_000)
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await setup(page, 1600)
     const aside = page.locator('aside[aria-label="노드 설정"]')
     await aside.getByRole('tab', { name: '시험 대화' }).click()
-    await aside.getByLabel('시험 메시지').fill('안녕하세요 [[delay:4]]')
+    await aside.getByLabel('시험 메시지').fill('안녕하세요 [[delay:1]]')
     await aside.getByRole('button', { name: '보내기' }).click()
     await expect(live(page, 'answer')).toHaveAttribute('data-live', 'running', { timeout: 20_000 })
     expect(await live(page, 'answer').evaluate((el) => getComputedStyle(el).animationName)).toBe('none')
@@ -114,11 +110,10 @@ test.describe('캔버스 실시간 노드 상태', () => {
   })
 
   test('폰 폭: 하단 시트에서 돌려도 캔버스에 상태가 보이고 가로로 넘치지 않는다', async ({ page }) => {
-    test.setTimeout(120_000)
     await setup(page, 390)
     await page.getByRole('navigation', { name: '하단 탭' }).getByRole('button', { name: '시험 대화' }).click()
     const chat = page.getByRole('dialog', { name: '시험 대화' })
-    await chat.getByLabel('시험 메시지').fill('안녕하세요 [[delay:4]]')
+    await chat.getByLabel('시험 메시지').fill('안녕하세요 [[delay:1]]')
     await chat.getByRole('button', { name: '보내기' }).click()
     await expect(live(page, 'answer')).toHaveAttribute('data-live', 'running', { timeout: 20_000 })
     expect(await noOverflow(page)).toEqual([])
