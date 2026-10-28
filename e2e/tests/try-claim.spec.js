@@ -46,7 +46,7 @@ async function startTry(page, width) {
 }
 
 for (const [label, width, scheme] of [['1600-light', 1600, 'light'], ['390-dark', 390, 'dark']]) {
-  test(`새 가입자: 편집 없이 가입(세션 없음 → /try/signup 이 세션을 만든다) → 새 테넌트 → 옮긴 흐름이 초안으로(${label})`, async ({ page, context }) => {
+  test(`가입 전: 편집 없이는 세션이 없고 가입 링크는 /try/signup 으로 간다(${label})`, async ({ page }) => {
     await page.addInitScript((th) => localStorage.setItem('admin_theme', th), scheme)
     await startTry(page, width)
     const link = signupControl(page)
@@ -56,6 +56,12 @@ for (const [label, width, scheme] of [['1600-light', 1600, 'light'], ['390-dark'
     expect(await page.evaluate(async () => (await (await fetch('/api/try/session/')).json()))).toBeNull() // 가입을 누르기 전엔 세션이 없다
     if (width < 600) await noOverflow(page)
     await shot(page, `signup-head-${label}`, { x: 0, y: 0, width, height: 120 })
+  })
+
+  test(`새 가입자: 편집 없이 가입(세션 없음 → /try/signup 이 세션을 만든다) → 새 테넌트 → 옮긴 흐름이 초안으로(${label})`, async ({ page, context }) => {
+    await page.addInitScript((th) => localStorage.setItem('admin_theme', th), scheme)
+    await startTry(page, width)
+    await expect(signupControl(page)).toBeVisible()
 
     const ticket = await takeOnboardingTicket()
     await signUpVia(page, () => context.addCookies([
