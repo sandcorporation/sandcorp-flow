@@ -268,6 +268,27 @@ services:
       api-e2e:
         condition: service_healthy
 
+  # ── 운영 nginx(nginx.oracle.conf) — 위젯 주소의 동적 frame-ancestors e2e(#248) ─────
+  # 운영 설정을 그대로 올리고 api 이름을 api-e2e 로 잇는다(links 별칭 — 동적 resolver 가 푼다). 위젯 본문은 작은 고정 페이지다
+  # (CSP 헤더와 iframe 막힘만 본다 — 위젯 동작은 widget-e2e 가 본다).
+  nginx-e2e:
+    image: nginx:1.27-alpine
+    links:
+      - "api-e2e:api"
+    environment:
+      NGINX_ENVSUBST_FILTER: "^(METRICS_|TRY_EMBED_)"
+      METRICS_SNIPPET_URL: ""
+      METRICS_SITE_KEY: flow
+      TRY_EMBED_ORIGINS: ""
+    volumes:
+      - ./backend/nginx/nginx.oracle.conf:/etc/nginx/nginx.conf:ro
+      - ./backend/nginx/flow-metrics.conf.template:/etc/nginx/templates/flow-metrics.conf.template:ro
+      - ./e2e/fixtures/nginx-widget:/app/widget:ro
+      - ./e2e/fixtures/nginx-widget:/app/admin:ro
+    depends_on:
+      api-e2e:
+        condition: service_healthy
+
   # ── Playwright E2E 테스트 러너 ───────────────────────────────────────────
   e2e:
     build:
@@ -276,6 +297,7 @@ services:
       ADMIN_URL: http://admin-e2e:5174
       WIDGET_URL: http://widget-e2e:5173
       API_URL: http://api-e2e:8000
+      NGINX_URL: http://nginx-e2e
       E2E_OPERATOR_TOKEN_FILE: /e2e-shared/operator_token
       E2E_SHARED_DIR: /e2e-shared
     volumes:
@@ -287,6 +309,8 @@ services:
         condition: service_healthy
       widget-e2e:
         condition: service_healthy
+      nginx-e2e:
+        condition: service_started
       worker-e2e:
         condition: service_started
       chat-worker-e2e:  # 챗 답변은 taskiq 워커가 만든다 — 없으면 위젯이 답을 못 받는다(#65)

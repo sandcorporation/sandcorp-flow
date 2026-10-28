@@ -21,7 +21,7 @@ from apps.tenants.members import (
 from apps.tenants import members as members_service, withdrawal
 from apps.tenants.config_rules import hours_changes_error, topic_scope_error
 from apps.tenants.permissions import (
-    AGENTS_MANAGE, FLOW_APPROVE, FLOW_PUBLIC_VIEW, PROVIDERS_MANAGE, WEBHOOK_MANAGE, require_permission,
+    AGENTS_MANAGE, FLOW_APPROVE, FLOW_DEPLOY, FLOW_PUBLIC_VIEW, PROVIDERS_MANAGE, WEBHOOK_MANAGE, require_permission,
 )
 from apps.tenants.refresh_tokens import (
     issue_session, rotate, revoke_all, revoke_session, RefreshRejected,
@@ -79,6 +79,8 @@ class TenantConfigOut(Schema):
     hitl_timezone: str
     hitl_schedule: dict
     hitl_holidays: list
+    embed_origins: list[str] = []
+    """기본 흐름 주소와 자기 목록이 없는 흐름을 붙일 수 있는 사이트(#248). 비면 어디서나."""
     require_identity_verification: bool
     deploy_requires_approval: bool = False
     public_flow_view: bool = False
@@ -118,6 +120,7 @@ class TenantConfigIn(Schema):
     hitl_timezone: str | None = None
     hitl_schedule: dict | None = None
     hitl_holidays: list | None = None
+    embed_origins: list[str] | None = None
     require_identity_verification: bool | None = None
     deploy_requires_approval: bool | None = None
     public_flow_view: bool | None = None
@@ -653,6 +656,7 @@ def _config_out(config):
         "hitl_timezone": config.hitl_timezone,
         "hitl_schedule": config.hitl_schedule,
         "hitl_holidays": config.hitl_holidays,
+        "embed_origins": config.embed_origins,
         "require_identity_verification": config.require_identity_verification,
         "deploy_requires_approval": config.deploy_requires_approval,
         "public_flow_view": config.public_flow_view,
@@ -743,6 +747,7 @@ def _validate_changed_provider(config, body, kind):
 CONFIG_FIELD_PERMISSIONS: dict[str, str] = {
     "deploy_requires_approval": FLOW_APPROVE,    # 배포 승인 규칙(#28)
     "public_flow_view": FLOW_PUBLIC_VIEW,        # 흐름을 익명에게 보이는 일(#39)
+    "embed_origins": FLOW_DEPLOY,                # 위젯을 붙일 수 있는 사이트(#248)
     # Provider(#162): 종류·base_url·모델은 값 비교, API 키는 아래 CONFIG_KEY_FIELDS로 따로 본다.
     **{f"{k}_{s}": PROVIDERS_MANAGE for k in ("llm", "embed", "ocr") for s in ("provider_type", "base_url")},
     "model_id": PROVIDERS_MANAGE, "extraction_model": PROVIDERS_MANAGE, "embed_model": PROVIDERS_MANAGE,
@@ -810,6 +815,17 @@ def update_config(request, body: TenantConfigIn):
     if hours_problem:
         return 400, {"detail": hours_problem}
 
+    # 허용 사이트는 CSP 헤더에 그대로 들어간다 — 검증·정규화해 저장하고 정책 캐시를 지운다(#248).
+    from apps.flows.embed_policy import EmbedOriginsInvalid, forget_tenant, normalize_embed_origins
+
+    embed_origins = None
+    if body.embed_origins is not None:
+        try:
+            embed_origins = normalize_embed_origins(body.embed_origins)
+        except EmbedOriginsInvalid as e:
+            return 400, {"detail": e.message}
+        config.embed_origins = embed_origins
+
     for field in ("model_id", "system_prompt", "agent_display_name", "webhook_url", "webhook_type", "welcome_message", "brand_name", "hitl_enabled", "hitl_timezone", "hitl_schedule", "hitl_holidays", "require_identity_verification", "deploy_requires_approval", "public_flow_view", "topic_scope_enabled", "scope_description", "scope_refusal_message", "llm_provider_type", "llm_base_url", "extraction_model", "embed_provider_type", "embed_base_url", "embed_model", "embed_dim", "ocr_provider_type", "ocr_base_url", "ocr_model"):
         value = getattr(body, field)
         if value is not None:
@@ -824,6 +840,8 @@ def update_config(request, body: TenantConfigIn):
     if body.ocr_api_key is not None and body.ocr_api_key != _KEY_MASK:
         config.ocr_api_key = encrypt_secret(body.ocr_api_key)
     config.save()
+    if embed_origins is not None:
+        forget_tenant(config.tenant_id)
 
     # Embedding Provider(벡터 공간) 변경 시 재임베딩 재구축을 트리거한다(LLM 변경은 제외).
     if _embed_signature(config) != _old_embed:

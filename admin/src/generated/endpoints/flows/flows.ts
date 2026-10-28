@@ -15,6 +15,7 @@ import type {
   DraftPatchIn,
   DraftPutIn,
   EmbedIn,
+  EmbedOriginsIn,
   FlowCreateIn,
   FlowDetailOut,
   FlowOut,
@@ -511,6 +512,44 @@ export const appsFlowsApiFlowsPutDraft = async (flowId: string,
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
       draftPutIn,)
+  }
+);}
+
+
+/**
+ * 이 흐름의 키 주소를 붙일 수 있는 사이트(#248). 비우면 테넌트 목록을 따른다. 틀리면 400 ``invalid_embed_origins``.
+ * @summary Flows Set Embed Origins
+ */
+export type appsFlowsApiFlowsSetEmbedOriginsResponse200 = {
+  data: FlowOut
+  status: 200
+}
+    
+export type appsFlowsApiFlowsSetEmbedOriginsResponseSuccess = (appsFlowsApiFlowsSetEmbedOriginsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type appsFlowsApiFlowsSetEmbedOriginsResponse = (appsFlowsApiFlowsSetEmbedOriginsResponseSuccess)
+
+export const getAppsFlowsApiFlowsSetEmbedOriginsUrl = (flowId: string,) => {
+
+
+  
+
+  return `/api/tenant/flows/${flowId}/embed-origins/`
+}
+
+export const appsFlowsApiFlowsSetEmbedOrigins = async (flowId: string,
+    embedOriginsIn: EmbedOriginsIn, options?: RequestInit): Promise<appsFlowsApiFlowsSetEmbedOriginsResponse> => {
+  
+  return customInstance<appsFlowsApiFlowsSetEmbedOriginsResponse>(getAppsFlowsApiFlowsSetEmbedOriginsUrl(flowId),
+  {      
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      embedOriginsIn,)
   }
 );}
 

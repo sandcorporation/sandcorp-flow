@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import EmbedGuideCard, { buildIframeCode } from './EmbedGuideCard'
+import { HttpError } from '../mutator'
 
 const ORIGIN = 'https://flow.example.com'
 
@@ -77,5 +78,32 @@ describe('EmbedGuideCard — 임베드를 켠 흐름(#247)', () => {
     render(<EmbedGuideCard origin={ORIGIN} slug="sandcorp" isAdmin flows={[]} />)
     expect(screen.getByText(/임베드를 켠 흐름이 없습니다/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /흐름 목록으로/ })).toHaveAttribute('href', '/tenant/flows')
+  })
+})
+
+describe('EmbedGuideCard — 허용 사이트(테넌트 목록, #248)', () => {
+  it('Admin이 저장하면 onSaveOrigins로 넘기고 정규화된 값을 보인다', async () => {
+    const onSaveOrigins = vi.fn().mockResolvedValue(['https://sandcorp.co.kr'])
+    render(<EmbedGuideCard origin={ORIGIN} slug="sandcorp" isAdmin flows={[]} embedOrigins={[]} onSaveOrigins={onSaveOrigins} />)
+    expect(screen.getByText(/비어 있으면 어디서나 붙일 수 있습니다/)).toBeInTheDocument()
+    await userEvent.type(screen.getByRole('textbox', { name: '허용 사이트' }), 'HTTPS://sandcorp.co.kr/')
+    await userEvent.click(screen.getByRole('button', { name: '허용 사이트 저장' }))
+    expect(onSaveOrigins).toHaveBeenCalledWith(['HTTPS://sandcorp.co.kr/'])
+    await waitFor(() => expect(screen.getByRole('textbox', { name: '허용 사이트' })).toHaveValue('https://sandcorp.co.kr'))
+    expect(screen.getByRole('button', { name: /저장됨/ })).toBeInTheDocument()
+  })
+
+  it('저장이 거절되면 서버 문구를 보인다', async () => {
+    const onSaveOrigins = vi.fn().mockRejectedValue(new HttpError(400, '/api/tenant/config/', { detail: '허용 사이트는 20개까지입니다' }))
+    render(<EmbedGuideCard origin={ORIGIN} slug="sandcorp" isAdmin flows={[]} embedOrigins={[]} onSaveOrigins={onSaveOrigins} />)
+    await userEvent.type(screen.getByRole('textbox', { name: '허용 사이트' }), 'https://a.com')
+    await userEvent.click(screen.getByRole('button', { name: '허용 사이트 저장' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('허용 사이트는 20개까지입니다')
+  })
+
+  it('Member에게는 목록만 보인다', () => {
+    render(<EmbedGuideCard origin={ORIGIN} slug="sandcorp" isAdmin={false} flows={[]} embedOrigins={['https://sandcorp.co.kr']} onSaveOrigins={vi.fn()} />)
+    expect(screen.getByText('https://sandcorp.co.kr')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: '허용 사이트' })).toBeNull()
   })
 })

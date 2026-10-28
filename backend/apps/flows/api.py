@@ -46,6 +46,7 @@ _STATUS_BY_CODE = {
     "duplicate_name": 409,
     "flow_in_use": 409,
     "not_embeddable": 409,
+    "invalid_embed_origins": 400,
     "request_not_pending": 409,
     "approval_required": 409,
     "self_approval": 403,
@@ -96,6 +97,8 @@ class FlowOut(Schema):
     embed_enabled: bool
     embed_path: str | None = None
     """키 주소 ``/chatbot/<slug>/<embed_key>/``(origin 없이). 슬러그가 없는 테넌트는 None."""
+    embed_origins: list[str] = []
+    """이 흐름의 키 주소를 붙일 수 있는 사이트(#248). 비면 테넌트 목록을 따른다."""
     deployed_version: int | None
     updated_at: datetime
     has_pending_request: bool = False
@@ -103,6 +106,10 @@ class FlowOut(Schema):
 
 class EmbedIn(Schema):
     enabled: bool
+
+
+class EmbedOriginsIn(Schema):
+    origins: list[str]
 
 
 class VersionOut(Schema):
@@ -203,6 +210,7 @@ def _flow_out(flow: Flow, pending: bool = False) -> dict[str, object]:
         "embed_key": flow.embed_key,
         "embed_enabled": flow.embed_enabled,
         "embed_path": f"/chatbot/{slug}/{flow.embed_key}/" if (slug := flow.tenant.slug) else None,
+        "embed_origins": flow.embed_origins,
         "deployed_version": deployed.number if deployed else None,
         "updated_at": flow.updated_at,
         "has_pending_request": pending,
@@ -328,6 +336,13 @@ def flows_set_embed(request, flow_id: str, body: EmbedIn):
     """키 주소 임베드 켬/끔. 배포 버전이 없으면 켤 수 없다(409 ``not_embeddable``, 이유는 ``detail``)."""
     require_permission(request.auth, FLOW_DEPLOY)
     return _flow_out(services.set_embed_enabled(_tenant_id(request.auth), flow_id, body.enabled))
+
+
+@flow_router.put("/{flow_id}/embed-origins/", response=FlowOut)
+def flows_set_embed_origins(request, flow_id: str, body: EmbedOriginsIn):
+    """이 흐름의 키 주소를 붙일 수 있는 사이트(#248). 비우면 테넌트 목록을 따른다. 틀리면 400 ``invalid_embed_origins``."""
+    require_permission(request.auth, FLOW_DEPLOY)
+    return _flow_out(services.set_embed_origins(_tenant_id(request.auth), flow_id, body.origins))
 
 
 @flow_router.post("/{flow_id}/default/", response=FlowOut)

@@ -289,6 +289,8 @@ class TenantConfig(models.Model):
     hitl_schedule = models.JSONField(default=dict, blank=True)
     # 휴일(요일 무관 강제 휴무) ISO 날짜 리스트: ["2026-01-01", ...]
     hitl_holidays = models.JSONField(default=list, blank=True)
+    # 기본 흐름 주소와 자기 목록이 없는 흐름을 붙일 수 있는 사이트(#248). 비면 어디서나(``*``). 검증·정책은 flows.embed_policy.
+    embed_origins = models.JSONField(default=list, db_default=[], blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

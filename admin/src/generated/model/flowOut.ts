@@ -11,6 +11,7 @@ export interface FlowOut {
   deployed_version: FlowOutDeployedVersion;
   embed_enabled: boolean;
   embed_key: string;
+  embed_origins?: string[];
   embed_path?: FlowOutEmbedPath;
   has_pending_request?: boolean;
   id: string;
