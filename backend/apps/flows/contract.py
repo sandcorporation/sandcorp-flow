@@ -19,7 +19,9 @@ class TraceEntry(TypedDict):
     """한 턴에 지난 노드 하나 — 판단 기록(Decision Trace)의 항목(#24).
 
     ``record``는 핸들러가 채우는 노드별 입력·출력·분기 이유(``NodeOutcome.record``). 시간·토큰·비용은 실행기가 잰다.
-    ``cost_usd``는 USD 소수 문자열이고, 단가 표에 없는 모델의 호출이 있으면 None.
+    ``cost_usd``는 USD 소수 문자열 — 단가를 아는 호출의 합이다. 모르는 모델의 호출은 합계에 더하지 않고
+    ``unpriced_models``에 모델 이름을 남긴다(일부 미포함). 호출이 전부 단가 모름이면 ``cost_usd``는 None.
+    (예전 기록에는 ``unpriced_models``가 없고, 하나라도 모르면 ``cost_usd``가 None이었다 — 읽는 쪽이 ``calls``로 맞춘다.)
     """
 
     node_id: str
@@ -30,6 +32,7 @@ class TraceEntry(TypedDict):
     input_tokens: int
     output_tokens: int
     cost_usd: str | None
+    unpriced_models: list[str]
     calls: list[dict[str, object]]
     """노드 안에서 일어난 LLM 호출 ``{model, input_tokens, output_tokens, cost_usd}``."""
 

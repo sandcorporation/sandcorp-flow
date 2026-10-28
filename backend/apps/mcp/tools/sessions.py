@@ -82,7 +82,7 @@ async def list_sessions(ctx: ToolContext, args: ListSessionsArgs) -> JSONObject:
 @register(
     "get_session",
     "상담 세션 하나: 방문자·메시지(오래된 것부터, role=user|assistant|human_agent)·사람 넘김 이력(trigger·reason·"
-    "status·시각)·대화가 고정된 흐름 버전(flow_version={flow, number}, 없으면 null). 최근 20턴의 판단 기록 합계(decision_traces: turn·토큰·비용 USD·걸린 시간, 모르는 모델이면 비용 null)·긴 대화는 limit개씩 자르고 "
+    "status·시각)·대화가 고정된 흐름 버전(flow_version={flow, number}, 없으면 null). 최근 20턴의 판단 기록 합계(decision_traces: turn·토큰·비용 USD(아는 호출의 합)·unpriced_models(단가 모름 모델, 비면 전부 포함)·걸린 시간)·긴 대화는 limit개씩 자르고 "
     "has_more=true면 next_cursor로 이어 읽는다. 메시지 하나가 2000자를 넘으면 잘라 truncated=true. "
     "인자: session_id, limit?, cursor?. 실패: session_not_found(없거나 남의 테넌트·시험 세션).",
     GetSessionArgs,
@@ -153,7 +153,7 @@ class GetSessionTraceArgs(TenantArgs):
 
 @register(
     "get_session_trace",
-    "세션의 턴별 판단 기록(오래된 턴부터)과 검색 근거: decision_traces[{turn·토큰·비용 USD(모르는 모델이면 null)·걸린 시간·"
+    "세션의 턴별 판단 기록(오래된 턴부터)과 검색 근거: decision_traces[{turn·토큰·비용 USD(아는 호출의 합, 전부 모르면 null)·unpriced_models(단가 모름 모델)·걸린 시간·"
     "entries(노드별 기록)}], retrievals[{user_message·chunks(검색된 조각)·chunk_count·nodes(실행 노드 순서)}]. "
     "HTTP /sessions/{id}/decision-traces·retrievals와 같은 정보. 턴 limit개씩 자르고 next_cursor로 이어 읽는다. "
     "인자: session_id, tenant?, limit?, cursor?. 실패: session_not_found(없거나 남의 테넌트), invalid_cursor.",

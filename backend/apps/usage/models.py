@@ -23,6 +23,8 @@ class TokenUsage(models.Model):
     request_count = models.IntegerField(default=0)
     # 단가 표(pricing.py)로 계산한 USD 합계. 표에 없는 모델의 호출은 더하지 않는다(비용 모름 ≠ 0원).
     cost_usd = models.DecimalField(max_digits=14, decimal_places=6, default=0)
+    # 기록할 때 단가 표에 없어 cost_usd 에 못 더한 호출 수. 나중에 표에 단가가 생겨도 이 값이 남아 「일부 미포함」을 알린다.
+    unpriced_requests = models.IntegerField(default=0)
 
     class Meta:
         db_table = "token_usage"

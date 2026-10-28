@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -53,9 +53,42 @@ def prepare(trace: list[TraceEntry], *, tenant_id: uuid.UUID) -> tuple[list[JSON
     entries: list[JSON] = [_clean(tenant_id, dict(e)) for e in trace]  # type: ignore[arg-type]  # TypedDict → JSON 객체
     input_tokens = sum(e["input_tokens"] for e in trace)
     output_tokens = sum(e["output_tokens"] for e in trace)
-    unknown = any(e["cost_usd"] is None and (e["input_tokens"] or e["output_tokens"]) for e in trace)
-    cost = None if unknown else sum((Decimal(e["cost_usd"] or "0") for e in trace), Decimal(0))
+    cost, _ = summarize(trace)
     return entries, input_tokens, output_tokens, cost
+
+
+def summarize(entries: Sequence[Mapping[str, object]]) -> tuple[Decimal | None, list[str]]:
+    """판단 기록 항목들의 (아는 부분의 비용 합, 단가 모름 모델 이름들).
+
+    모르는 모델의 호출은 합계에 더하지 않고 이름만 남긴다(「일부 미포함」). 단가를 아는 호출이 하나도 없는데
+    모르는 호출이 있으면 비용은 None(전부 모름). 호출이 없으면 0. 항목에 ``calls``가 있으면 호출별로, 없으면(예전 기록)
+    항목의 ``cost_usd``로 센다 — 예전 기록은 하나라도 모르면 턴 비용이 null이었는데, 여기서는 호출별 값으로 다시 합친다.
+    """
+    total = Decimal(0)
+    priced = False
+    unpriced: set[str] = set()
+    anonymous_unpriced = False
+    for e in entries:
+        calls = e.get("calls")
+        if isinstance(calls, list) and calls:
+            for c in calls:
+                cost = c.get("cost_usd")
+                if cost is not None:
+                    total += Decimal(str(cost))
+                    priced = True
+                elif c.get("input_tokens") or c.get("output_tokens"):
+                    unpriced.add(str(c.get("model") or ""))
+            continue
+        cost = e.get("cost_usd")
+        if cost is not None:
+            total += Decimal(str(cost))
+            priced = priced or bool(e.get("input_tokens") or e.get("output_tokens"))
+        elif e.get("input_tokens") or e.get("output_tokens"):
+            anonymous_unpriced = True
+    names = sorted(n for n in unpriced if n)
+    if (unpriced or anonymous_unpriced) and not priced:
+        return None, names
+    return total, names
 
 
 def save_decision_trace(session: ChatSession, trace: list[TraceEntry], duration_ms: int) -> None:

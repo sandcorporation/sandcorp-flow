@@ -87,9 +87,9 @@ async def test_production_turn_records_nodes_tokens_cost(tenant_with_key, fake_c
     assert answer["input_tokens"] == 1000 and answer["output_tokens"] == 200
     assert Decimal(answer["cost_usd"]) == Decimal("0.00027")  # 1000*0.15/1M + 200*0.60/1M
     assert answer["duration_ms"] >= 0
-    embed, embed_unknown = _embedding_of(row)
+    embed = _embedding_of(row)[0]
     assert row.input_tokens == 1000 + embed and row.output_tokens == 200
-    assert row.cost_usd == (None if embed_unknown else Decimal("0.00027"))
+    assert row.cost_usd == Decimal("0.00027")  # 질의 임베딩 단가를 몰라도 아는 부분의 합은 남는다(#235)
     assert row.duration_ms >= 0
 
 
@@ -180,7 +180,7 @@ async def test_test_turn_records_same_shape_as_production(tenant_with_key, fake_
 
     assert result.ran
     row = await adb(DecisionTrace.objects.get)(session_id=result.session_id)
-    assert row.is_test is True and row.cost_usd == (None if _embedding_of(row)[1] else Decimal("0.00027"))
+    assert row.is_test is True and row.cost_usd == Decimal("0.00027")
     answer = next(t for t in result.trace if t["kind"] == "ai_answer")
     assert answer["input_tokens"] == 1000 and answer["cost_usd"] == "0.00027" and "duration_ms" in answer
     assert answer["record"]["output"]

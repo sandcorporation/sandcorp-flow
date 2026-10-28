@@ -12,5 +12,6 @@ export interface UsageBucket {
   output_tokens: number;
   request_count: number;
   total_tokens: number;
-  unknown_cost_models: string[];
+  unpriced_models: string[];
+  unpriced_requests: number;
 }

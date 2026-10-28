@@ -179,7 +179,7 @@ class GetUsageArgs(TenantArgs):
 @register(
     "get_usage",
     "테넌트의 토큰 사용량·비용(USD): 합계(total_tokens·cost_usd)·call_type별(by_call_type)·일별(daily). "
-    "단가를 모르는 모델은 합계에서 빠지고 unknown_cost_models에 나온다. 인자: tenant?, days?(기본 30).",
+    "단가 모름(기록할 때 단가 표에 없던) 호출은 합계에서 빠지고 모델 이름이 unpriced_models, 호출 수가 unpriced_requests에 나온다(비어 있지 않으면 합계는 일부 미포함). 인자: tenant?, days?(기본 30).",
     GetUsageArgs,
     scope="flow.read",
     permission=None,

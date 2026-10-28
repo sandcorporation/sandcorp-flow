@@ -21,13 +21,33 @@ def _table() -> dict[str, tuple[Decimal, Decimal]]:
     return {r["model"]: (Decimal(r["input_per_mtok"]), Decimal(r["output_per_mtok"])) for r in rows}
 
 
-def _lookup(model: str) -> tuple[Decimal, Decimal] | None:
+_PROVIDER_PREFIXES = ("anthropic.", "openai.")
+
+
+def canonical_model(name: str | None) -> str | None:
+    """공급자가 돌려준 모델 이름 → 단가 표의 이름. 표에 없으면 None(= 단가 모름).
+
+    맞추는 순서: 소문자로 → 공급자 앞머리(``anthropic/``, ``openai/``, ``anthropic.``)와 ``@날짜`` 꼬리 떼기 →
+    표와 정확히 같은 이름 → 가장 긴 앞부분 이름(``-20251001``, ``-2024-07-18`` 같은 꼬리표).
+    비용 계산·``is_priced``·일일 대조가 이 함수 하나를 같이 쓴다.
+    """
+    key = (name or "").strip().lower()
+    if not key:
+        return None
+    key = key.rsplit("/", 1)[-1].split("@", 1)[0]
+    for prefix in _PROVIDER_PREFIXES:
+        if key.startswith(prefix):
+            key = key[len(prefix):]
     table = _table()
-    if model in table:
-        return table[model]
-    # 날짜·버전 꼬리표(gpt-4o-mini-2024-07-18) — 가장 긴 앞부분 이름
-    prefixes = [name for name in table if model.startswith(name + "-")]
-    return table[max(prefixes, key=len)] if prefixes else None
+    if key in table:
+        return key
+    prefixes = [known for known in table if key.startswith(known + "-")]
+    return max(prefixes, key=len) if prefixes else None
+
+
+def _lookup(model: str) -> tuple[Decimal, Decimal] | None:
+    canonical = canonical_model(model)
+    return None if canonical is None else _table()[canonical]
 
 
 def cost_usd(model: str, input_tokens: int, output_tokens: int) -> Decimal | None:
@@ -40,5 +60,5 @@ def cost_usd(model: str, input_tokens: int, output_tokens: int) -> Decimal | Non
 
 
 def is_priced(model: str) -> bool:
-    """단가 표에 있는 모델인가(사용량 화면의 「단가 미상」 표시용)."""
+    """단가 표에 있는 모델인가(모르면 「단가 모름」)."""
     return _lookup(model or "") is not None

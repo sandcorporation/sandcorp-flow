@@ -12,5 +12,6 @@ export interface TenantUsageOut {
   cost_usd: string;
   daily: DailyPoint[];
   total_tokens: number;
-  unknown_cost_models: string[];
+  unpriced_models: string[];
+  unpriced_requests: number;
 }

@@ -202,7 +202,8 @@ class DecisionTurnOut(Schema):
     flow_version: Optional[int] = None
     input_tokens: int
     output_tokens: int
-    cost_usd: Optional[str] = None  # 단가 표에 없는 모델이 있었으면 null
+    cost_usd: Optional[str] = None  # 단가를 아는 호출의 합(모르는 모델의 호출은 빠진다). 전부 모르면 null
+    unpriced_models: List[str] = []  # 단가 모름 모델(비면 일부 미포함 없음)
     duration_ms: int
     entries: List[dict]  # 노드별 {node_id, kind, handle, record, duration_ms, input_tokens, output_tokens, cost_usd, calls}
 

@@ -208,8 +208,8 @@
             "title": "Date",
             "type": "string"
           },
-          "has_unknown_cost": {
-            "title": "Has Unknown Cost",
+          "has_unpriced": {
+            "title": "Has Unpriced",
             "type": "boolean"
           },
           "total_tokens": {
@@ -221,7 +221,7 @@
           "date",
           "total_tokens",
           "cost_usd",
-          "has_unknown_cost"
+          "has_unpriced"
         ],
         "title": "DailyPoint",
         "type": "object"
@@ -314,6 +314,14 @@
           "turn": {
             "title": "Turn",
             "type": "integer"
+          },
+          "unpriced_models": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Unpriced Models",
+            "type": "array"
           }
         },
         "required": [
@@ -1415,18 +1423,23 @@
             "title": "Total Tokens",
             "type": "integer"
           },
-          "unknown_cost_models": {
+          "unpriced_models": {
             "items": {
               "type": "string"
             },
-            "title": "Unknown Cost Models",
+            "title": "Unpriced Models",
             "type": "array"
+          },
+          "unpriced_requests": {
+            "title": "Unpriced Requests",
+            "type": "integer"
           }
         },
         "required": [
           "total_tokens",
           "cost_usd",
-          "unknown_cost_models",
+          "unpriced_models",
+          "unpriced_requests",
           "by_tenant",
           "daily"
         ],
@@ -2409,12 +2422,16 @@
             "title": "Total Tokens",
             "type": "integer"
           },
-          "unknown_cost_models": {
+          "unpriced_models": {
             "items": {
               "type": "string"
             },
-            "title": "Unknown Cost Models",
+            "title": "Unpriced Models",
             "type": "array"
+          },
+          "unpriced_requests": {
+            "title": "Unpriced Requests",
+            "type": "integer"
           }
         },
         "required": [
@@ -2423,7 +2440,8 @@
           "total_tokens",
           "request_count",
           "cost_usd",
-          "unknown_cost_models"
+          "unpriced_models",
+          "unpriced_requests"
         ],
         "title": "TenantRow",
         "type": "object"
@@ -2452,18 +2470,23 @@
             "title": "Total Tokens",
             "type": "integer"
           },
-          "unknown_cost_models": {
+          "unpriced_models": {
             "items": {
               "type": "string"
             },
-            "title": "Unknown Cost Models",
+            "title": "Unpriced Models",
             "type": "array"
+          },
+          "unpriced_requests": {
+            "title": "Unpriced Requests",
+            "type": "integer"
           }
         },
         "required": [
           "total_tokens",
           "cost_usd",
-          "unknown_cost_models",
+          "unpriced_models",
+          "unpriced_requests",
           "by_call_type",
           "daily"
         ],
@@ -2832,12 +2855,16 @@
             "title": "Total Tokens",
             "type": "integer"
           },
-          "unknown_cost_models": {
+          "unpriced_models": {
             "items": {
               "type": "string"
             },
-            "title": "Unknown Cost Models",
+            "title": "Unpriced Models",
             "type": "array"
+          },
+          "unpriced_requests": {
+            "title": "Unpriced Requests",
+            "type": "integer"
           }
         },
         "required": [
@@ -2847,7 +2874,8 @@
           "total_tokens",
           "request_count",
           "cost_usd",
-          "unknown_cost_models"
+          "unpriced_models",
+          "unpriced_requests"
         ],
         "title": "UsageBucket",
         "type": "object"

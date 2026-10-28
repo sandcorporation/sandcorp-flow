@@ -18,4 +18,5 @@ export interface DecisionTurnOut {
   is_test: boolean;
   output_tokens: number;
   turn: number;
+  unpriced_models?: string[];
 }
