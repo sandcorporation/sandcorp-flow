@@ -3273,6 +3273,18 @@
             },
             "description": "Accepted"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -3306,7 +3318,7 @@
     },
     "/api/chat/resolve": {
       "get": {
-        "description": "공개 위젯 진입 가드 — slug가 활성 Tenant로 해석되면 200(+공개 브랜드), 아니면 404.\n\n위젯이 렌더 전에 호출해, 유효하지 않은 slug면 챗 셸 대신 not-found를 띄운다(EventSource는 HTTP\n상태를 못 읽어 404와 일시 오류를 구분 못 하므로, 사전 검증이 필요하다).",
+        "description": "공개 위젯 진입 가드 — 위젯 주소가 열려 있으면 200(+공개 브랜드·흐름 이름), 아니면 404.\n\n위젯이 렌더 전에 호출해, 유효하지 않은 주소면 챗 셸 대신 안내를 띄운다(EventSource는 HTTP\n상태를 못 읽어 404와 일시 오류를 구분 못 하므로, 사전 검증이 필요하다). ``flow``는 키 주소의 embed_key다.\n없는 slug·닫힌 키는 모두 같은 404 몸통이다.",
         "operationId": "apps_chat_api_resolve_widget",
         "parameters": [
           {
@@ -3315,6 +3327,16 @@
             "required": true,
             "schema": {
               "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flow",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Flow",
               "type": "string"
             }
           }
@@ -3381,6 +3403,16 @@
             "schema": {
               "default": "",
               "title": "Hash",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flow",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Flow",
               "type": "string"
             }
           }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import App, { resolveSlug } from './App'
+import App, { resolveSlug, resolveFlowKey } from './App'
 import type { ChatTransport } from './transport'
 
 const mockTransport: ChatTransport = {
@@ -58,5 +58,35 @@ describe('resolveSlug (한글 공개 챗봇 URL — issue 187)', () => {
   it('chatbot 경로가 아니면 빈 문자열', () => {
     setPath('/something/else/')
     expect(resolveSlug()).toBe('')
+  })
+})
+
+describe('흐름 키 주소 /chatbot/<slug>/<key>/ (#246)', () => {
+  it('두 번째 조각을 흐름 키로 읽는다', () => {
+    setPath('/chatbot/shop/ab12cd34/')
+    expect(resolveSlug()).toBe('shop')
+    expect(resolveFlowKey()).toBe('ab12cd34')
+  })
+
+  it('한 조각짜리 기존 주소는 키가 없다(기본 흐름)', () => {
+    setPath('/chatbot/shop/')
+    expect(resolveFlowKey()).toBe('')
+  })
+
+  it('키를 진입 가드에 넘기고, 404면 「열려 있지 않음」을 보이고 입력을 막는다', async () => {
+    setPath('/chatbot/shop/ab12cd34/')
+    const calls: [string, string][] = []
+    render(<App transport={mockTransport} resolveTenant={async (slug, key) => { calls.push([slug, key]); return 'notfound' }} />)
+    expect(await screen.findByText('지금 열려 있지 않은 상담입니다.')).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('메시지를 입력하세요...')).toBeNull()
+    expect(calls).toEqual([['shop', 'ab12cd34']])
+  })
+
+  it('기존 주소는 빈 키로 가드를 부른다', async () => {
+    setPath('/chatbot/shop/')
+    const calls: [string, string][] = []
+    render(<App transport={mockTransport} resolveTenant={async (slug, key) => { calls.push([slug, key]); return 'valid' }} />)
+    expect(await screen.findByPlaceholderText('메시지를 입력하세요...')).toBeInTheDocument()
+    expect(calls).toEqual([['shop', '']])
   })
 })

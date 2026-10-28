@@ -501,6 +501,23 @@ def test_seed_e2e_member_serves_tenant_requests(tmp_path) -> None:
 
 
 @pytest.mark.django_db
+def test_seed_e2e_member_serves_tenant_with_embedded_flow(tmp_path) -> None:
+    """E2E 대역(#246): `embed-flow` 요청이면 기본 흐름 옆에 임베드를 켠 배포 흐름을 두고 그 키를 `<id>.embed`에 쓴다(켬 API는 E2 몫)."""
+    from django.core.management import call_command
+
+    from apps.flows.models import Flow
+
+    (tmp_path / "e.req").write_text("E2E 임베드 조직\nembed-flow")
+    call_command(
+        "seed_e2e_member", "--token-file", "/dev/null", "--serve-tenants-from", str(tmp_path), "--wait-seconds", "1"
+    )
+
+    flow = Flow.objects.get(embed_key=(tmp_path / "e.embed").read_text())
+    assert flow.tenant.name == "E2E 임베드 조직" and flow.embeddable and not flow.is_public
+    assert Flow.objects.filter(tenant=flow.tenant, is_public=True).exists()
+
+
+@pytest.mark.django_db
 def test_seed_e2e_member_serves_a_second_admin_for_each_tenant(tmp_path) -> None:
     """E2E 대역(#31): 배포 승인은 요청자와 다른 Admin 이 해야 하므로, 같은 조직의 두 번째 Admin 토큰(<id>.admin2.token)도 쓴다."""
     from django.core.management import call_command

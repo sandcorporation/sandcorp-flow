@@ -1,7 +1,7 @@
 """Flow·Draft·Flow Version 모델(ADR-0027).
 
-- ``Flow``: 테넌트가 그리는 상담 흐름. 배포 중 버전 하나를 가리킨다. 테넌트당 하나를 「공개 흐름」으로 정하면 위젯이
-  그 흐름의 배포 중 버전으로 돈다.
+- ``Flow``: 테넌트가 그리는 상담 흐름. 배포 중 버전 하나를 가리킨다. 테넌트당 하나인 「기본 흐름」(``is_public``)은
+  기존 위젯 주소 ``/chatbot/<slug>/``가 돌고, 임베드를 켠 흐름은 ``/chatbot/<slug>/<embed_key>/``로 붙인다(ADR-0034).
 - ``FlowDraft``: Flow마다 하나인 고칠 수 있는 작업본(검증 안 된 JSON도 담을 수 있다).
 - ``FlowVersion``: 바뀌지 않는 JSON. 만들 때 검증·해시하고, 저장 뒤 수정은 ``ImmutableFlowVersionError``.
 
@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import secrets
+import string
 import uuid
 from typing import TYPE_CHECKING, Self
 
@@ -35,12 +37,26 @@ class FlowQuerySet(models.QuerySet["Flow"]):
         return self.filter(archived_at__isnull=True)
 
 
+EMBED_KEY_LENGTH = 8
+_EMBED_KEY_ALPHABET = string.ascii_lowercase + string.digits
+
+
+def new_embed_key() -> str:
+    """8자 소문자·숫자 임베드 키(36^8 ≈ 2.8조). 테넌트 안 유일은 ``Flow.save``가 겹침 확인으로 맞춘다."""
+    return "".join(secrets.choice(_EMBED_KEY_ALPHABET) for _ in range(EMBED_KEY_LENGTH))
+
+
 class Flow(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="flows")
     name = models.CharField(max_length=255)
     is_public = models.BooleanField(default=False)
-    """위젯(공개 slug)이 이 흐름으로 도는가. 테넌트당 하나."""
+    """「기본 흐름」: 기존 위젯 주소 ``/chatbot/<slug>/``가 이 흐름으로 돈다. 테넌트당 하나이고 보관할 수 없으며,
+    ``embed_enabled``와 상관없이 늘 열려 있다. 칸 이름은 API·MCP 응답 키를 지키려고 그대로 둔다(ADR-0034)."""
+    embed_key = models.CharField(max_length=EMBED_KEY_LENGTH, editable=False)
+    """키 주소 ``/chatbot/<slug>/<embed_key>/``의 키. 만들 때 발급하고 바꾸지 않는다(이름을 바꿔도 붙인 코드가 산다)."""
+    embed_enabled = models.BooleanField(default=False)
+    """키 주소로 붙일 수 있는가. 열리는 조건은 이것 + 배포 버전 있음 + 보관 아님(``embeddable``). 보관하면 꺼진다."""
     deployed_version = models.ForeignKey(
         "flows.FlowVersion", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
@@ -66,17 +82,39 @@ class Flow(models.Model):
             models.UniqueConstraint(
                 fields=["tenant"], condition=Q(is_public=True), name="flow_one_public_per_tenant"
             ),
+            models.UniqueConstraint(fields=["tenant", "embed_key"], name="flow_unique_embed_key_per_tenant"),
         ]
 
     def save(self, *args, **kwargs) -> None:
         if self.deployed_version is not None and self.deployed_version.flow_id != self.id:
             raise ValueError("배포 중 버전은 같은 Flow의 버전이어야 합니다")
+        if not self.embed_key:
+            key = new_embed_key()
+            while Flow.objects.filter(tenant_id=self.tenant_id, embed_key=key).exists():
+                key = new_embed_key()
+            self.embed_key = key
         super().save(*args, **kwargs)
+
+    @property
+    def embeddable(self) -> bool:
+        """키 주소가 열려 있는가: (임베드 켬 또는 기본 흐름) + 배포 버전 있음 + 보관 아님."""
+        return (self.embed_enabled or self.is_public) and self.deployed_version_id is not None and self.archived_at is None
+
+    @classmethod
+    def open_by_key(cls, tenant_id: uuid.UUID, embed_key: str) -> "Flow | None":
+        """그 테넌트에서 키 주소로 열 수 있는 흐름. 없는 키·꺼짐·보관·미배포는 모두 None(구별하지 않는다)."""
+        flow = cls.objects.for_tenant(tenant_id).filter(embed_key=embed_key).first()
+        return flow if flow is not None and flow.embeddable else None
+
+    @classmethod
+    def default_for(cls, tenant_id: uuid.UUID) -> "Flow | None":
+        """테넌트의 기본 흐름(없으면 None)."""
+        return cls.objects.for_tenant(tenant_id).filter(is_public=True).select_related("deployed_version").first()
 
     @classmethod
     def public_version_for(cls, tenant_id: uuid.UUID) -> "FlowVersion | None":
-        """테넌트의 공개 흐름이 지금 배포 중인 버전(없으면 None)."""
-        flow = cls.objects.for_tenant(tenant_id).filter(is_public=True).select_related("deployed_version").first()
+        """테넌트의 기본 흐름이 지금 배포 중인 버전(없으면 None)."""
+        flow = cls.default_for(tenant_id)
         return flow.deployed_version if flow else None
 
 

@@ -11,6 +11,7 @@ export * from './appsChatApiResolveWidget200';
 export * from './appsChatApiResolveWidget404';
 export * from './appsChatApiResolveWidgetParams';
 export * from './appsChatApiSendMessage202';
+export * from './appsChatApiSendMessage403';
 export * from './appsChatApiSendMessage404';
 export * from './appsChatApiSendMessage429';
 export * from './appsChatApiStreamParams';

@@ -9,4 +9,5 @@ export type AppsChatApiStreamParams = {
 slug: string;
 visitor_id?: string;
 hash?: string;
+flow?: string;
 };
