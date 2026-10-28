@@ -55,7 +55,7 @@ test.describe('흐름 편집기 — 시험 대화·판단 기록(실제 스택)'
     await expect(log.getByText('N-03 초안 답변')).toBeVisible()
     await expect(log.getByText('1/1').first()).toBeVisible() // Fake LLM 이 보고한 토큰
     await expect(log.getByText('$0.0000').first()).toBeVisible() // Fake LLM 모델명이 단가표에 있어 비용이 계산된다(#85)
-    await expect(log.getByText('단가 미상')).toHaveCount(0)
+    await expect(log.getByText('단가 모름')).toHaveCount(0)
     await expect(log.getByText(/세션 합계/)).toBeVisible()
     expect(await log.innerText()).not.toContain('__flow_finish__')
 

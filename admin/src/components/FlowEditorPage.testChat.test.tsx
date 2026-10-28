@@ -21,7 +21,7 @@ const ent = (o: object) => ({ node_id: 'start', kind: 'start', handle: 'next', r
 const turn = (reply: string, cost: string | null) => [
   { event: 'start', data: { flow_id: 'f1' } },
   { event: 'trace', data: ent({}) },
-  { event: 'trace', data: ent({ node_id: 'ai1', kind: 'ai_answer', duration_ms: 40, input_tokens: 120, output_tokens: 30, cost_usd: cost, record: { reason: '지식에서 근거를 찾아 답함', output: reply } }) },
+  { event: 'trace', data: ent({ node_id: 'ai1', kind: 'ai_answer', duration_ms: 40, input_tokens: 120, output_tokens: 30, cost_usd: cost, calls: cost === null ? [{ model: 'mystery-model', input_tokens: 120, output_tokens: 30, cost_usd: null }] : [], record: { reason: '지식에서 근거를 찾아 답함', output: reply } }) },
   { event: 'trace', data: ent({ node_id: '__flow_finish__', kind: 'finish', handle: '' }) },
   { event: 'reply', data: { text: reply } },
   { event: 'done', data: { ran: true, handoff: false, note: '', errors: [], session_id: 's1' } },
@@ -138,14 +138,15 @@ describe('편집기 오른쪽 — 판단 기록', () => {
     return fake
   }
 
-  it('턴마다 노드 항목(토큰·비용·시간)과 턴·세션 합계, 비용을 모르면 단가 미상, 내부 끝 노드는 「끝」', async () => {
+  it('턴마다 노드 항목(토큰·비용·시간)과 턴·세션 합계, 비용을 모르면 단가 모름, 내부 끝 노드는 「끝」', async () => {
     await twoTurns()
     const log = screen.getByRole('region', { name: '판단 기록' })
     expect(within(log).getAllByText(/^턴 \d+$/).map((e) => e.textContent)).toEqual(['턴 1', '턴 2'])
     expect(within(log).getAllByText('N-02 답변')).toHaveLength(2)
     expect(within(log).getAllByText('120/30')).toHaveLength(2)
     expect(within(log).getByText('$0.0001')).toBeInTheDocument()
-    expect(within(log).getAllByText('단가 미상').length).toBeGreaterThan(0)
+    expect(within(log).getAllByText('단가 모름 (모델 mystery-model)').length).toBeGreaterThan(0)
+    expect(within(log).getByText(/세션 합계/).textContent).toMatch(/\$0\.0001 · 일부 미포함 \(모델 mystery-model\)/)
     expect(within(log).getAllByText('끝')).toHaveLength(2)
     expect(log.textContent).not.toContain('__flow_finish__')
     expect(within(log).getByText(/세션 합계/).textContent).toMatch(/240\/60/)
