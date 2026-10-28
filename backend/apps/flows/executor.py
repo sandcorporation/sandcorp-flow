@@ -99,13 +99,15 @@ def _make_step(node: Node, handler: NodeHandler, outgoing: dict[str, str], *, ho
             for c in llm_calls
         ]
         known = [Decimal(str(c["cost_usd"])) for c in calls if c["cost_usd"] is not None]
+        unpriced = sorted({str(c["model"]) for c in calls if c["cost_usd"] is None})
         entry: TraceEntry = {
             "node_id": node.id, "kind": node.kind.value, "handle": outcome.handle, "record": outcome.record,
             "duration_ms": duration_ms,
             "input_tokens": sum(c.input_tokens for c in llm_calls),
             "output_tokens": sum(c.output_tokens for c in llm_calls),
-            # 호출이 없으면 비용 0, 모르는 모델이 한 번이라도 있으면 모름(None)
-            "cost_usd": None if len(known) < len(calls) else _dec_str(sum(known, Decimal(0))),
+            # 아는 호출의 합. 호출이 없으면 0, 전부 모르는 모델이면 None, 일부만 모르면 아는 부분 합 + unpriced_models
+            "cost_usd": None if unpriced and not known else _dec_str(sum(known, Decimal(0))),
+            "unpriced_models": unpriced,
             "calls": calls,
         }
         return {

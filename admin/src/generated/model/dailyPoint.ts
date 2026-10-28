@@ -8,6 +8,6 @@
 export interface DailyPoint {
   cost_usd: string;
   date: string;
-  has_unknown_cost: boolean;
+  has_unpriced: boolean;
   total_tokens: number;
 }

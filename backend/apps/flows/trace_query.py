@@ -3,12 +3,24 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from apps.flows.models import DecisionTrace
+from apps.flows.trace import summarize
+
+
+def _cost_and_unpriced(row: DecisionTrace) -> tuple[Decimal | None, list[str]]:
+    """턴의 (아는 부분 비용, 단가 모름 모델). 항목에 호출별 값(``calls``)이 있으면 거기서 다시 합쳐
+    「전체 미상(null)」이던 예전 기록도 아는 부분 합과 모르는 모델 이름으로 읽는다. 호출 정보가 없으면 저장된 합계."""
+    entries = row.entries if isinstance(row.entries, list) else []
+    if any(isinstance(e, dict) and e.get("calls") for e in entries):
+        return summarize(entries)
+    return row.cost_usd, []
 
 
 def _turn_row(turn: int, row: DecisionTrace, *, entries: bool = True) -> dict[str, object]:
     version = row.flow_version
+    cost, unpriced = _cost_and_unpriced(row)
     out: dict[str, object] = {
         "turn": turn,
         "created_at": row.created_at.isoformat(),
@@ -16,7 +28,8 @@ def _turn_row(turn: int, row: DecisionTrace, *, entries: bool = True) -> dict[st
         "flow_version": version.number if version else None,
         "input_tokens": row.input_tokens,
         "output_tokens": row.output_tokens,
-        "cost_usd": None if row.cost_usd is None else format(row.cost_usd.normalize(), "f"),
+        "cost_usd": None if cost is None else format(cost.normalize(), "f"),
+        "unpriced_models": unpriced,
         "duration_ms": row.duration_ms,
     }
     if entries:

@@ -43,7 +43,7 @@ export default function TenantUsageTab() {
             </CardContent>
           </Card>
 
-          <CostTotal label="총 비용(USD)" cost={data.cost_usd} unknown={data.unknown_cost_models} />
+          <CostTotal label="총 비용(USD)" cost={data.cost_usd} unpriced={data.unpriced_models} requests={data.unpriced_requests} />
 
           <Card>
             <CardContent className="space-y-4 pt-6">
@@ -62,7 +62,7 @@ export default function TenantUsageTab() {
                       <TableCell>{b.output_tokens.toLocaleString()}</TableCell>
                       <TableCell>{b.total_tokens.toLocaleString()}</TableCell>
                       <TableCell>{b.request_count.toLocaleString()}</TableCell>
-                      <TableCell><CostCell cost={b.cost_usd} unknown={b.unknown_cost_models.length > 0} /></TableCell>
+                      <TableCell><CostCell cost={b.cost_usd} unpriced={b.unpriced_models} /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

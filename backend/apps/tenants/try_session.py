@@ -176,13 +176,21 @@ def turn_cost(trace: Sequence[Mapping[str, object]]) -> Decimal:
 
     total = Decimal(0)
     for entry in trace:
-        cost = entry.get("cost_usd")
-        tokens_in, tokens_out = _int(entry.get("input_tokens")), _int(entry.get("output_tokens"))
-        if isinstance(cost, str):
-            total += Decimal(cost)
-        elif tokens_in or tokens_out:
-            total += cost_usd(settings.PLATFORM_LLM_MODEL, tokens_in, tokens_out) or Decimal(0)
+        calls = entry.get("calls")
+        if isinstance(calls, list) and calls:
+            for call in calls:
+                total += _call_cost(call.get("cost_usd"), _int(call.get("input_tokens")), _int(call.get("output_tokens")), cost_usd)
+            continue
+        total += _call_cost(entry.get("cost_usd"), _int(entry.get("input_tokens")), _int(entry.get("output_tokens")), cost_usd)
     return total
+
+
+def _call_cost(cost: object, tokens_in: int, tokens_out: int, price) -> Decimal:
+    if isinstance(cost, str):
+        return Decimal(cost)
+    if tokens_in or tokens_out:
+        return price(settings.PLATFORM_LLM_MODEL, tokens_in, tokens_out) or Decimal(0)
+    return Decimal(0)
 
 
 def _int(value: object) -> int:

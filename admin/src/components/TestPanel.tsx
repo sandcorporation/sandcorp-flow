@@ -6,7 +6,7 @@ import type { FlowError, FlowGraph } from '@/lib/flowGraph'
 import { useFlowEditorBackend } from '@/lib/flowEditorBackend'
 import { tryRefusal, type TryRefusal } from '@/lib/tryRefusal'
 import {
-  entryLabel, formatCost, formatTokens, notRunMessage, restoredTurns, sessionTotals, turnTotals,
+  entryLabel, entryPricing, formatCost, formatTokens, notRunMessage, restoredTurns, sessionTotals, turnTotals,
   type SseEvent, type TestTurn, type Totals, type TraceEntry,
 } from '@/lib/testTrace'
 import { Button } from './ui/button'
@@ -147,7 +147,7 @@ export function TestChat({ turns, busy, send, reset, readOnly, refusal }: {
   )
 }
 
-const totalsLine = (t: Totals) => `${formatTokens(t.input, t.output)} 토큰 · ${formatCost(t.cost, t.input + t.output > 0)} · ${t.duration}ms`
+const totalsLine = (t: Totals) => `${formatTokens(t.input, t.output)} 토큰 · ${formatCost(t.cost, t.input + t.output > 0, t.unpriced, !t.costKnown)} · ${t.duration}ms`
 
 const short = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v)).slice(0, 160)
 
@@ -170,6 +170,7 @@ export function DecisionLog({ turns, graph, onFocus }: {
             <ul className="divide-y divide-line-soft">
               {t.entries.map((e, i) => {
                 const hasUsage = e.input_tokens + e.output_tokens > 0
+                const pricing = entryPricing(e)
                 const rec = e.record as { reason?: unknown; input?: unknown; output?: unknown }
                 const internal = !graph.nodes.some((n) => n.id === e.node_id)
                 return (
@@ -179,7 +180,7 @@ export function DecisionLog({ turns, graph, onFocus }: {
                         <span className="font-semibold text-ink">{entryLabel(e, graph)}</span>
                         <span className="text-muted-foreground">{e.handle}</span>
                         <span className="ml-auto text-muted-foreground">{hasUsage && <span>{formatTokens(e.input_tokens, e.output_tokens)}</span>}</span>
-                        {hasUsage && <span>{formatCost(e.cost_usd, hasUsage)}</span>}
+                        {hasUsage && <span>{formatCost(pricing.known, hasUsage, pricing.unpriced, pricing.partial)}</span>}
                         <span className="text-muted-foreground">{e.duration_ms}ms</span>
                       </span>
                       {rec.reason !== undefined && <span className="mt-0.5 block break-words text-ink">{short(rec.reason)}</span>}

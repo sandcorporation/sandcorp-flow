@@ -49,10 +49,12 @@ describe('turnPath', () => {
 })
 
 describe('비용·토큰 표기', () => {
-  it('비용은 소수 넷째 자리 달러, 토큰이 있는데 단가를 모르면 단가 미상, 쓴 게 없으면 대시', () => {
+  it('비용은 소수 넷째 자리 달러, 토큰이 있는데 단가를 모르면 단가 모름, 쓴 게 없으면 대시', () => {
     expect(formatCost('0.000123', true)).toBe('$0.0001')
     expect(formatCost('0.0123', true)).toBe('$0.0123')
-    expect(formatCost(null, true)).toBe('단가 미상')
+    expect(formatCost(null, true)).toBe('단가 모름')
+    expect(formatCost(null, true, ['mystery'])).toBe('단가 모름 (모델 mystery)')
+    expect(formatCost('0.0010', true, ['a', 'b'])).toBe('$0.0010 · 일부 미포함 (모델 a, b)')
     expect(formatCost(null, false)).toBe('—')
     expect(formatCost('0', false)).toBe('$0.0000')
   })
@@ -65,16 +67,25 @@ describe('합계', () => {
   const t1 = [entry({ input_tokens: 100, output_tokens: 20, cost_usd: '0.0010', duration_ms: 50 }), entry({ node_id: 'ai1', duration_ms: 7 })]
   const t2 = [entry({ input_tokens: 10, output_tokens: 5, cost_usd: '0.0002', duration_ms: 20 })]
   it('턴 합계', () => {
-    expect(turnTotals(t1)).toEqual({ input: 100, output: 20, cost: '0.0010', duration: 57, costKnown: true })
+    expect(turnTotals(t1)).toEqual({ input: 100, output: 20, cost: '0.0010', duration: 57, costKnown: true, unpriced: [] })
   })
-  it('모르는 단가가 하나라도 토큰을 썼으면 비용은 null', () => {
+  it('모르는 단가가 있으면 아는 부분의 합과 일부 미포함, 전부 모르면 null', () => {
     const t = turnTotals([...t1, entry({ input_tokens: 5, output_tokens: 1, cost_usd: null })])
-    expect(t.cost).toBeNull()
+    expect(t.cost).toBe('0.0010')
     expect(t.costKnown).toBe(false)
+    expect(turnTotals([entry({ input_tokens: 5, output_tokens: 1, cost_usd: null })]).cost).toBeNull()
+  })
+  it('항목 안에서 호출 일부만 모르면 호출별 값으로 아는 합과 모델 이름을 낸다(예전 기록처럼 항목 비용이 null이어도)', () => {
+    const calls = [
+      { model: 'gpt-4o-mini', input_tokens: 10, output_tokens: 1, cost_usd: '0.0003' },
+      { model: 'mystery-model', input_tokens: 5, output_tokens: 1, cost_usd: null },
+    ]
+    const t = turnTotals([entry({ input_tokens: 15, output_tokens: 2, cost_usd: null, calls })])
+    expect(t).toMatchObject({ cost: '0.0003', costKnown: false, unpriced: ['mystery-model'] })
   })
   it('세션 합계는 턴 합계의 합', () => {
     const turns = [{ entries: t1 }, { entries: t2 }] as unknown as TestTurn[]
-    expect(sessionTotals(turns)).toEqual({ input: 110, output: 25, cost: '0.0012', duration: 77, costKnown: true })
+    expect(sessionTotals(turns)).toEqual({ input: 110, output: 25, cost: '0.0012', duration: 77, costKnown: true, unpriced: [] })
   })
 })
 

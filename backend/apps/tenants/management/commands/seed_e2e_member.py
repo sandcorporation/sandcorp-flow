@@ -94,7 +94,7 @@ class Command(BaseCommand):
                 user = member_user(settings.AUTH_ISSUER, sub, identity)
                 tenant = Tenant.objects.create_with_key(name=name, raw_key=secrets.token_urlsafe(32))
                 membership = Membership.objects.create(user=user, tenant=tenant, role=Membership.ROLE_ADMIN)
-                # Fake LLM 은 받은 모델명을 그대로 돌려준다 — 단가표에 있는 이름을 써야 e2e 에서 비용이 「단가 미상」이 아니다(#85)
+                # Fake LLM 은 받은 모델명을 그대로 돌려준다 — 단가표에 있는 이름을 써야 e2e 에서 비용이 「단가 모름」이 아니다(#85)
                 TenantConfig.objects.update_or_create(tenant=tenant, defaults={"model_id": "gpt-4o-mini"})
                 if with_flow:
                     from apps.flows.defaults import ensure_default_flow

@@ -13,7 +13,8 @@ export type TraceEntry = {
   duration_ms: number
   input_tokens: number
   output_tokens: number
-  cost_usd: string | null
+  cost_usd: string | null // 아는 호출의 합. 전부 단가 모름이면 null
+  unpriced_models?: string[] // 단가 모름 모델(예전 기록에는 없다 — calls 로 읽는다)
   calls: TraceCall[]
 }
 export type TestTurn = {
@@ -69,12 +70,31 @@ export function turnPath(entries: TraceEntry[]): { nodes: Set<string>; edges: Se
 
 export const formatTokens = (input: number, output: number) => `${input}/${output}`
 
-export function formatCost(cost: string | null, hasUsage: boolean): string {
-  if (cost === null) return hasUsage ? '단가 미상' : '—'
-  return `$${Number(cost).toFixed(4)}`
+/** 한 항목의 단가 사정. 호출별 값(`calls`)이 있으면 거기서, 없으면 항목의 `cost_usd`로 읽는다(예전 기록 호환). */
+export function entryPricing(e: TraceEntry): { known: string | null; unpriced: string[]; partial: boolean } {
+  const used = e.input_tokens + e.output_tokens > 0
+  const calls = e.calls ?? []
+  if (calls.length > 0) {
+    const priced = calls.filter((c) => c.cost_usd !== null)
+    const missing = calls.filter((c) => c.cost_usd === null && c.input_tokens + c.output_tokens > 0)
+    const known = priced.length > 0 ? fromUnits(priced.reduce((u, c) => u + toUnits(c.cost_usd as string), 0n)) : null
+    return { known, unpriced: [...new Set(missing.map((c) => c.model).filter(Boolean))], partial: missing.length > 0 }
+  }
+  const partial = e.cost_usd === null && used
+  return { known: e.cost_usd, unpriced: [...new Set(e.unpriced_models ?? [])], partial: partial || (e.unpriced_models?.length ?? 0) > 0 }
 }
 
-export type Totals = { input: number; output: number; cost: string | null; duration: number; costKnown: boolean }
+const modelNote = (unpriced: string[]) => (unpriced.length > 0 ? ` (모델 ${unpriced.join(', ')})` : '')
+
+/** 비용 표기. 전부 모르면 「단가 모름 (모델 X)」, 아는 부분만 있으면 「$0.0010 · 일부 미포함 (모델 X)」. */
+export function formatCost(cost: string | null, hasUsage: boolean, unpriced: string[] = [], partial = unpriced.length > 0): string {
+  if (cost === null) return hasUsage ? `단가 모름${modelNote(unpriced)}` : '—'
+  const base = `$${Number(cost).toFixed(4)}`
+  return partial ? `${base} · 일부 미포함${modelNote(unpriced)}` : base
+}
+
+/** `cost`는 아는 호출의 합(전부 모르면 null). 모르는 호출이 하나라도 있으면 `costKnown=false`(= 일부 미포함). */
+export type Totals = { input: number; output: number; cost: string | null; duration: number; costKnown: boolean; unpriced: string[] }
 
 const SCALE = 10
 const toUnits = (s: string): bigint => {
@@ -89,14 +109,18 @@ function fromUnits(u: bigint): string {
 
 export function turnTotals(entries: TraceEntry[]): Totals {
   let input = 0, output = 0, duration = 0, units = 0n
-  let costKnown = true
+  let priced = false, partial = false
+  const unpriced = new Set<string>()
   for (const e of entries) {
     input += e.input_tokens
     output += e.output_tokens
     duration += e.duration_ms
-    if (e.cost_usd === null) { if (e.input_tokens || e.output_tokens) costKnown = false } else units += toUnits(e.cost_usd)
+    const p = entryPricing(e)
+    if (p.known !== null) { units += toUnits(p.known); priced = true }
+    if (p.partial) partial = true
+    p.unpriced.forEach((m) => unpriced.add(m))
   }
-  return { input, output, duration, costKnown, cost: costKnown ? fromUnits(units) : null }
+  return { input, output, duration, costKnown: !partial, unpriced: [...unpriced].sort(), cost: partial && !priced ? null : fromUnits(units) }
 }
 
 export const sessionTotals = (turns: Pick<TestTurn, 'entries'>[]): Totals => turnTotals(turns.flatMap((t) => t.entries))

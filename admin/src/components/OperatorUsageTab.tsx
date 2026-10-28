@@ -43,7 +43,7 @@ export default function OperatorUsageTab() {
             </CardContent>
           </Card>
 
-          <CostTotal label="전체 테넌트 총 비용(USD)" cost={data.cost_usd} unknown={data.unknown_cost_models} />
+          <CostTotal label="전체 테넌트 총 비용(USD)" cost={data.cost_usd} unpriced={data.unpriced_models} requests={data.unpriced_requests} />
 
           <Card>
             <CardContent className="space-y-4 pt-6">
@@ -58,7 +58,7 @@ export default function OperatorUsageTab() {
                       <TableCell>{t.tenant_name}</TableCell>
                       <TableCell>{t.total_tokens.toLocaleString()}</TableCell>
                       <TableCell>{t.request_count.toLocaleString()}</TableCell>
-                      <TableCell><CostCell cost={t.cost_usd} unknown={t.unknown_cost_models.length > 0} /></TableCell>
+                      <TableCell><CostCell cost={t.cost_usd} unpriced={t.unpriced_models} /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
