@@ -335,3 +335,58 @@ def test_flow_list_of_foreign_or_archived_flow_is_404(client, tenant_with_key, t
     Flow.objects.filter(pk=flow.pk).update(archived_at=timezone.now(), embed_enabled=False)
     r = jput(client, f"{BASE}{flow.id}/embed-origins/", {"origins": []}, tenant_admin_token)
     assert r.status_code == 404
+
+
+# ── 서비스 한 곳에서 비우기(#276) ────────────────────────────────────────────
+
+
+def _cached(tenant) -> bool:
+    return bool(embed_policy._redis().exists(embed_policy._CACHE_KEY.format(tenant.id)))
+
+
+def _second_flow(tenant):
+    other = deployed_flow(tenant, "둘째")
+    Flow.objects.filter(pk=other.pk).update(embed_enabled=True, embed_origins=["https://campaign.example.net"])
+    embed_policy.forget_tenant(tenant.id)
+    return Flow.objects.get(pk=other.pk)
+
+
+@pytest.mark.django_db
+def test_archiving_a_flow_clears_the_policy_cache_at_once(tenant_with_key):
+    from apps.flows import services
+
+    tenant, _ = tenant_with_key
+    _setup(tenant)
+    other = _second_flow(tenant)
+    assert frame_ancestors("fa-corp", other.embed_key) == "'self' https://campaign.example.net"
+    assert _cached(tenant)
+    services.archive_flow(tenant.id, other.id)
+    assert not _cached(tenant)
+    assert frame_ancestors("fa-corp", other.embed_key) == "'self'"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("enabled", [False, True])
+def test_toggling_embed_clears_the_policy_cache(tenant_with_key, enabled):
+    from apps.flows import services
+
+    tenant, _ = tenant_with_key
+    _setup(tenant)
+    other = _second_flow(tenant)
+    frame_ancestors("fa-corp", other.embed_key)
+    assert _cached(tenant)
+    services.set_embed_enabled(tenant.id, other.id, enabled)
+    assert not _cached(tenant)
+
+
+@pytest.mark.django_db
+def test_changing_the_default_flow_clears_the_policy_cache(tenant_with_key):
+    from apps.flows import services
+
+    tenant, _ = tenant_with_key
+    _setup(tenant)
+    other = _second_flow(tenant)
+    frame_ancestors("fa-corp", "")
+    assert _cached(tenant)
+    services.set_default_flow(tenant.id, other.id)
+    assert not _cached(tenant)

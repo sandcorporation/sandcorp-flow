@@ -56,7 +56,7 @@ E1(#246)이 주소·기본 흐름·세션·공개 API·위젯을 했다. 허용 
 - **칸**: `TenantConfig.embed_origins`·`Flow.embed_origins`(문자열 목록, DB 기본값 `[]` — 롤아웃 중 옛 api가 행을 넣어도 깨지지 않게). 편집은 `flow.deploy`: `PATCH /api/tenant/config/`의 `embed_origins`(값이 바뀔 때만 권한을 본다 — 화면 round-trip 통과), `PUT /api/tenant/flows/{id}/embed-origins/`(`FlowOut.embed_origins`로 돌려준다).
 - **검증 한 함수**(`apps/flows/embed_policy.normalize_embed_origins`): `scheme://host[:port]`, 하위 도메인 와일드카드는 맨 앞 `*.` + 두 조각 이상, http는 `localhost`·`127.0.0.1`만, 포트 `*`는 그 로컬 http만, 경로·쿼리·조각·사용자 정보·`*` 단독·키워드 거부, 끝 빗금 하나는 지운다, 소문자·중복 제거(순서 유지), 20개까지. CSP 값에 그대로 들어가므로 공백(줄바꿈 포함)·세미콜론·쉼표·따옴표는 형식 검사 전에 거부한다(헤더 주입). 거절 문구는 항목을 담고 화면이 그대로 보인다.
 - **정책**(`frame_ancestors(slug, key)`): 목록이 비면 `*`, 아니면 `'self'` + 목록. 키 주소는 흐름 목록이 비어 있지 않으면 그것만(테넌트 목록을 **대신**), 기본 주소는 테넌트 목록만. 없는 slug·키(보관한 흐름 포함)는 `'self'`. 키가 있지만 꺼진 흐름은 목록을 그대로 쓴다 — 위젯이 어차피 「열려 있지 않음」을 보이고, 키는 붙인 코드에 공개돼 있어 구별을 숨길 까닭이 없다.
-- **캐시**: Redis 해시 `embed:fa:<tenant_id>`(필드 = 흐름 키, 기본 주소는 `""`) 60초. 테넌트·흐름 목록을 저장하면 해시를 지운다. Redis가 죽으면 DB로 답한다(경고 로그).
+- **캐시**: Redis 해시 `embed:fa:<tenant_id>`(필드 = 흐름 키, 기본 주소는 `""`) 60초. 테넌트·흐름 목록을 저장하거나 흐름을 보관하고, 임베드를 켜고 끄고, 기본 흐름을 바꾸면 해시를 지운다(#276 — `services`의 `_forget_embed_policy` 한 곳, REST·MCP 공통). Redis가 죽으면 DB로 답한다(경고 로그).
 - **nginx**(`nginx.oracle.conf`·dev `nginx.conf` 같은 모양): `/chatbot/`이 `auth_request /_internal/embed-policy` → 앱 `GET /_internal/embed-policy`(Django 경로, `/api/` 밖)가 `X-Original-URI`(`$request_uri` — 쿼리·퍼센트 인코딩 그대로, `try_files`로 바뀌지 않는다)로 판정해 204 + `X-Frame-Ancestors`. `auth_request_set` → `map`(빈 값이면 `*`) → `add_header Content-Security-Policy "frame-ancestors …" always`.
   폴백 index는 `/embed/`로 내부 이동하지 않고 같은 위치의 named location `@chatbot_index`에서 낸다(이동하면 `/embed/`의 헤더가 붙는다). 정책 위치는 `internal`이고, nginx는 `/api/`·`/mcp`·`/.well-known`만 앱으로 넘기므로 바깥(NPM)에서 닿지 않는다(직접 부르면 404).
 - **실패할 때 = fail-open `*`**: 하위 요청의 4xx·5xx·연결 1초·읽기 2초 초과·이름 해석 실패(api 재시작·롤아웃)는 `proxy_intercept_errors` + `error_page … = @embed_policy_open`(204, 값 없음)이 받아 `*`가 된다. `auth_request`는 2xx·401·403 밖을 500으로 만들고 401·403은 위젯을 막으므로 모두 삼킨다. 근거: (1) 운영 테넌트는 배포 직후 목록이 비어 있어 `*`가 곧 지금 동작이다. (2) 정책이 잠깐 열리는 피해(그 몇 초 동안 다른 사이트가 붙일 수 있음)는 붙이기 통제의 일시 해제일 뿐이고, 닫는 쪽(`'self'`·500)은 운영 위젯을 portfolio에서 깨뜨린다. 처음 설계(Q9 4절 「앱이 죽으면 nginx가 오류를 낸다」)를 이렇게 바꾼다.
@@ -71,7 +71,6 @@ E1(#246)이 주소·기본 흐름·세션·공개 API·위젯을 했다. 허용 
 - **원자성**: `set_flow_embed`는 허용 사이트를 **켜기 전에** 검증해(미리보기 단계에서도) 틀린 목록이면 아무것도 바뀌지 않는다. 배포 버전이 없어 켤 수 없으면 `not_embeddable`이고 허용 사이트도 저장하지 않는다.
 - **미리보기**는 현재→새 값과 「이 주소에 붙인 코드가 어떻게 되는지」(`effect`)를 준다: 끄면 「열려 있지 않음」 화면(기본 흐름이면 계속 열림), 기본 흐름을 바꾸면 기존 주소의 새 대화부터 새 흐름·열린 대화는 안 끊김·옛 흐름 키 주소가 닫히는지, 허용 사이트를 비우면 어디서나(또는 테넌트 목록을 따름). 같은 값이면 `no_change`.
 - **종합 e2e**(`e2e/tests/flow-embed-overall.spec.js`): 한 테넌트의 두 흐름이 서로 다른 키 주소로 각자 다른 답을 하고, 같은 방문자도 흐름마다 세션이 따로이며, 기존 주소는 기본 흐름이 답한다.
-- **남은 것**: 보관·켬/끔 때 정책 캐시를 지우는 보강은 #276 몫이다.
 
 ## Alternatives
 - **사람이 정하는 흐름 slug.** 읽기 쉽지만 바꾸면 끊기고 중복 규칙이 필요하다. 기각.

@@ -83,14 +83,20 @@ test.describe('흐름 임베드 관리', () => {
     await t.api.dispose()
   })
 
-  test('기본 흐름을 바꾸면 기존 주소가 새 흐름으로 답한다(새 세션)', async ({ page, browser }) => {
-    const t = await prepare('Embed Default')
-    const before = await visitorSays(browser, `${WIDGET_URL}/embed/chatbot/${t.slug}/?visitor_id=e2e-default-before`)
-    expect(before).not.toContain(SPRING)
+  test('Admin이 「기본 흐름으로」를 누르면 그 흐름이 기본 흐름이 된다', async ({ page }) => {
+    const t = await prepare('Embed Default UI')
     await openMemberSession(page, ADMIN_URL, t.tenant.token, 'tenant/flows')
     await page.getByRole('button', { name: '봄 이벤트 임베드' }).click()
     await page.getByRole('button', { name: '기본 흐름으로' }).click()
     await expect(page.getByRole('button', { name: '기본 흐름으로' })).toHaveCount(0)
+    const row = (await (await t.api.get('/api/tenant/flows/')).json()).find((f) => f.id === t.flow.id)
+    expect(row.is_public).toBe(true)
+    await t.api.dispose()
+  })
+
+  test('기본 흐름을 바꾸면 기존 주소가 새 흐름으로 답한다(새 세션)', async ({ browser }) => {
+    const t = await prepare('Embed Default')
+    expect((await t.api.post(`/api/tenant/flows/${t.flow.id}/default/`)).ok()).toBeTruthy()
     const after = await visitorSays(browser, `${WIDGET_URL}/embed/chatbot/${t.slug}/?visitor_id=e2e-default-after`)
     expect(after).toContain(SPRING)
     await t.api.dispose()
@@ -105,16 +111,23 @@ test.describe('흐름 임베드 관리', () => {
     await t.api.dispose()
   })
 
-  test('설정 > 보안 카드가 켠 흐름의 코드를 보인다', async ({ page }) => {
+  test('설정 > 보안 카드가 켠 흐름과 흐름 목록 링크를 보인다', async ({ page }) => {
     const t = await prepare('Embed Card')
     expect((await t.api.post(`/api/tenant/flows/${t.flow.id}/embed/`, { data: { enabled: true } })).ok()).toBeTruthy()
-    await stubClipboard(page)
     await openMemberSession(page, ADMIN_URL, t.tenant.token, 'tenant/config?section=security')
     const card = page.getByRole('region', { name: '내 사이트에 붙이기' })
     await expect(card.getByText('봄 이벤트')).toBeVisible()
-    await card.getByRole('button', { name: '봄 이벤트 코드 복사' }).click()
-    expect(await page.evaluate(() => window.__copied)).toContain(`/chatbot/${t.slug}/`)
     await expect(card.getByRole('link', { name: /흐름 목록으로/ })).toBeVisible()
+    await t.api.dispose()
+  })
+
+  test('설정 > 보안 카드의 코드 복사가 그 흐름의 주소를 복사한다', async ({ page }) => {
+    const t = await prepare('Embed Card Copy')
+    expect((await t.api.post(`/api/tenant/flows/${t.flow.id}/embed/`, { data: { enabled: true } })).ok()).toBeTruthy()
+    await stubClipboard(page)
+    await openMemberSession(page, ADMIN_URL, t.tenant.token, 'tenant/config?section=security')
+    await page.getByRole('region', { name: '내 사이트에 붙이기' }).getByRole('button', { name: '봄 이벤트 코드 복사' }).click()
+    expect(await page.evaluate(() => window.__copied)).toContain(`/chatbot/${t.slug}/`)
     await t.api.dispose()
   })
 })
@@ -134,20 +147,33 @@ test.describe('폰 폭(390) 임베드 화면', () => {
     })
   }
 
-  test('흐름 목록의 임베드 패널·편집기 메뉴·보안 카드가 넘치지 않는다', async ({ page }) => {
-    const t = await prepare('Embed Phone')
+  async function preparedPhone(name) {
+    const t = await prepare(name)
     expect((await t.api.post(`/api/tenant/flows/${t.flow.id}/embed/`, { data: { enabled: true } })).ok()).toBeTruthy()
+    return t
+  }
+
+  test('흐름 목록의 임베드 패널이 넘치지 않는다', async ({ page }) => {
+    const t = await preparedPhone('Embed Phone List')
     await openMemberSession(page, ADMIN_URL, t.tenant.token, 'tenant/flows')
     await page.getByRole('button', { name: '봄 이벤트 임베드' }).click()
     await expect(page.getByTestId('flow-embed-code')).toBeVisible()
     expect(await noOverflow(page)).toEqual({ page: false, wide: [] })
+    await t.api.dispose()
+  })
 
-    await page.goto(`${ADMIN_URL}/admin-ui/tenant/flows/${t.flow.id}`)
+  test('편집기의 임베드 메뉴가 넘치지 않는다', async ({ page }) => {
+    const t = await preparedPhone('Embed Phone Editor')
+    await openMemberSession(page, ADMIN_URL, t.tenant.token, `tenant/flows/${t.flow.id}`)
     await page.getByRole('button', { name: '임베드 메뉴' }).click()
     await expect(page.getByTestId('flow-embed-code')).toBeVisible()
     expect(await noOverflow(page)).toEqual({ page: false, wide: [] })
+    await t.api.dispose()
+  })
 
-    await page.goto(`${ADMIN_URL}/admin-ui/tenant/config?section=security`)
+  test('설정 > 보안 카드가 넘치지 않는다', async ({ page }) => {
+    const t = await preparedPhone('Embed Phone Card')
+    await openMemberSession(page, ADMIN_URL, t.tenant.token, 'tenant/config?section=security')
     await expect(page.getByRole('region', { name: '내 사이트에 붙이기' }).getByText('봄 이벤트')).toBeVisible()
     expect(await noOverflow(page)).toEqual({ page: false, wide: [] })
     await t.api.dispose()

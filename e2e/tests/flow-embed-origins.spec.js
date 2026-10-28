@@ -92,7 +92,7 @@ test.describe('허용 사이트와 frame-ancestors(운영 nginx 경유)', () => 
     await t.api.dispose()
   })
 
-  test('Admin이 흐름 「임베드」 패널에서 허용 사이트를 고친다 — 틀리면 서버 문구, 맞으면 헤더에 반영', async ({ page }) => {
+  test('Admin이 흐름 「임베드」 패널에서 허용 사이트가 틀리면 서버 문구를 보인다', async ({ page }) => {
     const t = await prepare('Origins Panel')
     await openMemberSession(page, ADMIN_URL, t.tenant.token, 'tenant/flows')
     await page.getByRole('button', { name: '봄 이벤트 임베드' }).click()
@@ -102,6 +102,15 @@ test.describe('허용 사이트와 frame-ancestors(운영 nginx 경유)', () => 
     await box.fill('http://example.com')
     await panel.getByRole('button', { name: '허용 사이트 저장' }).click()
     await expect(panel.getByRole('alert')).toContainText('http는 localhost·127.0.0.1에만 쓸 수 있습니다')
+    await t.api.dispose()
+  })
+
+  test('Admin이 흐름 「임베드」 패널에서 맞는 허용 사이트를 저장하면 키 주소 헤더에 반영된다', async ({ page }) => {
+    const t = await prepare('Origins Panel Ok')
+    await openMemberSession(page, ADMIN_URL, t.tenant.token, 'tenant/flows')
+    await page.getByRole('button', { name: '봄 이벤트 임베드' }).click()
+    const panel = page.getByRole('region', { name: '봄 이벤트 임베드' })
+    const box = panel.getByRole('textbox', { name: '허용 사이트' })
     await box.fill('https://Campaign.example.net')
     await panel.getByRole('button', { name: '허용 사이트 저장' }).click()
     await expect(panel.getByRole('button', { name: '✓ 저장됨' })).toBeVisible()
