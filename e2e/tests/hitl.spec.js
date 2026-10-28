@@ -56,8 +56,6 @@ async function escalateViaWidget(page, slug) {
 }
 
 test.describe('HITL 전체 플로우', () => {
-  // 위젯→실제 qwen→escalation→SSE 전 구간 + bounded retry(최대 4 세션)를 고려해 타임아웃을 늘린다
-  test.describe.configure({ timeout: 150000 })
 
   let ctx
 

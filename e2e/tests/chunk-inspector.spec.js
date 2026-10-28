@@ -57,7 +57,7 @@ test.describe('Document Chunk Inspector', () => {
     const api = await request.newContext({ baseURL: API_URL })
     const agentToken = tenant.token
     const ts = Date.now()
-    await api.post('/api/tenant/documents/', {
+    const upload = await api.post('/api/tenant/documents/', {
       headers: { Authorization: `Bearer ${agentToken}` },
       multipart: {
         file: {
@@ -67,12 +67,19 @@ test.describe('Document Chunk Inspector', () => {
         },
       },
     })
+    // 색인은 서버 비동기 작업이라 알릴 사건이 없다 — API 로 ready 를 다시 보고, 화면은 ready 인 채로 연다
+    // (화면 목록은 3초 주기로 새로고침해 3초 한도 안에 ready 를 기다릴 수 없다, #257).
+    const docId = (await upload.json()).id
+    await expect.poll(async () => {
+      const docs = await (await api.get('/api/tenant/documents/', { headers: { Authorization: `Bearer ${tenant.token}` } })).json()
+      return docs.find((d) => d.id === docId)?.status
+    }, { timeout: 30_000, intervals: [50, 100, 200, 400] }).toBe('ready')
     await api.dispose()
 
     await loginAsTenantAgent(page, tenant)
     const docRow = page.locator('tr', { has: page.locator(`text=chunk-content-${ts}.txt`) })
     await expect(docRow).toBeVisible({ timeout: 10000 })
-    await expect(docRow.locator('text=ready')).toBeVisible({ timeout: 30000 })
+    await expect(docRow.locator('text=ready')).toBeVisible()
 
     await docRow.locator('button:has-text("청크 보기")').click()
     // 로딩 완료 후 청크 아이템이 나타날 때까지 대기
@@ -85,7 +92,7 @@ test.describe('Document Chunk Inspector', () => {
     const api = await request.newContext({ baseURL: API_URL })
     const agentToken = tenant.token
     const ts = Date.now()
-    await api.post('/api/tenant/documents/', {
+    const upload = await api.post('/api/tenant/documents/', {
       headers: { Authorization: `Bearer ${agentToken}` },
       multipart: {
         file: {
@@ -95,12 +102,19 @@ test.describe('Document Chunk Inspector', () => {
         },
       },
     })
+    // 색인은 서버 비동기 작업이라 알릴 사건이 없다 — API 로 ready 를 다시 보고, 화면은 ready 인 채로 연다
+    // (화면 목록은 3초 주기로 새로고침해 3초 한도 안에 ready 를 기다릴 수 없다, #257).
+    const docId = (await upload.json()).id
+    await expect.poll(async () => {
+      const docs = await (await api.get('/api/tenant/documents/', { headers: { Authorization: `Bearer ${tenant.token}` } })).json()
+      return docs.find((d) => d.id === docId)?.status
+    }, { timeout: 30_000, intervals: [50, 100, 200, 400] }).toBe('ready')
     await api.dispose()
 
     await loginAsTenantAgent(page, tenant)
     const docRow = page.locator('tr', { has: page.locator(`text=chunk-toggle-${ts}.txt`) })
     await expect(docRow).toBeVisible({ timeout: 10000 })
-    await expect(docRow.locator('text=ready')).toBeVisible({ timeout: 30000 })
+    await expect(docRow.locator('text=ready')).toBeVisible()
 
     await docRow.locator('button:has-text("청크 보기")').click()
     await expect(page.locator('[data-testid="chunk-item"]').first()).toBeVisible({ timeout: 10000 })
