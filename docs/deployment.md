@@ -202,6 +202,14 @@ curl -sN -X POST "https://flow.sandcorp.co.kr/api/tenant/flows/<flow-id>/test/" 
 - 같은 확인을 nginx 앞(`http://<A1>:${NGINX_PORT}/api/…`)과 NPM 앞(공개 주소)에서 각각 해 보면 어느 층이 모으는지 가를 수 있다.
 - **지식 검색 노드(#256)**: 지식 검색 노드가 있는 흐름으로 같은 curl을 돌린다. 정상이면 kb `node_start`가 앞 노드 `node_end` 바로 뒤에 찍히고, kb `node_end`는 그 `duration_ms`만큼 뒤에 온다. kb `node_start`·`node_end`가 같은 시각에 함께 찍히면(고치기 전 build 107의 모습) 스트림의 이벤트 가림이 턴의 sync 스레드 뒤에 줄 선 것이다 — `apps/flows/api.py` `stream_test_turn`이 이벤트마다 `sync_to_async`로 가리지 않고 턴 전에 만든 `node_events.cleaner`로 가리는지 본다(ADR-0035 덧붙임).
 
+## 동시 위젯 턴의 지식 검색 대기 확인 (#262)
+
+운영 위젯 턴은 taskiq `worker-chat`(`--workers 2 --max-async-tasks 25`)에서 돈다. 한 워커 프로세스의 턴들은 DB 단계를 thread-sensitive 스레드 하나에서 돌리지만, 지식 검색의 임베딩 HTTP는 그 스레드 밖(풀 스레드)에서 기다린다(ADR-0035 #262 덧붙임). 그래서 한 대화의 임베딩이 느려도 다른 대화의 DB·검색 단계가 그 시간만큼 기다리지 않는다. DB 연결 수는 늘지 않는다.
+
+**운영 확인 절차**(배포 뒤 한 번): 지식 검색 노드가 있는 공개 흐름에서 서로 다른 방문자 대화 5개를 거의 동시에 보낸다(위젯 창 여러 개, 또는 `POST /api/chat/message`를 동시에). 각 세션 상세의 판단 기록(노드 배지 시간, 또는 `GET …/sessions/{id}/decision-traces`의 `duration_ms`)에서 지식 검색 노드 시간을 본다.
+- **정상**: 다섯 대화의 kb `duration_ms`가 혼자 보낸 대화의 kb 시간과 비슷하다.
+- **줄 섬(고치기 전 모습)**: kb `duration_ms`가 계단처럼 커진다(대략 임베딩 시간 × 앞에 선 대화 수). 지식 검색 노드가 임베딩을 `apps/agent/nodes.py` `_aquery_embed`(thread_sensitive=False)로 부르는지 본다.
+
 ## Langfuse 토큰/트레이스 관찰 (선택)
 
 테넌트별 토큰 추적은 앱 자체(우리 DB + `/usage` 화면)로 동작하며 Langfuse 없이도 무방하다.

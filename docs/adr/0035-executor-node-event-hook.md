@@ -62,3 +62,31 @@ Accepted (2026-10-28, 우산 #238 T1 #239)
 **운영 영향 범위**:
 - 이벤트 루프가 막히지 않았으므로 같은 uvicorn 워커의 다른 요청·SSE는 멈추지 않았다. 다른 요청은 각자의 thread-sensitive 스레드를 쓴다.
 - 운영 위젯 턴은 taskiq 워커(`chat_task`, 별도 프로세스, `--max-async-tasks 25`)에서 돈다. 거기에는 요청 경계가 없어 **워커 프로세스의 모든 턴이 thread-sensitive 스레드 하나를 나눠 쓴다**(`config/taskiq_worker.py` 「전용 스레드」). 그래서 한 대화의 kb 검색(임베딩 포함) 동안 같은 워커의 다른 대화도 sync 단계(DB·검색)에서 기다린다. 시험으로 잰 값: 0.8초 임베딩 kb 턴과 함께 띄운 kb 없는 턴이 0.05초 → 0.92초. 루프는 돌아 토큰 스트리밍(async)은 멈추지 않는다. 이 직렬화는 이번에 고치지 않았다(후속 후보 — 턴마다 스레드를 주면 DB 연결 수가 동시 턴 수만큼 늘어 운영 연결 한도를 함께 봐야 한다).
+
+## 덧붙임: taskiq 워커에서 동시 턴이 thread-sensitive 스레드를 나눠 쓰던 일(#262, 2026-10)
+
+**문제**: 위 「운영 영향 범위」의 마지막 항목. taskiq 워커에는 요청 경계가 없어 프로세스의 모든 턴이 asgiref thread-sensitive 스레드 하나를 나눠 쓴다. kb 노드는 그 스레드에서 임베딩 HTTP를 기다렸으므로, 다른 대화의 DB 단계와 다른 kb 턴의 임베딩이 그 뒤에 줄을 섰다.
+
+**측정**(`tests/test_turn_thread_share.py`, 한 이벤트 루프에서 문맥 없이 턴 여럿을 띄움 — 워커와 같은 조건. 느린 임베딩은 실제 HTTP 수신부 0.8초, Docker CPU, mac):
+
+| 동시 kb 턴 N | kb 없는 턴 혼자 | kb 없는 턴(고치기 전 → 후) | kb 턴 가장 늦은 끝(고치기 전 → 후) |
+|---|---|---|---|
+| 5 | 0.02초 | 4.19초 → 0.07초 | 4.25초 → 0.92초 |
+| 10 | 0.02초 | 8.32초 → 0.03초 | 8.37초 → 1.21초 |
+
+고치기 전에는 kb 없는 턴이 앞에 줄 선 kb 턴 N개의 임베딩을 모두 기다렸고(N × 0.8초), kb 턴끼리도 임베딩이 하나씩 돌았다.
+
+**후보와 고른 것**:
+- (a) 임베딩 HTTP만 thread-sensitive 스레드 밖으로 — **골랐다.** DB 연결 수가 그대로다(HTTP는 DB를 부르지 않는다).
+- (b) 턴마다 thread-sensitive 문맥을 따로 — 쓰지 않았다. DB 연결이 동시 턴 수(워커 2 × 25)만큼 늘어 운영 연결 한도를 다시 정해야 한다. asgiref가 안쪽 문맥을 무시하는 함정(#256)도 있다.
+- (c) 비동기 httpx 클라이언트 — 쓰지 않았다. 임베딩 HTTP 경로(가드 transport·시험 대역 `tests/provider_http_fake.py`)가 둘로 갈린다. (a)는 같은 sync 함수를 풀 스레드에서 부를 뿐이다.
+
+**고침**: `apps/rag/ingesters.py` `get_embeddings`를 `fetch_embeddings`(HTTP만)와 `record_embeddings`(사용량 기록, DB)로 나눴다. 다른 호출부(인제스션·재임베딩·커뮤니티)는 `get_embeddings` 그대로다. 지식 검색·원문 폴백 노드(`apps/agent/nodes.py` `_aquery_embed`)는 순서대로 다음을 한다.
+1. 검색 저장소와 임베딩 Provider를 thread-sensitive 스레드에서 읽는다(DB).
+2. 임베딩 HTTP를 `sync_to_async(thread_sensitive=False)`로 보낸다(기본 실행기 풀).
+3. 사용량 기록(`record_embeddings`)과 그래프·벡터 검색은 전처럼 thread-sensitive 스레드에서 한다. `search_entities(embed=…)`·`local_search(store=…, embed=…)`가 미리 받은 벡터를 받는다.
+
+Provider를 못 읽거나 HTTP가 실패하면 전처럼 의미 보강만 빠지고 어휘 검색으로 계속한다. 사용량(TokenUsage 1행·노드 수집기 1회)과 판단 기록은 그대로다.
+
+**남은 것**: 임베딩이 아닌 sync 단계(그래프 쿼리·판단 기록 저장 등 DB 자체)는 여전히 한 스레드에서 줄을 선다 — DB 쿼리 시간만큼이라 짧다. 이것까지 풀려면 (b)가 필요하고 운영 연결 한도를 함께 봐야 한다.
+
