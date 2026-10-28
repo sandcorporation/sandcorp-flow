@@ -6,8 +6,8 @@
 - ``ContextVar``라서 sink는 그것을 넣은 작업(시험 턴)과 그 작업이 띄운 하위 작업(LangGraph 노드 실행)에만 보인다.
   같은 프로세스에서 동시에 도는 운영 턴에는 섞이지 않는다.
 - 콜백은 동기·즉시 반환이어야 한다(예: ``asyncio.Queue.put_nowait``). 실행기는 송신을 기다리지 않는다.
-- 이벤트 데이터는 **가리기 전 값**이다. 밖으로 내보내는 쪽이 ``clean``(판단 기록과 같은 비밀 가림·자름, sync — DB를
-  읽을 수 있어 async 안에서는 ``sync_to_async``)을 거친다.
+- 이벤트 데이터는 **가리기 전 값**이다. 밖으로 내보내는 쪽이 ``cleaner``(판단 기록과 같은 비밀 가림·자름)를 거친다 —
+  턴 시작 전에 한 번 ``sync_to_async``로 만들고, 이벤트마다는 루프에서 바로 부른다(#256).
 """
 
 from __future__ import annotations
@@ -90,13 +90,25 @@ def error_message(exc: BaseException) -> str:
     return f"노드 실행 중 오류가 났습니다 ({type(exc).__name__}{': ' + detail if detail else ''})"
 
 
-def clean(tenant_id: uuid.UUID, name: NodeEventName, data: dict[str, JSON]) -> dict[str, JSON]:
-    """판단 기록 저장과 같은 가림·자름(``trace._clean``)을 거친 이벤트 데이터(sync)."""
-    from apps.flows.trace import TRUNCATED_MARK, _clean
+EventCleaner = Callable[[NodeEventName, dict[str, JSON]], dict[str, JSON]]
 
-    cleaned = _clean(tenant_id, data)
-    assert isinstance(cleaned, dict)
-    message = cleaned.get("message")
-    if name == "node_error" and isinstance(message, str) and len(message) > ERROR_MESSAGE_MAX:
-        cleaned["message"] = message[:ERROR_MESSAGE_MAX] + TRUNCATED_MARK
-    return cleaned
+
+def cleaner(tenant_id: uuid.UUID) -> EventCleaner:
+    """판단 기록 저장과 같은 가림·자름(``trace._clean``)을 거는 함수. **sync** — 테넌트 비밀 가림 집합을 지금 한 번 읽는다.
+
+    돌려준 함수는 DB를 부르지 않아 이벤트 루프에서 바로 부른다(#256). 이벤트마다 ``sync_to_async``로 건너가면 요청의
+    thread-sensitive 스레드를 쥔 턴(지식 검색 — 임베딩·DB, 수 초) 뒤에 줄 서서 ``node_start``가 끝날 때 함께 나갔다.
+    """
+    from apps.flows.trace import TRUNCATED_MARK, bound_redactor, scrub
+
+    redact = bound_redactor(tenant_id)
+
+    def clean(name: NodeEventName, data: dict[str, JSON]) -> dict[str, JSON]:
+        cleaned = scrub(data, redact)
+        assert isinstance(cleaned, dict)
+        message = cleaned.get("message")
+        if name == "node_error" and isinstance(message, str) and len(message) > ERROR_MESSAGE_MAX:
+            cleaned["message"] = message[:ERROR_MESSAGE_MAX] + TRUNCATED_MARK
+        return cleaned
+
+    return clean

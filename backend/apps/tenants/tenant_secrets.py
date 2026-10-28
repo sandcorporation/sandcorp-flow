@@ -26,6 +26,7 @@ import threading
 import time
 import uuid
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -269,6 +270,21 @@ def redact(tenant_id: uuid.UUID | str, text: str) -> str:
     derived = _derived.get(key)
     stored = _stored_mask(key)
     return _apply(text, (stored, derived) if derived is not None else (stored,))
+
+
+def redactor(tenant_id: uuid.UUID | str) -> Callable[[str], str]:
+    """이 테넌트에 묶은 ``redact``. 저장된 비밀 가림 집합은 **지금 한 번** 읽고(sync, DB일 수 있음), 파생값은 부를 때마다
+    메모리에서 본다. 돌려준 함수는 DB를 부르지 않으므로 이벤트 루프에서 바로 써도 된다 — 시험 대화 SSE가 노드 이벤트마다
+    sync 스레드로 건너가지 않게(#256). 저장된 비밀이 그 사이 바뀌어도 ``STORED_TTL_SECONDS`` 캐시와 같은 정도로만 늦다.
+    """
+    key = _key(tenant_id)
+    stored = _stored_mask(key)
+
+    def apply(text: str) -> str:
+        derived = _derived.get(key)
+        return _apply(text, (stored, derived) if derived is not None else (stored,))
+
+    return apply
 
 
 def redact_log(text: str) -> str:

@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 from apps.flows.contract import TraceEntry
 from apps.flows.schema import JSON
 from apps.tenants.tenant_secrets import redact as redact_tenant_secrets
+from apps.tenants.tenant_secrets import redactor
 
 if TYPE_CHECKING:
     from apps.chat.models import ChatSession
@@ -37,15 +38,40 @@ REDACTORS: list[Callable[[uuid.UUID, str], str]] = [redact_tenant_secrets]
 
 
 def _clean(tenant_id: uuid.UUID, value: JSON) -> JSON:
+    def redact(text: str) -> str:
+        for r in REDACTORS:
+            text = r(tenant_id, text)
+        return text
+
+    return scrub(value, redact)
+
+
+def scrub(value: JSON, redact: Callable[[str], str]) -> JSON:
+    """모든 문자열에 ``redact``를 걸고 ``MAX_FIELD_CHARS``로 자른 값(판단 기록 저장과 같은 가림·자름)."""
     if isinstance(value, str):
-        for redact in REDACTORS:
-            value = redact(tenant_id, value)
+        value = redact(value)
         return value[:MAX_FIELD_CHARS] + TRUNCATED_MARK if len(value) > MAX_FIELD_CHARS else value
     if isinstance(value, dict):
-        return {k: _clean(tenant_id, v) for k, v in value.items()}
+        return {k: scrub(v, redact) for k, v in value.items()}
     if isinstance(value, list):
-        return [_clean(tenant_id, v) for v in value]
+        return [scrub(v, redact) for v in value]
     return value
+
+
+def bound_redactor(tenant_id: uuid.UUID) -> Callable[[str], str]:
+    """``REDACTORS``를 이 테넌트에 묶어 한 함수로(sync — 테넌트 비밀 가림 집합을 지금 한 번 읽는다).
+
+    돌려준 함수는 DB를 부르지 않는다 — 시험 대화 SSE가 이벤트마다 sync 스레드로 건너가지 않고 루프에서 가린다(#256).
+    """
+    bound = [redactor(tenant_id) if r is redact_tenant_secrets else (lambda text, r=r: r(tenant_id, text))
+             for r in REDACTORS]
+
+    def redact(text: str) -> str:
+        for r in bound:
+            text = r(text)
+        return text
+
+    return redact
 
 
 def prepare(trace: list[TraceEntry], *, tenant_id: uuid.UUID) -> tuple[list[JSON], int, int, Decimal | None]:
