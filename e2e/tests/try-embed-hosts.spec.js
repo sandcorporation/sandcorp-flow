@@ -42,7 +42,7 @@ async function openParent(page, { hello = true } = {}) {
 const iframeHeight = (page) => page.evaluate(() => document.getElementById('flow-try').getBoundingClientRect().height)
 const sessionOf = (frame) => frame.evaluate(async () => (await fetch('/api/try/session/')).json())
 
-test('① iframe 안 고쳐 보기: 곧바로 편집기(세션 없음) → 노드 바꾸기(세션 생김) → 시험 대화 → iframe 새로고침 뒤 같은 세션', async ({ page }) => {
+test('①-가 iframe 안 고쳐 보기: 곧바로 편집기(세션 없음) → 노드 바꾸기(세션 생김) → iframe 새로고침 뒤 같은 세션·고친 설정', async ({ page }) => {
   const frame = await openParent(page)
   await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
   await expect(frame.getByRole('banner')).toHaveCount(0)
@@ -60,12 +60,6 @@ test('① iframe 안 고쳐 보기: 곧바로 편집기(세션 없음) → 노�
   const before = await sessionOf(page.frame({ url: /flow\.flowtest\.test/ }))
   expect(before?.flow_id).toBeTruthy()
 
-  await aside.getByRole('tab', { name: '시험 대화' }).click()
-  await aside.getByLabel('시험 메시지').fill('안녕하세요')
-  await aside.getByRole('button', { name: '보내기' }).click()
-  const chat = aside.getByRole('region', { name: '시험 대화' })
-  await expect(chat.locator('li').first().locator('[data-reply], :text("사람 넘김 노드에 닿았습니다")').first()).toBeVisible({ timeout: 90_000 })
-
   // iframe 만 새로고침 — 같은 세션, 고친 설정이 남는다
   await page.frame({ url: /flow\.flowtest\.test/ }).evaluate(() => location.reload())
   await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
@@ -73,6 +67,18 @@ test('① iframe 안 고쳐 보기: 곧바로 편집기(세션 없음) → 노�
   await frame.locator('[data-node-id="general"]').click()
   await aside.getByRole('tab', { name: '고급' }).click()
   await expect(aside.locator('#node-config')).toHaveValue(/임베드에서 고침/)
+})
+
+test('①-나 iframe 안 시험 대화: 한 턴을 보내면 답이 온다', async ({ page }) => {
+  const frame = await openParent(page)
+  await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
+  const aside = frame.locator('aside[aria-label="노드 설정"]')
+  await frame.locator('[data-node-id="general"]').click()
+  await aside.getByRole('tab', { name: '시험 대화' }).click()
+  await aside.getByLabel('시험 메시지').fill('안녕하세요')
+  await aside.getByRole('button', { name: '보내기' }).click()
+  const chat = aside.getByRole('region', { name: '시험 대화' })
+  await expect(chat.locator('li').first().locator('[data-reply], :text("사람 넘김 노드에 닿았습니다")').first()).toBeVisible({ timeout: 90_000 })
 })
 
 test('② 세션 없는 iframe 에서 「이 흐름으로 가입」: 새 탭이 signup 을 거쳐 authorize 에 닿고, 그 뒤 iframe 의 세션이 새 탭과 같다', async ({ page, context }) => {

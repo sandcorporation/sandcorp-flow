@@ -59,8 +59,16 @@ test.describe('캔버스 실시간 노드 상태', () => {
     await expect(live(page, 'answer')).toHaveAttribute('data-active', 'true') // 호박색 경로
     await expect(page.locator('.react-flow__edge.animated')).toHaveCount(0) // 턴이 끝나면 흐름 애니메이션은 멈춘다
     await shot(page, 'live-done')
+  })
 
-    // 새 대화는 상태를 비운다
+  test('새 대화는 상태를 비운다', async ({ page }) => {
+    await setup(page, 1600)
+    const aside = page.locator('aside[aria-label="노드 설정"]')
+    await aside.getByRole('tab', { name: '시험 대화' }).click()
+    await aside.getByLabel('시험 메시지').fill('안녕하세요')
+    await aside.getByRole('button', { name: '보내기' }).click()
+    await expect(live(page, 'answer')).toHaveAttribute('data-live', 'done', { timeout: 30_000 })
+    await expect(live(page, 'answer')).toHaveAttribute('data-active', 'true')
     await aside.getByRole('button', { name: '새 대화' }).click()
     await expect(live(page, 'answer')).not.toHaveAttribute('data-live', /.+/)
     await expect(live(page, 'answer')).not.toHaveAttribute('data-active', 'true')

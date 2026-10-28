@@ -84,6 +84,7 @@ for (const [label, width, scheme] of [['1600-light', 1600, 'light'], ['390-dark'
     if (width < 600) await noOverflow(page)
     await shot(page, `claimed-editor-${label}`)
 
+    if (width < 600) return // 목록·세션 정리 확인은 폭과 무관하다 — 1600 시험이 맡는다(#276: 시험당 2초)
     // 테넌트 흐름 목록: 기본 흐름(위젯) 옆에 옮긴 흐름 — 화면을 다시 열지 않고 목록 API로 본다(#257: 3초 한도. 목록 화면은 flow-editor 시험 몫)
     const flows = await page.evaluate(async () => (await (await fetch('/api/tenant/flows/', { headers: { Authorization: `Bearer ${sessionStorage.getItem('agent_access')}` } })).json()))
     expect(flows.map((f) => f.name)).toContain('쇼핑몰 배송·반품 상담')
