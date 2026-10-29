@@ -1,7 +1,7 @@
 """MCP 흐름 도구(#76) — 서비스 층을 감싼 얇은 도구가 권한·테넌트·검증 결과를 MCP 모양으로 돌려주는가.
 
 예제 ① 흐름을 빈 흐름에서 MCP 패치만으로 만들어 저장·배포·시험 한 턴까지 끝까지 돈다.
-외부 경계는 JWKS·시계(`resource_token_fakes`)와 LLM(`fake_chat_llm`)만 대역이다.
+외부 경계는 JWKS·시계(`authkit_fakes`, sandcorp-authkit 대역)와 LLM(`fake_chat_llm`)만 대역이다.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from mcp_helpers import (  # noqa: F401 — clock·signer·flow_validator는 픽
     signer,
     tool_text,
 )
-from resource_token_fakes import Signer
+from authkit_fakes import Signer
 
 EXAMPLE = Path(settings.BASE_DIR) / "apps" / "flows" / "examples" / "sandcorp_home.json"
 WRITE_TOOLS = ["create_flow", "update_flow", "save_version", "deploy_version", "test_turn", "archive_flow"]

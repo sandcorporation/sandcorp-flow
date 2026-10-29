@@ -23,7 +23,7 @@ from django.utils import timezone
 from apps.flows.schema import JSON
 from apps.mcp.models import McpAuditEvent
 from apps.tenants.models import Membership, User
-from apps.tenants.resource_token import AccessToken
+from sandcorp_authkit.tokens import AccessToken
 
 ARGUMENTS_CAP = 4000  # 인자 JSON 문자 수 상한. 넘으면 앞부분만 문자열로 남긴다.
 

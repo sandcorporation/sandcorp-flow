@@ -16,7 +16,7 @@ from apps.mcp.registry import ToolError
 from apps.tenants.members import active_memberships
 from apps.tenants.permissions import FLOW_EDIT, has_permission
 from apps.tenants.models import Membership, User
-from apps.tenants.resource_token import AccessToken
+from sandcorp_authkit.tokens import AccessToken
 
 
 class TenantArgs(BaseModel):

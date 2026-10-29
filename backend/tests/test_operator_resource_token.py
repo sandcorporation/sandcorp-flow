@@ -8,17 +8,8 @@ JWKS·시계만 결정적 대역이고, 나머지(검증기·Ninja·DB)는 진�
 import pytest
 from django.test import Client
 
-from apps.tenants import resource_token
-from resource_token_fakes import (
-    MEMBER_SUB,
-    OWNER,
-    FakeJwksEndpoint,
-    FrozenClock,
-    Signer,
-    make_validator,
-    new_signer,
-    public_jwk,
-)
+from apps.tenants import authkit
+from authkit_fakes import MEMBER_SUB, OWNER, FakeJwks, FixedClock, Signer, use_fake_jwks
 
 META = "https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource"
 NO_TOKEN = f'Bearer resource_metadata="{META}"'
@@ -27,25 +18,23 @@ NEED_ADMIN = 'Bearer error="insufficient_scope", scope="admin"'
 
 
 @pytest.fixture
-def clock() -> FrozenClock:
-    return FrozenClock()
+def clock() -> FixedClock:
+    return FixedClock()
 
 
 @pytest.fixture
-def signer(clock: FrozenClock) -> Signer:
-    return new_signer(clock)
+def endpoint() -> FakeJwks:
+    return FakeJwks()
 
 
 @pytest.fixture
-def endpoint(signer: Signer) -> FakeJwksEndpoint:
-    return FakeJwksEndpoint([public_jwk(signer.private_key, signer.kid)])
+def signer(endpoint: FakeJwks, clock: FixedClock) -> Signer:
+    return Signer(endpoint, clock)
 
 
 @pytest.fixture(autouse=True)
-def flow_validator(endpoint: FakeJwksEndpoint, clock: FrozenClock):
-    resource_token.use_validator(make_validator(endpoint, clock))
-    yield
-    resource_token.use_validator(None)
+def flow_validator(monkeypatch: pytest.MonkeyPatch, endpoint: FakeJwks, clock: FixedClock) -> None:
+    use_fake_jwks(monkeypatch, endpoint, clock)
 
 
 def get_tenants(token: str | None = None, *, header: str | None = None):
@@ -153,7 +142,7 @@ def test_wrong_token_is_401_invalid_token(signer: Signer, overrides: dict[str, o
 
 
 @pytest.mark.django_db
-def test_expired_token_is_401_after_the_30_second_leeway(signer: Signer, clock: FrozenClock) -> None:
+def test_expired_token_is_401_after_the_30_second_leeway(signer: Signer, clock: FixedClock) -> None:
     token = signer.token()
     clock.advance(630)
     assert get_tenants(token).status_code == 200
@@ -202,7 +191,7 @@ def test_legacy_operator_jwt_still_opens_the_operator_api(auth_operator: Client)
 
 
 @pytest.mark.django_db
-def test_legacy_token_does_not_fetch_jwks(auth_operator: Client, endpoint: FakeJwksEndpoint) -> None:
+def test_legacy_token_does_not_fetch_jwks(auth_operator: Client, endpoint: FakeJwks) -> None:
     auth_operator.get("/api/operator/tenants/")
 
     assert endpoint.fetches == 0
@@ -216,6 +205,7 @@ def test_protected_resource_metadata_endpoint() -> None:
 
     assert response.status_code == 200
     assert response["Content-Type"] == "application/json"
+    assert response["Access-Control-Allow-Origin"] == "*"  # 브라우저 MCP 클라이언트가 읽는다(sandcorp-authkit)
     assert response.json() == {
         "resource": "https://flow.sandcorp.co.kr/api",
         "authorization_servers": ["https://auth.sandcorp.co.kr"],
@@ -224,15 +214,14 @@ def test_protected_resource_metadata_endpoint() -> None:
     }
 
 
-def test_default_settings_build_the_flow_validator(settings) -> None:
-    resource_token.use_validator(None)
+def test_default_settings_build_the_flow_bearer_config(settings) -> None:
     settings.AUTH_OWNER_SUB = OWNER
 
-    validator = resource_token.get_validator()
+    config = authkit.api_bearer_config()
 
-    assert (validator.issuer, validator.audience, validator.owner_sub) == (
+    assert (config.issuer, config.audience, config.resource_metadata_url) == (
         "https://auth.sandcorp.co.kr",
         "https://flow.sandcorp.co.kr/api",
-        OWNER,
+        META,
     )
     assert settings.AUTH_JWKS_URL == "https://auth.sandcorp.co.kr/.well-known/jwks.json"

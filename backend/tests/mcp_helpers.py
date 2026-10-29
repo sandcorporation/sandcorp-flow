@@ -1,7 +1,7 @@
 """MCP 시험 도우미(#75에서 옮김) — 토큰·호출·테넌트/멤버십·시험용 쓰기 도구.
 
 픽스처(`clock`·`signer`·autouse `flow_validator`·`write_tool`)는 쓰는 시험 모듈에서 import해 둔다.
-외부 경계(JWKS·시계)만 #20 대역(`resource_token_fakes`)으로 바꾸고, 검증기·DB·뷰는 실제 객체다.
+외부 경계(JWKS·시계)만 sandcorp-authkit 대역(`authkit_fakes`)으로 바꾸고, 검증기·DB·뷰는 실제 객체다.
 """
 
 from __future__ import annotations
@@ -16,20 +16,9 @@ from django.test import Client
 from apps.mcp import registry
 from apps.mcp.access import TenantArgs
 from apps.mcp.registry import JSONObject, ToolContext
-from apps.tenants import resource_token
 from apps.tenants.models import Membership, Tenant, User
 from apps.tenants.permissions import FLOW_EDIT
-from resource_token_fakes import (
-    ISSUER,
-    MEMBER_SUB,
-    OWNER,
-    FakeJwksEndpoint,
-    FrozenClock,
-    Signer,
-    make_validator,
-    new_signer,
-    public_jwk,
-)
+from authkit_fakes import ISSUER, MEMBER_SUB, OWNER, FakeJwks, FixedClock, Signer, use_fake_jwks
 
 MCP = "https://flow.sandcorp.co.kr/mcp"
 API = "https://flow.sandcorp.co.kr/api"
@@ -37,21 +26,18 @@ MCP_METADATA = 'Bearer resource_metadata="https://flow.sandcorp.co.kr/.well-know
 
 
 @pytest.fixture
-def clock() -> FrozenClock:
-    return FrozenClock()
+def clock() -> FixedClock:
+    return FixedClock()
 
 
 @pytest.fixture
-def signer(clock: FrozenClock) -> Signer:
-    return new_signer(clock)
+def signer(clock: FixedClock) -> Signer:
+    return Signer(FakeJwks(), clock)
 
 
 @pytest.fixture(autouse=True)
-def flow_validator(signer: Signer, clock: FrozenClock) -> Iterator[None]:
-    endpoint = FakeJwksEndpoint([public_jwk(signer.private_key, signer.kid)])
-    resource_token.use_validator(make_validator(endpoint, clock))
-    yield
-    resource_token.use_validator(None)
+def flow_validator(monkeypatch: pytest.MonkeyPatch, signer: Signer, clock: FixedClock) -> None:
+    use_fake_jwks(monkeypatch, signer.jwks, clock)
 
 
 def mcp_token(signer: Signer, *, sub: str = MEMBER_SUB, scope: str = "flow.read flow.write", **extra: object) -> str:

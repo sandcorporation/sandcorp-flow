@@ -27,10 +27,9 @@ from apps.tenants.refresh_tokens import (
     issue_session, rotate, revoke_all, revoke_session, RefreshRejected,
 )
 from apps.tenants.models import Membership, Operator, Tenant, TenantConfig, TenantInvite
-from apps.tenants.operator_login import (
-    ATTEMPT_MAX_AGE_SECONDS, LoginAttempt, LoginEntry, LoginRejected, MemberLogin, complete_login,
-    start_login,
-)
+from apps.tenants import authkit
+from apps.tenants.members import MemberLogin, member_user, owner_operator
+from sandcorp_authkit.login import ATTEMPT_MAX_AGE_SECONDS, LoginRejected, start_login
 
 operator_router = Router(tags=["operator"])
 tenant_router = Router(tags=["tenant"], auth=member_auth)
@@ -319,10 +318,12 @@ def revoke_tenant_invite(request, invite_id: str):
 
 
 # ── 로그인: sandcorp-auth 기밀 클라이언트(ADR-0028, #21 대표·#40 고객) ──
-# 브라우저 이동(302)이라 생성 클라이언트에 넣지 않는다. 시도(state·PKCE·nonce·초대)는 서명된 httpOnly
-# 쿠키에 맡긴다 — 인가 서버에서 돌아오는 교차 사이트 GET에도 실려야 하므로 SameSite=Lax.
-LOGIN_ATTEMPT_COOKIE = "op_login"
-LOGIN_ATTEMPT_COOKIE_PATH = "/api/auth/callback"
+# 브라우저 이동(302)이라 생성 클라이언트에 넣지 않는다. 검증은 sandcorp-authkit(어댑터 `authkit`)이 한다.
+# 시도(state·PKCE·nonce·초대)는 서명된 httpOnly 쿠키에 맡긴다 — 인가 서버에서 돌아오는 교차 사이트 GET에도
+# 실려야 하므로 SameSite=Lax.
+LoginEntry = Literal["operator", "member"]
+LOGIN_ATTEMPT_COOKIE = authkit.ATTEMPT_COOKIE
+LOGIN_ATTEMPT_COOKIE_PATH = authkit.ATTEMPT_COOKIE_PATH
 # 콜백 뒤 「테넌트 선택」·「온보딩(#41)」을 잇는 서명 표(10분). /api/auth/member/* 에만 실린다.
 MEMBER_TICKET_COOKIE = "member_ticket"
 MEMBER_TICKET_COOKIE_PATH = "/api/auth/member"
@@ -386,14 +387,23 @@ def _member_landing(login: MemberLogin) -> HttpResponseRedirect:
 
 
 def _start(entry: LoginEntry, invite: str | None = None, then: str | None = None) -> HttpResponseRedirect:
+    if invite:
+        entry = "member"  # 초대는 언제나 고객 진입이다
+    extra = {"entry": entry}
+    if invite:
+        extra["invite"] = invite
+    if entry == "member" and then == "try_claim":
+        extra["then"] = "try_claim"
+    scope = authkit.MEMBER_REQUESTED_SCOPE if entry == "member" else authkit.OPERATOR_REQUESTED_SCOPE
+    store = authkit.CookieAttemptStore()
     try:
-        url, attempt = start_login(invite=invite, entry=entry, then=then)
+        url = start_login(authkit.login_config(scope), store, clock=authkit.clock, extra=extra)
     except LoginRejected as exc:
         return _rejected_redirect(attempt_entry=entry, reason=exc.reason)
     response = HttpResponseRedirect(url)
     response.set_cookie(
         LOGIN_ATTEMPT_COOKIE,
-        attempt.dumps(),
+        store.saved,
         max_age=ATTEMPT_MAX_AGE_SECONDS,
         httponly=True,
         secure=not settings.DEBUG,
@@ -426,16 +436,30 @@ def login_authorize_member(request, invite: str | None = None, then: str | None 
 
 @auth_router.get("/callback", auth=None, include_in_schema=False)
 def login_callback(request):
-    attempt = LoginAttempt.loads(request.COOKIES.get(LOGIN_ATTEMPT_COOKIE))
+    """콜백 검증은 패키지(`complete_login`), 진입과 계정 종류 맞추기는 Flow 몫이다(ADR-0028).
+    대표는 `acct` 없음(A1) + `admin`일 때만 Operator가 되고, 고객은 `acct="member"`일 때만 고객 화면으로 간다."""
+    store = authkit.CookieAttemptStore(request.COOKIES.get(LOGIN_ATTEMPT_COOKIE))
     try:
-        outcome = complete_login(request.GET.dict(), attempt)
+        result = authkit.finish_login(request.GET.dict(), store)
     except LoginRejected as exc:
-        return _rejected_redirect(attempt.entry if attempt else "operator", exc.reason)
-    if isinstance(outcome, MemberLogin):
-        return _member_landing(outcome)
+        entry: LoginEntry = "member" if store.taken and store.taken.extra.get("entry") == "member" else "operator"
+        # 만료(`expired`)는 화면이 아는 사유 `state`로 보낸다(「로그인 시도가 만료되었거나 …」).
+        return _rejected_redirect(entry, "state" if exc.reason == "expired" else exc.reason)
+    access, identity = result.access, result.identity
+    if result.extra.get("entry") == "member":
+        if access.acct != "member":
+            return _rejected_redirect("member", "owner")  # 대표는 고객 화면으로 들어오지 않는다
+        then = "try_claim" if result.extra.get("then") == "try_claim" else None
+        user = member_user(settings.AUTH_ISSUER, access.sub, identity)
+        return _member_landing(MemberLogin(user=user, invite=result.extra.get("invite"), then=then))
+    if access.acct is not None:
+        return _rejected_redirect("operator", "member")  # 고객은 관리 화면(Operator)으로 들어오지 않는다
+    if authkit.OPERATOR_SCOPE not in access.scopes:
+        return _rejected_redirect("operator", "admin")
+    operator = owner_operator(settings.AUTH_ISSUER, access.sub, identity)
     response = _login_redirect()
     # Refresh 쿠키 경로는 /api/operator/auth(refresh·logout만 받는다). 콜백 응답에서 심어도 된다.
-    set_refresh_cookie(response, outcome, issue_session(outcome))
+    set_refresh_cookie(response, operator, issue_session(operator))
     return response
 
 

@@ -117,6 +117,7 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
 
 ### GitHub
 - 배포용 시크릿 **불필요** — release 갱신은 내장 `GITHUB_TOKEN`(contents:write).
+- 빌드용 Actions secret **`AUTHKIT_SSH_KEY`**(#282): sandcorp-auth 읽기 전용 deploy key(ed25519)의 개인키. api 빌드만 ssh-agent에 넣어 `build-push-action`에 `ssh: default`로 넘긴다 — `backend/requirements.txt`의 `sandcorp-authkit`(비공개 저장소, git+ssh)을 받는 데 쓴다. 없거나 틀리면 api 빌드가 `Permission denied (publickey)`로 실패한다. Jenkins·`deploy.sh`는 pull만 하므로 키가 필요 없다.
 - A1 pull용 **classic PAT**(`read:packages`)만 A1의 `docker login`에 사용(org면 SSO authorize).
 
 ## 메모리 상한 (`docker-compose.prod.oracle.yml`)

@@ -37,7 +37,7 @@ from mcp_helpers import (  # noqa: F401 — clock·signer·flow_validator·write
     tool_text,
     write_tool,
 )
-from resource_token_fakes import MEMBER_SUB, Signer
+from authkit_fakes import MEMBER_SUB, Signer
 from tests.utils import make_membership, member_token
 
 

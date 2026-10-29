@@ -32,7 +32,7 @@ from mcp_helpers import (  # noqa: F401 — clock·signer·flow_validator는 픽
     signer,
     tool_text,
 )
-from resource_token_fakes import Signer
+from authkit_fakes import Signer
 from tests.utils import make_membership
 
 SIMPLE_OPS = [

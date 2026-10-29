@@ -29,7 +29,7 @@ from mcp_helpers import (  # noqa: F401 — clock·signer·flow_validator는 픽
     signer,
     tool_text,
 )
-from resource_token_fakes import Signer
+from authkit_fakes import Signer
 from test_mcp_flow_tools import SIMPLE_OPS, err, new_flow, ok
 
 DEPLOYERS = ["deploy_version", "rollback_flow"]

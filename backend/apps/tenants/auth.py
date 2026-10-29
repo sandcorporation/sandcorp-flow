@@ -7,7 +7,9 @@ from ninja.security import HttpBearer
 
 if TYPE_CHECKING:
     from apps.tenants.models import Membership
-    from apps.tenants.resource_token import AccessToken
+    from django.http import HttpResponse
+    from sandcorp_authkit.tokens import AccessToken
+
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +45,11 @@ def verify_operator_access_token(token: str) -> Optional[dict]:
 
 
 class ResourceAuthFailed(Exception):
-    """Operator API 거부 — 5절 상태·`WWW-Authenticate` 헤더로 응답한다(config/api.py 처리기)."""
+    """Operator API 거부 — 완성된 5절 응답(상태·`WWW-Authenticate`·`{"detail": …}`)을 싣는다(config/api.py 처리기)."""
 
-    def __init__(self, status: int, www_authenticate: str) -> None:
-        super().__init__(status, www_authenticate)
-        self.status = status
-        self.www_authenticate = www_authenticate
+    def __init__(self, response: "HttpResponse") -> None:
+        super().__init__(response.status_code)
+        self.response = response
 
 
 OPERATOR_SCOPE = "admin"
@@ -59,7 +60,7 @@ class OperatorAuth(HttpBearer):
 
     1. Flow 세션 Access Token(HS256, ADR-0013) — sandcorp-auth 로그인 콜백(#21)이 연 세션.
        대표 `User`에 이어진 Operator만 통과한다. 비밀번호 로그인 시절 토큰(`type=operator`)은 받지 않는다.
-    2. sandcorp-auth Resource Token(ADR-0028): A1을 통과한 대표 토큰(`acct` 없음,
+    2. sandcorp-auth Resource Token(ADR-0028, 검증은 sandcorp-authkit): A1을 통과한 대표 토큰(`acct` 없음,
        sub == AUTH_OWNER_SUB) + `admin` 스코프일 때만 연다. 일반 사용자 토큰(`acct=member`)은
        검증을 통과해도 403이다 — 스코프로 대표 여부를 판단하지 않는다.
 
@@ -67,58 +68,49 @@ class OperatorAuth(HttpBearer):
     """
 
     def __call__(self, request):
-        from apps.tenants.resource_token import get_validator, site_origin, www_authenticate
+        from sandcorp_authkit.django import MissingToken, bearer_token
 
-        value = request.headers.get(self.header)
-        parts = value.split(" ") if value else []
-        if not parts or parts[0].lower() != self.openapi_scheme:  # B1·B2
-            origin = site_origin(get_validator().audience)
-            raise ResourceAuthFailed(401, www_authenticate(origin))
-        return self.authenticate(request, " ".join(parts[1:]))
+        from apps.tenants import authkit
+
+        try:
+            token = bearer_token(request)  # B1·B2
+        except MissingToken as exc:
+            raise ResourceAuthFailed(authkit.operator_denial(request, exc)) from exc
+        return self.authenticate(request, token)
 
     def authenticate(self, request, token: str):
+        from sandcorp_authkit.tokens import TokenRejected
+
+        from apps.tenants import authkit
+        from apps.tenants.members import owner_operator
         from apps.tenants.models import Operator, User
-        from apps.tenants.operator_login import owner_operator
-        from apps.tenants.resource_token import get_validator, site_origin, www_authenticate
 
         payload = verify_operator_access_token(token)
         if payload:
             operator = Operator.objects.filter(id=payload["sub"], user__acct=User.Acct.OWNER).first()
             if operator is None:
-                origin = site_origin(get_validator().audience)
-                raise ResourceAuthFailed(401, www_authenticate(origin, error="invalid_token"))
+                denied = authkit.operator_denial(request, TokenRejected("no owner operator"))
+                raise ResourceAuthFailed(denied)
             return operator
 
-        verified = _verify_operator_resource_token(token)
-        return owner_operator(get_validator().issuer, verified.sub)
+        verified = _verify_operator_resource_token(request)
+        return owner_operator(settings.AUTH_ISSUER, verified.sub)
 
 
-def _verify_operator_resource_token(token: str) -> "AccessToken":
-    from apps.tenants.resource_token import (
-        InsufficientScope,
-        TokenRejected,
-        get_validator,
-        site_origin,
-        www_authenticate,
-    )
+def _verify_operator_resource_token(request) -> "AccessToken":
+    from sandcorp_authkit.django import AuthNotConfigured, MissingToken, authenticate
+    from sandcorp_authkit.tokens import InsufficientScope, TokenRejected
 
-    validator = get_validator()
-    origin = site_origin(validator.audience)
+    from apps.tenants import authkit
+
     try:
-        verified = validator.validate(token, required_scope=OPERATOR_SCOPE)
-    except TokenRejected as exc:
-        logger.info("Resource Token 거부: %s", exc)
-        raise ResourceAuthFailed(401, www_authenticate(origin, error="invalid_token")) from exc
-    except InsufficientScope as exc:
-        logger.info("Resource Token 스코프 부족: %s 필요", exc.required_scope)
-        raise ResourceAuthFailed(
-            403, www_authenticate(origin, error="insufficient_scope", scope=exc.required_scope)
-        ) from exc
-    if verified.acct != "owner":  # 일반 사용자는 스코프와 무관하게 Operator가 아니다
+        verified = authenticate(request, OPERATOR_SCOPE, authkit.api_bearer_config)
+    except (AuthNotConfigured, MissingToken, TokenRejected, InsufficientScope) as exc:
+        raise ResourceAuthFailed(authkit.operator_denial(request, exc)) from exc
+    if verified.acct is not None:  # 일반 사용자는 스코프와 무관하게 Operator가 아니다
         logger.info("Resource Token 거부: 일반 사용자 %s는 Operator가 아님", verified.sub)
-        raise ResourceAuthFailed(
-            403, www_authenticate(origin, error="insufficient_scope", scope=OPERATOR_SCOPE)
-        )
+        denied = authkit.operator_denial(request, InsufficientScope(OPERATOR_SCOPE))
+        raise ResourceAuthFailed(denied)
     return verified
 
 

@@ -13,7 +13,7 @@ import pytest
 
 from apps.tenants.models import Membership
 from mcp_helpers import call, clock, flow_validator, make_tenant, mcp_token, member_of, signer, tool_text  # noqa: F401 — 픽스처
-from resource_token_fakes import Signer
+from authkit_fakes import Signer
 
 GOOD_DAY = {"enabled": True, "start": "09:00", "end": "18:00"}
 BAD_VALUES = [

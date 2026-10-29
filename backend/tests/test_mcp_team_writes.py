@@ -10,7 +10,7 @@ import json
 
 import pytest
 from mcp_helpers import call, clock, flow_validator, make_tenant, mcp_token, member_of, post, rpc, signer, tool_text  # noqa: F401
-from resource_token_fakes import Signer
+from authkit_fakes import Signer
 
 from apps.mcp.models import McpAuditEvent
 from apps.tenants.members import create_invite

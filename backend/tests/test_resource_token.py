@@ -1,5 +1,7 @@
 """sandcorp-auth Resource Token 검증 규칙(B·T1~T10·A1~A3·S1·J1~J5·5절) — ADR-0028 「고객 토큰 검증」.
 
+검증은 sandcorp-authkit(#282)이 하고, Flow의 몫은 어댑터(`apps.tenants.authkit`)가 넘기는 설정 — 발급자·리소스·
+계정 규칙(`owner_or_member`)이다. 이 시험은 그 설정으로 규칙이 그대로 지켜지는지 본다(옮기기 전 시험 그대로).
 실제 Ed25519 키로 서명하고, JWKS는 결정적 대역(또는 로컬 HTTP 서버), 시계는 고정한다.
 """
 
@@ -11,70 +13,91 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import jwt
 import pytest
 
-from apps.tenants.resource_token import (
+from apps.tenants import authkit
+from authkit_fakes import FLOW, ISSUER, MEMBER_SUB, OWNER, FakeJwks, FixedClock, Signer, use_fake_jwks
+from sandcorp_authkit.django import BearerConfig
+from sandcorp_authkit.resource import protected_resource_metadata, www_authenticate
+from sandcorp_authkit.testing import SigningKey, public_jwk
+from sandcorp_authkit.tokens import (
     AccessToken,
     InsufficientScope,
     JwksCache,
-    JwkSet,
-    ResourceTokenValidator,
     TokenRejected,
     http_jwks_fetcher,
-    protected_resource_metadata,
-    site_origin,
-    www_authenticate,
-)
-from resource_token_fakes import (
-    FLOW,
-    ISSUER,
-    MEMBER_SUB,
-    OWNER,
-    FakeJwksEndpoint,
-    FrozenClock,
-    Signer,
-    make_validator,
-    new_signer,
-    public_jwk,
+    owner_or_member,
+    validate_access_token,
 )
 
 
 @pytest.fixture
-def clock() -> FrozenClock:
-    return FrozenClock()
+def clock() -> FixedClock:
+    return FixedClock()
 
 
 @pytest.fixture
-def signer(clock: FrozenClock) -> Signer:
-    return new_signer(clock)
+def endpoint() -> FakeJwks:
+    return FakeJwks(SigningKey(kid="key-a"))
 
 
 @pytest.fixture
-def endpoint(signer: Signer) -> FakeJwksEndpoint:
-    return FakeJwksEndpoint([public_jwk(signer.private_key, signer.kid)])
+def signer(endpoint: FakeJwks, clock: FixedClock) -> Signer:
+    return Signer(endpoint, clock)
 
 
 @pytest.fixture
-def validator(endpoint: FakeJwksEndpoint, clock: FrozenClock) -> ResourceTokenValidator:
-    return make_validator(endpoint, clock)
+def validator(monkeypatch: pytest.MonkeyPatch, endpoint: FakeJwks, clock: FixedClock) -> BearerConfig:
+    """운영과 같은 어댑터 설정(API 리소스) — JWKS·시계만 대역."""
+    use_fake_jwks(monkeypatch, endpoint, clock)
+    return authkit.api_bearer_config()
 
 
-def check(validator: ResourceTokenValidator, token: str, scope: str = "admin") -> AccessToken:
-    return validator.validate(token, required_scope=scope)
+def new_signer(clock: FixedClock, kid: str) -> Signer:
+    return Signer(FakeJwks(SigningKey(kid=kid)), clock)
+
+
+def make_validator(jwks: JwksCache, clock: FixedClock, *, owner_sub: str = OWNER) -> BearerConfig:
+    return BearerConfig(
+        issuer=ISSUER,
+        audience=FLOW,
+        resource_metadata_url=authkit.api_metadata_url(),
+        jwks=jwks,
+        clock=clock,
+        extra_claims_hook=owner_or_member(owner_sub),
+    )
+
+
+def published(*jwks: dict[str, str]) -> FakeJwks:
+    endpoint = FakeJwks()
+    endpoint.document = {"keys": list(jwks)}
+    return endpoint
+
+
+def check(validator: BearerConfig, token: str, scope: str = "admin") -> AccessToken:
+    return validate_access_token(
+        token,
+        issuer=validator.issuer,
+        audience=validator.audience,
+        required_scope=scope,
+        jwks=validator.jwks,
+        clock=validator.clock,
+        extra_claims_hook=validator.extra_claims_hook,
+    )
 
 
 # ── 통과 ──────────────────────────────────────────────────────────────────────
 
 
-def test_owner_admin_token_passes(signer: Signer, validator: ResourceTokenValidator) -> None:
+def test_owner_admin_token_passes(signer: Signer, validator: BearerConfig) -> None:
     token = check(validator, signer.token())
 
-    assert (token.sub, token.acct) == (OWNER, "owner")
+    assert (token.sub, token.acct) == (OWNER, None)
     assert token.client_id == "client-123"
     assert token.scopes == frozenset({"admin", "login"})
     assert token.jti == "jti-1"
 
 
 def test_member_token_passes_the_account_rules(
-    signer: Signer, validator: ResourceTokenValidator
+    signer: Signer, validator: BearerConfig
 ) -> None:
     token = check(validator, signer.member_token(), scope="login")
 
@@ -85,12 +108,12 @@ def test_member_token_passes_the_account_rules(
 
 
 @pytest.mark.parametrize("token", ["", "not-a-jwt", "a.b", "a.b.c", "!!!.e30.sig"])
-def test_malformed_token_is_rejected(validator: ResourceTokenValidator, token: str) -> None:
+def test_malformed_token_is_rejected(validator: BearerConfig, token: str) -> None:
     with pytest.raises(TokenRejected):
         check(validator, token)
 
 
-def test_alg_none_is_rejected(signer: Signer, validator: ResourceTokenValidator) -> None:
+def test_alg_none_is_rejected(signer: Signer, validator: BearerConfig) -> None:
     _, payload, _ = signer.token().split(".")
     none_header = base64.urlsafe_b64encode(b'{"alg":"none","kid":"key-a"}').rstrip(b"=").decode()
 
@@ -99,25 +122,25 @@ def test_alg_none_is_rejected(signer: Signer, validator: ResourceTokenValidator)
 
 
 def test_hs256_signed_with_the_public_key_is_rejected(
-    signer: Signer, endpoint: FakeJwksEndpoint, validator: ResourceTokenValidator
+    signer: Signer, endpoint: FakeJwks, validator: BearerConfig
 ) -> None:
     forged = jwt.encode(
-        signer.claims(), endpoint.keys[0]["x"], algorithm="HS256", headers={"kid": signer.kid}
+        signer.claims(), endpoint.key.jwk()["x"], algorithm="HS256", headers={"kid": signer.jwks.key.kid}
     )
 
     with pytest.raises(TokenRejected):
         check(validator, forged)
 
 
-def test_token_without_kid_is_rejected(signer: Signer, validator: ResourceTokenValidator) -> None:
-    token = jwt.encode(signer.claims(), signer.private_key, algorithm="EdDSA")
+def test_token_without_kid_is_rejected(signer: Signer, validator: BearerConfig) -> None:
+    token = jwt.encode(signer.claims(), signer.jwks.key.private, algorithm="EdDSA")
 
     with pytest.raises(TokenRejected):
         check(validator, token)
 
 
 def test_signature_by_another_key_with_the_same_kid_is_rejected(
-    clock: FrozenClock, validator: ResourceTokenValidator
+    clock: FixedClock, validator: BearerConfig
 ) -> None:
     impostor = new_signer(clock, kid="key-a")
 
@@ -130,7 +153,7 @@ def test_signature_by_another_key_with_the_same_kid_is_rejected(
 
 @pytest.mark.parametrize("claim", ["iss", "sub", "aud", "client_id", "scope", "iat", "exp", "jti"])
 def test_missing_required_claim_is_rejected(
-    signer: Signer, validator: ResourceTokenValidator, claim: str
+    signer: Signer, validator: BearerConfig, claim: str
 ) -> None:
     with pytest.raises(TokenRejected):
         check(validator, signer.token(**{claim: None}))
@@ -148,14 +171,14 @@ def test_missing_required_claim_is_rejected(
     ],
 )
 def test_claim_with_the_wrong_type_is_rejected(
-    signer: Signer, validator: ResourceTokenValidator, overrides: dict[str, object]
+    signer: Signer, validator: BearerConfig, overrides: dict[str, object]
 ) -> None:
     with pytest.raises(TokenRejected):
         check(validator, signer.token(**overrides))
 
 
 @pytest.mark.parametrize("iss", [ISSUER + "/", "https://evil.example", "https://AUTH.sandcorp.co.kr"])
-def test_other_issuer_is_rejected(signer: Signer, validator: ResourceTokenValidator, iss: str) -> None:
+def test_other_issuer_is_rejected(signer: Signer, validator: BearerConfig, iss: str) -> None:
     with pytest.raises(TokenRejected):
         check(validator, signer.token(iss=iss))
 
@@ -165,14 +188,14 @@ def test_other_issuer_is_rejected(signer: Signer, validator: ResourceTokenValida
     [FLOW + "/", "https://FLOW.sandcorp.co.kr/api", "https://news.sandcorp.co.kr/mcp", [FLOW]],
 )
 def test_other_audience_is_rejected(
-    signer: Signer, validator: ResourceTokenValidator, aud: object
+    signer: Signer, validator: BearerConfig, aud: object
 ) -> None:
     with pytest.raises(TokenRejected):
         check(validator, signer.token(aud=aud))
 
 
 def test_expiry_allows_30_seconds_of_leeway_then_rejects(
-    signer: Signer, validator: ResourceTokenValidator, clock: FrozenClock
+    signer: Signer, validator: BearerConfig, clock: FixedClock
 ) -> None:
     token = signer.token()
 
@@ -185,7 +208,7 @@ def test_expiry_allows_30_seconds_of_leeway_then_rejects(
 
 
 def test_iat_in_the_future_is_not_compared(
-    signer: Signer, validator: ResourceTokenValidator, clock: FrozenClock
+    signer: Signer, validator: BearerConfig, clock: FixedClock
 ) -> None:
     now = int(clock.now().timestamp())
 
@@ -196,7 +219,7 @@ def test_iat_in_the_future_is_not_compared(
 
 
 def test_token_without_acct_must_have_the_owner_sub(
-    signer: Signer, validator: ResourceTokenValidator
+    signer: Signer, validator: BearerConfig
 ) -> None:
     for sub in ["someone-else", MEMBER_SUB, OWNER.upper(), f" {OWNER}"]:
         with pytest.raises(TokenRejected):
@@ -204,9 +227,9 @@ def test_token_without_acct_must_have_the_owner_sub(
 
 
 def test_empty_owner_sub_setting_rejects_every_owner_token(
-    signer: Signer, endpoint: FakeJwksEndpoint, clock: FrozenClock
+    signer: Signer, endpoint: FakeJwks, clock: FixedClock
 ) -> None:
-    validator = make_validator(endpoint, clock, owner_sub="")
+    validator = make_validator(endpoint.cache(clock), clock, owner_sub="")
 
     with pytest.raises(TokenRejected):
         check(validator, signer.token(sub=""))
@@ -214,7 +237,7 @@ def test_empty_owner_sub_setting_rejects_every_owner_token(
 
 @pytest.mark.parametrize("acct", ["owner", "Member", "MEMBER", "admin", "", 1, ["member"], None])
 def test_acct_other_than_member_is_rejected(
-    signer: Signer, validator: ResourceTokenValidator, acct: object
+    signer: Signer, validator: BearerConfig, acct: object
 ) -> None:
     claims = signer.claims(sub=MEMBER_SUB, scope="login")
     claims["acct"] = acct  # None도 「있는데 null」로 싣는다
@@ -236,7 +259,7 @@ def test_acct_other_than_member_is_rejected(
     ],
 )
 def test_member_token_needs_a_member_sub(
-    signer: Signer, validator: ResourceTokenValidator, sub: str
+    signer: Signer, validator: BearerConfig, sub: str
 ) -> None:
     with pytest.raises(TokenRejected):
         check(validator, signer.member_token(sub=sub), scope="login")
@@ -247,7 +270,7 @@ def test_member_token_needs_a_member_sub(
 
 @pytest.mark.parametrize("scope", ["login", "administrator", "admins", "Admin", "", "  "])
 def test_missing_scope_is_forbidden_not_unauthorized(
-    signer: Signer, validator: ResourceTokenValidator, scope: str
+    signer: Signer, validator: BearerConfig, scope: str
 ) -> None:
     with pytest.raises(InsufficientScope) as raised:
         check(validator, signer.token(scope=scope), scope="admin")
@@ -255,7 +278,7 @@ def test_missing_scope_is_forbidden_not_unauthorized(
 
 
 def test_scope_is_split_on_single_spaces_dropping_empty_pieces(
-    signer: Signer, validator: ResourceTokenValidator
+    signer: Signer, validator: BearerConfig
 ) -> None:
     token = check(validator, signer.token(scope="  login   admin "))
 
@@ -263,7 +286,7 @@ def test_scope_is_split_on_single_spaces_dropping_empty_pieces(
 
 
 def test_member_token_without_the_scope_is_insufficient(
-    signer: Signer, validator: ResourceTokenValidator
+    signer: Signer, validator: BearerConfig
 ) -> None:
     with pytest.raises(InsufficientScope):
         check(validator, signer.member_token(), scope="admin")
@@ -273,20 +296,20 @@ def test_member_token_without_the_scope_is_insufficient(
 
 
 def test_unknown_kid_refetches_jwks_once_then_passes(
-    signer: Signer, endpoint: FakeJwksEndpoint, validator: ResourceTokenValidator, clock: FrozenClock
+    signer: Signer, endpoint: FakeJwks, validator: BearerConfig, clock: FixedClock
 ) -> None:
     check(validator, signer.token())
     assert endpoint.fetches == 1
 
     rotated = new_signer(clock, kid="key-b")
-    endpoint.keys.append(public_jwk(rotated.private_key, rotated.kid))
+    endpoint.serve(*endpoint.keys, rotated.jwks.key)
 
     check(validator, rotated.token())
     assert endpoint.fetches == 2
 
 
 def test_unknown_kid_refetch_is_limited_to_once_per_60_seconds(
-    signer: Signer, endpoint: FakeJwksEndpoint, validator: ResourceTokenValidator, clock: FrozenClock
+    signer: Signer, endpoint: FakeJwks, validator: BearerConfig, clock: FixedClock
 ) -> None:
     check(validator, signer.token())
     stranger = new_signer(clock, kid="key-unknown")
@@ -308,7 +331,7 @@ def test_unknown_kid_refetch_is_limited_to_once_per_60_seconds(
 
 
 def test_jwks_is_refetched_after_the_10_minute_ttl(
-    signer: Signer, endpoint: FakeJwksEndpoint, validator: ResourceTokenValidator, clock: FrozenClock
+    signer: Signer, endpoint: FakeJwks, validator: BearerConfig, clock: FixedClock
 ) -> None:
     check(validator, signer.token())
     clock.advance(599)
@@ -321,43 +344,39 @@ def test_jwks_is_refetched_after_the_10_minute_ttl(
 
 
 def test_key_dropped_from_jwks_is_dropped_from_the_cache(
-    signer: Signer, endpoint: FakeJwksEndpoint, validator: ResourceTokenValidator, clock: FrozenClock
+    signer: Signer, endpoint: FakeJwks, validator: BearerConfig, clock: FixedClock
 ) -> None:
     check(validator, signer.token())
-    endpoint.keys.clear()
+    endpoint.serve()
     clock.advance(600)
 
     with pytest.raises(TokenRejected):
         check(validator, signer.token())
 
 
-def test_only_ed25519_signing_keys_are_used(signer: Signer, clock: FrozenClock) -> None:
-    good = public_jwk(signer.private_key, signer.kid)
+def test_only_ed25519_signing_keys_are_used(signer: Signer, clock: FixedClock) -> None:
+    good = public_jwk(signer.jwks.key.private, signer.jwks.key.kid)
     for bad in [{"alg": "RS256"}, {"use": "enc"}, {"crv": "X25519"}, {"kty": "EC"}]:
-        endpoint = FakeJwksEndpoint([{**good, **bad}])  # type: ignore[list-item]  # 일부러 틀린 JWK
-        with pytest.raises(TokenRejected):
-            check(make_validator(endpoint, clock), signer.token())
+        with pytest.raises(TokenRejected):  # 일부러 틀린 JWK
+            check(make_validator(published({**good, **bad}).cache(clock), clock), signer.token())
 
     without_optional = {k: v for k, v in good.items() if k not in ("alg", "use")}
-    endpoint = FakeJwksEndpoint([without_optional])  # type: ignore[list-item]  # alg·use는 선택
-    check(make_validator(endpoint, clock), signer.token())
+    check(make_validator(published(without_optional).cache(clock), clock), signer.token())  # alg·use는 선택
 
 
 def test_failed_jwks_fetch_keeps_the_cached_keys_and_waits_60_seconds(
-    signer: Signer, endpoint: FakeJwksEndpoint, clock: FrozenClock
+    signer: Signer, endpoint: FakeJwks, clock: FixedClock
 ) -> None:
     calls = 0
 
-    def flaky() -> JwkSet:
+    def flaky() -> object:
         nonlocal calls
         calls += 1
         if calls > 1:
             raise OSError("auth server down")
         return endpoint()
 
-    validator = ResourceTokenValidator(
-        jwks=JwksCache(flaky, clock), issuer=ISSUER, audience=FLOW, owner_sub=OWNER, clock=clock
-    )
+    validator = make_validator(JwksCache(flaky, clock), clock)
     check(validator, signer.token())
     clock.advance(600)
 
@@ -406,48 +425,43 @@ def jwks_server():
     server.close()
 
 
-def test_http_fetcher_reads_the_jwks(jwks_server: _JwksServer, signer: Signer, clock: FrozenClock) -> None:
-    jwks_server.body = json.dumps({"keys": [public_jwk(signer.private_key, signer.kid)]}).encode()
-    validator = ResourceTokenValidator(
-        jwks=JwksCache(http_jwks_fetcher(jwks_server.url), clock),
-        issuer=ISSUER,
-        audience=FLOW,
-        owner_sub=OWNER,
-        clock=clock,
-    )
+def test_http_fetcher_reads_the_jwks(jwks_server: _JwksServer, signer: Signer, clock: FixedClock) -> None:
+    jwks_server.body = json.dumps({"keys": [public_jwk(signer.jwks.key.private, signer.jwks.key.kid)]}).encode()
+    validator = make_validator(JwksCache(http_jwks_fetcher(jwks_server.url), clock), clock)
 
     assert check(validator, signer.token()).sub == OWNER
 
 
 @pytest.mark.parametrize(("status", "body"), [(500, b'{"keys": []}'), (200, b"not json"), (200, b"[]")])
-def test_http_fetcher_raises_on_bad_responses(
-    jwks_server: _JwksServer, status: int, body: bytes
+def test_http_fetcher_bad_responses_are_failed_fetches(
+    jwks_server: _JwksServer, signer: Signer, clock: FixedClock, status: int, body: bytes
 ) -> None:
+    """2xx 아님·JSON 깨짐·키 집합 아님은 조회 실패(J4) — 키가 없으니 토큰은 거부된다."""
     jwks_server.status, jwks_server.body = status, body
+    validator = make_validator(JwksCache(http_jwks_fetcher(jwks_server.url), clock), clock)
 
-    with pytest.raises(Exception):
-        http_jwks_fetcher(jwks_server.url)()
+    with pytest.raises(TokenRejected):
+        check(validator, signer.token())
 
 
 # ── 실패 응답 헤더(5절)·메타데이터(6절) ───────────────────────────────────────
 
 
 def test_www_authenticate_header_values() -> None:
-    origin = site_origin(FLOW)
-    meta = "https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource"
+    meta = authkit.api_metadata_url()
 
-    assert origin == "https://flow.sandcorp.co.kr"
-    assert www_authenticate(origin) == f'Bearer resource_metadata="{meta}"'
-    assert www_authenticate(origin, error="invalid_token") == (
+    assert meta == "https://flow.sandcorp.co.kr/.well-known/oauth-protected-resource"
+    assert www_authenticate(meta) == f'Bearer resource_metadata="{meta}"'
+    assert www_authenticate(meta, error="invalid_token") == (
         f'Bearer resource_metadata="{meta}", error="invalid_token"'
     )
-    assert www_authenticate(origin, error="insufficient_scope", scope="admin") == (
+    assert www_authenticate(meta, error="insufficient_scope", scope="admin") == (
         'Bearer error="insufficient_scope", scope="admin"'
     )
 
 
 def test_protected_resource_metadata_shape() -> None:
-    assert protected_resource_metadata(resource=FLOW, issuer=ISSUER) == {
+    assert protected_resource_metadata(FLOW, ISSUER, authkit.API_SCOPES) == {
         "resource": "https://flow.sandcorp.co.kr/api",
         "authorization_servers": ["https://auth.sandcorp.co.kr"],
         "scopes_supported": ["admin", "login"],

@@ -4,7 +4,7 @@
 Bearer의 테넌트이고 Admin(``flow.edit``)이어야 한다. 새 가입자는 기존 온보딩(``/api/auth/member/tenants``)으로
 테넌트를 만든 뒤 그 세션으로 옮긴다. 옮기면 사본이 새 흐름(초안, 배포 안 함)으로 들어가고 체험 테넌트·세션은 지워진다.
 
-sandcorp-auth만 토큰 엔드포인트 대역(``FakeAuthorizationServer``). DB·쿠키·Ninja 엔드포인트·서비스는 실제다.
+sandcorp-auth만 토큰 엔드포인트 대역(``FlowAuthServer``). DB·쿠키·Ninja 엔드포인트·서비스는 실제다.
 """
 from __future__ import annotations
 
@@ -16,8 +16,8 @@ import pytest
 from django.test import Client
 from django.utils import timezone
 
-from operator_login_fakes import FakeAuthorizationServer
-from resource_token_fakes import MEMBER_SUB
+from authkit_fakes import FlowAuthServer
+from authkit_fakes import MEMBER_SUB
 from test_member_login import landing, login, new_tenant
 from test_operator_login import clock, flow_client, server, signer  # noqa: F401 — 픽스처 재사용
 from tests.utils import make_membership, member_token

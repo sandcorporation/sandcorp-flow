@@ -62,6 +62,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # api만: backend/requirements.txt의 sandcorp-authkit(비공개 sandcorp-auth)을 git+ssh로 받는다(#282).
+      # AUTHKIT_SSH_KEY는 sandcorp-auth 읽기 전용 deploy key의 개인키다. agent에만 넣고 파일로 두지 않는다.
+      - name: sandcorp-auth deploy key를 ssh-agent에 넣는다
+        if: matrix.image == 'api'
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.AUTHKIT_SSH_KEY }}
+
       - id: meta
         uses: docker/metadata-action@v5
         with:
@@ -77,6 +85,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # api만 agent 소켓을 BuildKit에 넘긴다(Dockerfile의 RUN --mount=type=ssh). admin·widget은 빈 값.
+          ssh: ${{ matrix.image == 'api' && 'default' || '' }}
           # 러너 재시작에도 캐시 보존 — GHCR :buildcache 태그에 layer 캐시 저장/재사용.
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/sandcorp-flow-${{ matrix.image }}:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/sandcorp-flow-${{ matrix.image }}:buildcache,mode=max

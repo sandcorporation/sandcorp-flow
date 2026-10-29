@@ -27,7 +27,7 @@ from mcp_helpers import (  # noqa: F401 — clock·signer·flow_validator는 픽
     signer,
     tool_text,
 )
-from resource_token_fakes import Signer
+from authkit_fakes import Signer
 
 READ_TOOLS = ["list_documents", "search_knowledge", "list_sessions", "get_session"]
 

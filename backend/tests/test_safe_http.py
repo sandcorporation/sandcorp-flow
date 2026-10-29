@@ -659,9 +659,8 @@ APPS = Path(__file__).resolve().parent.parent / "apps"
 NETWORK_MODULES = ("httpx", "requests", "urllib.request", "http.client", "aiohttp", "urllib3", "socket")
 # 이 계층 밖에서 네트워크 모듈을 import해도 되는 곳 — 플랫폼이 정한 고정 주소만 부르거나 예외 타입만 쓴다.
 # 테넌트가 넣은 URL(웹 문서·웹훅·custom Provider)을 부르는 곳은 여기 없다(#108) — 새 외부 호출은 apps.core.safe_http 로.
+# 플랫폼 인증 서버(JWKS·token_url, 설정값)는 sandcorp-authkit 패키지가 부른다(#282) — apps/ 밖이라 이 목록에 없다.
 LEGACY_NETWORK_IMPORTERS = {
-    "tenants/operator_login.py",  # 플랫폼 인증 서버 token_url(설정값)
-    "tenants/resource_token.py",  # 플랫폼 인증 서버 JWKS(설정값)
     "usage/price_check.py",  # 고정 주소(LiteLLM 단가 파일)와 운영자 env 경보 웹훅 — 테넌트 입력 없음(#236)
     "rag/tasks.py",  # httpx 예외 타입만(재시도 대상) — 연결은 safe_http 가 연다
 }

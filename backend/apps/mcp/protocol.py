@@ -26,7 +26,7 @@ from apps.mcp.registry import (
 )
 from apps.flows.schema import JSON
 from apps.tenants.models import Membership
-from apps.tenants.resource_token import AccessToken, InsufficientScope
+from sandcorp_authkit.tokens import AccessToken, InsufficientScope
 
 logger = logging.getLogger(__name__)
 
