@@ -1,6 +1,6 @@
 """MCP 서버 뼈대(#75, 스펙 #74 결정 1~5) — `/mcp`·보호 리소스 메타데이터·테넌트/역할 판정.
 
-외부 경계(JWKS·시계)만 #20 대역(`resource_token_fakes`)으로 바꾸고, 검증기·DB·뷰는 실제 객체다. 도우미는 `mcp_helpers`.
+외부 경계(JWKS·시계)만 sandcorp-authkit 대역(`authkit_fakes`)으로 바꾸고, 검증기·DB·뷰는 실제 객체다. 도우미는 `mcp_helpers`.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from mcp_helpers import (  # noqa: F401 — clock·signer·flow_validator·write
     tool_text,
     write_tool,
 )
-from resource_token_fakes import ISSUER, OWNER, Signer
+from authkit_fakes import ISSUER, OWNER, Signer
 
 
 # ── 보호 리소스 메타데이터 ─────────────────────────────────────────────────────
@@ -42,6 +42,7 @@ def test_mcp_metadata_names_the_mcp_resource_and_flow_scopes() -> None:
     response = Client().get("/.well-known/oauth-protected-resource/mcp")
 
     assert response.status_code == 200
+    assert response["Access-Control-Allow-Origin"] == "*"  # 브라우저 MCP 클라이언트가 읽는다(sandcorp-authkit)
     assert response.json() == {
         "resource": MCP,
         "authorization_servers": [ISSUER],
@@ -67,6 +68,17 @@ def test_no_token_is_401_pointing_at_mcp_metadata() -> None:
 
     assert response.status_code == 401
     assert response["WWW-Authenticate"] == MCP_METADATA
+
+
+@pytest.mark.django_db
+def test_token_is_taken_as_sent_without_trimming(signer: Signer) -> None:
+    """sandcorp-authkit은 토큰 앞뒤 공백을 지우지 않는다(#282 바뀐 동작) — `Bearer  <토큰>`은 토큰 ` <토큰>`이다."""
+    token = mcp_token(signer, scope="flow.read")
+
+    assert post(rpc("ping"), token).status_code == 200
+    response = post(rpc("ping"), headers={"Authorization": f"Bearer  {token}"})
+    assert response.status_code == 401
+    assert response["WWW-Authenticate"] == MCP_METADATA + ', error="invalid_token"'
 
 
 @pytest.mark.django_db

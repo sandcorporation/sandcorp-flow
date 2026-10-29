@@ -9,7 +9,7 @@ def _operator_login(client):
     """sandcorp-auth 콜백(#21, test_operator_login.py)이 연 세션과 같은 상태를 만든다: 대표 Operator +
     Refresh Family + 쿠키. 돌려주는 값은 그 세션의 Access Token."""
     from apps.tenants.auth import create_operator_access_token
-    from apps.tenants.operator_login import owner_operator
+    from apps.tenants.members import owner_operator
     from apps.tenants.refresh_tokens import issue_session
 
     op = owner_operator("https://auth.sandcorp.co.kr", "farrar142")

@@ -11,51 +11,44 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 from django.test import Client
 
-from apps.tenants import operator_login, resource_token
-from operator_login_fakes import (
+from authkit_fakes import (
     AUTHORIZE_URL,
     CLIENT_ID,
     CLIENT_SECRET,
-    REDIRECT_URI,
-    TOKEN_URL,
-    FakeAuthorizationServer,
-)
-from resource_token_fakes import (
     FLOW,
     ISSUER,
     MEMBER_SUB,
     OWNER,
-    FakeJwksEndpoint,
-    FrozenClock,
+    REDIRECT_URI,
+    TOKEN_URL,
+    FakeJwks,
+    FixedClock,
+    FlowAuthServer,
     Signer,
-    make_validator,
-    new_signer,
-    public_jwk,
+    flow_auth_server,
+    use_fake_jwks,
 )
 
 ADMIN_HOME = "/admin-ui/operator"
 
 
 @pytest.fixture
-def clock() -> FrozenClock:
-    return FrozenClock()
+def clock() -> FixedClock:
+    return FixedClock()
 
 
 @pytest.fixture
-def signer(clock: FrozenClock) -> Signer:
-    return new_signer(clock)
+def signer(clock: FixedClock) -> Signer:
+    return Signer(FakeJwks(), clock)
 
 
 @pytest.fixture
-def server(signer: Signer):
-    fake = FakeAuthorizationServer(signer)
-    operator_login.use_token_endpoint(fake)
-    yield fake
-    operator_login.use_token_endpoint(None)
+def server(monkeypatch: pytest.MonkeyPatch, signer: Signer, clock: FixedClock) -> FlowAuthServer:
+    return flow_auth_server(monkeypatch, signer.jwks, clock)
 
 
 @pytest.fixture(autouse=True)
-def flow_client(settings, signer: Signer, clock: FrozenClock):
+def flow_client(settings, monkeypatch: pytest.MonkeyPatch, signer: Signer, clock: FixedClock) -> None:
     settings.AUTH_CLIENT_ID = CLIENT_ID
     settings.AUTH_CLIENT_SECRET = CLIENT_SECRET
     settings.AUTH_REDIRECT_URI = REDIRECT_URI
@@ -63,10 +56,7 @@ def flow_client(settings, signer: Signer, clock: FrozenClock):
     settings.AUTH_TOKEN_URL = TOKEN_URL
     settings.AUTH_RESOURCE = FLOW
     settings.AUTH_LOGIN_REDIRECT = ADMIN_HOME
-    endpoint = FakeJwksEndpoint([public_jwk(signer.private_key, signer.kid)])
-    resource_token.use_validator(make_validator(endpoint, clock))
-    yield
-    resource_token.use_validator(None)
+    use_fake_jwks(monkeypatch, signer.jwks, clock)
 
 
 def start(client: Client) -> str:
@@ -142,7 +132,7 @@ def test_login_is_refused_until_the_client_is_registered(settings) -> None:
 
 
 @pytest.mark.django_db
-def test_owner_with_admin_gets_a_flow_session(server: FakeAuthorizationServer) -> None:
+def test_owner_with_admin_gets_a_flow_session(server: FlowAuthServer) -> None:
     from apps.tenants.models import Operator, RefreshToken, User
 
     client = Client()
@@ -164,7 +154,7 @@ def test_owner_with_admin_gets_a_flow_session(server: FakeAuthorizationServer) -
 
 
 @pytest.mark.django_db
-def test_session_opens_the_operator_api(server: FakeAuthorizationServer) -> None:
+def test_session_opens_the_operator_api(server: FlowAuthServer) -> None:
     client = Client()
     callback(client, server.approve(start(client)))
 
@@ -178,7 +168,7 @@ def test_session_opens_the_operator_api(server: FakeAuthorizationServer) -> None
 
 @pytest.mark.django_db
 def test_logging_in_again_reuses_the_same_user_and_refreshes_the_profile(
-    server: FakeAuthorizationServer,
+    server: FlowAuthServer,
 ) -> None:
     from apps.tenants.models import Operator, User
 
@@ -197,7 +187,7 @@ def test_logging_in_again_reuses_the_same_user_and_refreshes_the_profile(
 
 
 @pytest.mark.django_db
-def test_logout_ends_the_flow_session(server: FakeAuthorizationServer) -> None:
+def test_logout_ends_the_flow_session(server: FlowAuthServer) -> None:
     client = Client()
     callback(client, server.approve(start(client)))
 
@@ -211,7 +201,7 @@ def test_logout_ends_the_flow_session(server: FakeAuthorizationServer) -> None:
 
 
 @pytest.mark.django_db
-def test_owner_without_admin_scope_is_refused(server: FakeAuthorizationServer) -> None:
+def test_owner_without_admin_scope_is_refused(server: FlowAuthServer) -> None:
     from apps.tenants.models import Operator
 
     client = Client()
@@ -223,7 +213,7 @@ def test_owner_without_admin_scope_is_refused(server: FakeAuthorizationServer) -
 
 
 @pytest.mark.django_db
-def test_member_through_the_operator_entry_is_refused(server: FakeAuthorizationServer) -> None:
+def test_member_through_the_operator_entry_is_refused(server: FlowAuthServer) -> None:
     """관리 화면(Operator) 진입에 일반 사용자 — ADR-0028대로 Operator가 아니다. 고객 진입은 test_member_login.py."""
     from apps.tenants.models import Membership, Operator
 
@@ -236,7 +226,7 @@ def test_member_through_the_operator_entry_is_refused(server: FakeAuthorizationS
 
 
 @pytest.mark.django_db
-def test_member_cannot_pretend_with_admin_scope(server: FakeAuthorizationServer) -> None:
+def test_member_cannot_pretend_with_admin_scope(server: FlowAuthServer) -> None:
     from apps.tenants.models import Operator
 
     client = Client()
@@ -247,7 +237,7 @@ def test_member_cannot_pretend_with_admin_scope(server: FakeAuthorizationServer)
 
 
 @pytest.mark.django_db
-def test_someone_else_without_acct_is_not_the_owner(server: FakeAuthorizationServer) -> None:
+def test_someone_else_without_acct_is_not_the_owner(server: FlowAuthServer) -> None:
     client = Client()
     query = server.approve(start(client), sub="not-the-owner")
 
@@ -255,7 +245,7 @@ def test_someone_else_without_acct_is_not_the_owner(server: FakeAuthorizationSer
 
 
 @pytest.mark.django_db
-def test_token_without_login_scope_is_refused(server: FakeAuthorizationServer) -> None:
+def test_token_without_login_scope_is_refused(server: FlowAuthServer) -> None:
     client = Client()
     query = server.approve(start(client), flow_scope="admin")
 
@@ -263,7 +253,7 @@ def test_token_without_login_scope_is_refused(server: FakeAuthorizationServer) -
 
 
 @pytest.mark.django_db
-def test_denied_consent_comes_back_as_a_refusal(server: FakeAuthorizationServer) -> None:
+def test_denied_consent_comes_back_as_a_refusal(server: FlowAuthServer) -> None:
     client = Client()
     state = parse_qs(urlsplit(start(client)).query)["state"][0]
 
@@ -278,7 +268,7 @@ def test_denied_consent_comes_back_as_a_refusal(server: FakeAuthorizationServer)
 
 @pytest.mark.django_db
 def test_state_mismatch_is_refused_without_exchanging_the_code(
-    server: FakeAuthorizationServer,
+    server: FlowAuthServer,
 ) -> None:
     client = Client()
     query = server.approve(start(client))
@@ -290,14 +280,14 @@ def test_state_mismatch_is_refused_without_exchanging_the_code(
 
 
 @pytest.mark.django_db
-def test_callback_without_the_attempt_cookie_is_refused(server: FakeAuthorizationServer) -> None:
+def test_callback_without_the_attempt_cookie_is_refused(server: FlowAuthServer) -> None:
     query = server.approve(start(Client()))
 
     assert rejected_with(callback(Client(), query)) == "state"  # 다른 브라우저로 넘어온 콜백
 
 
 @pytest.mark.django_db
-def test_tampered_attempt_cookie_is_refused(server: FakeAuthorizationServer) -> None:
+def test_tampered_attempt_cookie_is_refused(server: FlowAuthServer) -> None:
     client = Client()
     query = server.approve(start(client))
     client.cookies["op_login"] = client.cookies["op_login"].value + "x"
@@ -306,16 +296,16 @@ def test_tampered_attempt_cookie_is_refused(server: FakeAuthorizationServer) -> 
 
 
 @pytest.mark.django_db
-def test_expired_attempt_is_refused(server: FakeAuthorizationServer, monkeypatch) -> None:
+def test_expired_attempt_is_refused(server: FlowAuthServer, clock: FixedClock) -> None:
     client = Client()
     query = server.approve(start(client))
-    monkeypatch.setattr(operator_login, "ATTEMPT_MAX_AGE_SECONDS", -1)
+    clock.advance(601)  # 시도 나이 600초(패키지 ATTEMPT_MAX_AGE_SECONDS) — 사유 expired는 화면의 state로
 
     assert rejected_with(callback(client, query)) == "state"
 
 
 @pytest.mark.django_db
-def test_code_injected_into_another_attempt_fails_pkce(server: FakeAuthorizationServer) -> None:
+def test_code_injected_into_another_attempt_fails_pkce(server: FlowAuthServer) -> None:
     """공격자가 자기 로그인의 코드를 피해자의 콜백(피해자 state)에 끼워 넣는 경우."""
     attacker = Client()
     stolen = server.approve(start(attacker))
@@ -329,7 +319,7 @@ def test_code_injected_into_another_attempt_fails_pkce(server: FakeAuthorization
 
 
 @pytest.mark.django_db
-def test_code_cannot_be_used_twice(server: FakeAuthorizationServer) -> None:
+def test_code_cannot_be_used_twice(server: FlowAuthServer) -> None:
     client = Client()
     url = start(client)
     attempt_cookie_before = client.cookies["op_login"].value
@@ -353,7 +343,7 @@ def test_code_cannot_be_used_twice(server: FakeAuthorizationServer) -> None:
     ],
     ids=["nonce-mismatch", "nonce-missing", "aud", "iss", "sub-mismatch", "expired"],
 )
-def test_bad_id_token_is_refused(server: FakeAuthorizationServer, overrides) -> None:
+def test_bad_id_token_is_refused(server: FlowAuthServer, overrides) -> None:
     client = Client()
     query = server.approve(start(client), id_token_overrides=overrides)
 
@@ -361,7 +351,7 @@ def test_bad_id_token_is_refused(server: FakeAuthorizationServer, overrides) -> 
 
 
 @pytest.mark.django_db
-def test_wrong_client_secret_fails_the_exchange(server: FakeAuthorizationServer, settings) -> None:
+def test_wrong_client_secret_fails_the_exchange(server: FlowAuthServer, settings) -> None:
     client = Client()
     url = start(client)
     settings.AUTH_CLIENT_SECRET = "wrong"

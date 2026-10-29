@@ -1,6 +1,7 @@
 """고객(일반 사용자) 멤버십·초대·테넌트 선택 — deep module (#40, ADR-0028 「고객 토큰 검증」).
 
 - `member_user(iss, sub, identity)`      : 일반 사용자 `User(iss, sub)`를 찾거나 만들고 프로필 캐시를 갱신한다.
+- `owner_operator(iss, sub, identity)`   : 대표 `User(iss, sub)`와 거기 이은 `Operator`를 찾거나 만든다(#21).
 - `active_memberships(user)`             : 지금 세션을 열 수 있는 멤버십(멤버십·Tenant 모두 활성).
 - `create_invite(tenant, role, by)`      : 초대 링크 발급 → (초대 행, 원문 토큰). 원문은 이때 한 번만 나온다.
 - `accept_invite(user, raw)`             : 초대를 써서 멤버십을 만든다. 만료·재사용·폐기·없음은 `InviteRejected`.
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Literal
 
@@ -22,11 +24,11 @@ from django.core import signing
 from django.db import transaction
 from django.utils import timezone
 
-from apps.tenants.models import Membership, Tenant, TenantInvite, User
+from apps.tenants.models import Membership, Operator, Tenant, TenantInvite, User
 from apps.tenants.refresh_tokens import revoke_all
 
 if TYPE_CHECKING:
-    from apps.tenants.operator_login import IdentityClaims
+    from sandcorp_authkit.login import IdentityClaims
 
 INVITE_LIFETIME = timedelta(days=7)
 TICKET_MAX_AGE_SECONDS = 600
@@ -54,6 +56,40 @@ def member_user(iss: str, sub: str, identity: IdentityClaims | None = None) -> U
             user.email_verified = identity.get("email_verified")
             user.save(update_fields=["name", "email", "email_verified", "updated_at"])
     return user
+
+
+LoginThen = Literal["try_claim"]
+"""고객 로그인 뒤 이어서 할 일 — ``try_claim``: 체험 사본 옮기기(#42). 콜백이 표(ticket)를 주고 옮기기 화면으로 보낸다."""
+
+
+@dataclass(frozen=True)
+class MemberLogin:
+    """검증을 통과한 일반 사용자. `invite`는 초대 링크로 시작한 로그인의 원문 토큰."""
+
+    user: User
+    invite: str | None
+    then: LoginThen | None = None
+
+
+def owner_operator(iss: str, sub: str, identity: IdentityClaims | None = None) -> Operator:
+    """대표 `User(iss, sub)`를 찾거나 만들고(프로필 캐시 갱신), 거기 이은 Operator를 돌려준다."""
+    with transaction.atomic():
+        user, _ = User.objects.get_or_create(
+            iss=iss, sub=sub, defaults={"acct": User.Acct.OWNER}
+        )
+        if identity is not None:
+            user.name = identity.get("name")
+            user.email = identity.get("email")
+            user.email_verified = identity.get("email_verified")
+            user.save(update_fields=["name", "email", "email_verified", "updated_at"])
+        operator = Operator.objects.filter(user=user).first()
+        if operator is None:
+            operator, op_created = Operator.objects.get_or_create(username=sub)
+            if op_created:
+                operator.set_unusable_password()
+            operator.user = user
+            operator.save()
+    return operator
 
 
 def active_memberships(user: User) -> list[Membership]:

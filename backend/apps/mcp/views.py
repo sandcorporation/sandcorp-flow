@@ -1,7 +1,7 @@
 """`/mcp` 전송(Streamable HTTP의 JSON 응답 모드, 세션 없음)과 `/.well-known/oauth-protected-resource/mcp`.
 
 POST 한 메시지 → JSON 한 답. 알림은 202, GET 등은 405, 배치는 400, 본문 상한 초과는 413.
-인증은 MCP 리소스 검증기(`get_mcp_validator`, aud=`AUTH_MCP_RESOURCE`)로 `flow.read`가 기본이고, 도구마다 더 필요한
+인증은 sandcorp-authkit(어댑터 `authkit.mcp_bearer_config`, aud=`AUTH_MCP_RESOURCE`)로 `flow.read`가 기본이고, 도구마다 더 필요한
 스코프는 `tools/call`에서 본다(모자라면 403 `insufficient_scope`).
 """
 
@@ -25,28 +25,20 @@ from apps.mcp.protocol import (
     is_notification,
 )
 from apps.mcp.registry import MCP_SCOPES
-from apps.tenants.resource_token import (
-    AccessToken,
-    InsufficientScope,
-    TokenRejected,
-    get_mcp_validator,
-    protected_resource_metadata,
-    site_origin,
-    www_authenticate,
+from apps.tenants import authkit
+from sandcorp_authkit.django import (
+    AuthNotConfigured,
+    MissingToken,
+    authenticate,
+    deny,
+    metadata_response,
 )
+from sandcorp_authkit.tokens import AccessToken, InsufficientScope, TokenRejected
 
 logger = logging.getLogger(__name__)
 
-MCP_METADATA_PATH = "/.well-known/oauth-protected-resource/mcp"
 MAX_BODY_BYTES = 1024 * 1024
 BASE_SCOPE = "flow.read"
-
-
-def _auth_failed(status: int, header: str) -> HttpResponse:
-    body = {"error": "unauthorized" if status == 401 else "forbidden"}
-    response = JsonResponse(body, status=status)
-    response["WWW-Authenticate"] = header
-    return response
 
 
 def _rpc_error(status: int, code: int, message: str) -> JsonResponse:
@@ -54,19 +46,12 @@ def _rpc_error(status: int, code: int, message: str) -> JsonResponse:
 
 
 async def _authenticate(request: HttpRequest) -> AccessToken | HttpResponse:
-    validator = get_mcp_validator()
-    origin = site_origin(validator.audience)
-    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
-    if scheme.lower() != "bearer" or not token.strip():  # B1·B2
-        return _auth_failed(401, www_authenticate(origin, metadata_path=MCP_METADATA_PATH))
+    config = authkit.mcp_bearer_config()
     try:
         # JWKS 조회가 동기 HTTP라 스레드에서 돈다.
-        return await sync_to_async(validator.validate)(token.strip(), required_scope=BASE_SCOPE)
-    except TokenRejected as exc:
-        logger.info("MCP token rejected: %s", exc)
-        return _auth_failed(401, www_authenticate(origin, error="invalid_token", metadata_path=MCP_METADATA_PATH))
-    except InsufficientScope as exc:
-        return _auth_failed(403, www_authenticate(origin, error="insufficient_scope", scope=exc.required_scope))
+        return await sync_to_async(authenticate)(request, BASE_SCOPE, config)
+    except (AuthNotConfigured, MissingToken, TokenRejected, InsufficientScope) as exc:
+        return deny(request, exc, resource_metadata_url=config.resource_metadata_url)
 
 
 @csrf_exempt
@@ -100,17 +85,13 @@ async def mcp_endpoint(request: HttpRequest) -> HttpResponse:
         return HttpResponse(status=202)
 
     try:
-        answer = await dispatch(message, token=token, issuer=get_mcp_validator().issuer)
+        answer = await dispatch(message, token=token, issuer=settings.AUTH_ISSUER)
     except InsufficientScope as exc:
-        origin = site_origin(get_mcp_validator().audience)
-        return _auth_failed(403, www_authenticate(origin, error="insufficient_scope", scope=exc.required_scope))
+        return deny(request, exc, resource_metadata_url=authkit.mcp_bearer_config().resource_metadata_url)
     return JsonResponse(answer)
 
 
 @require_GET
 def oauth_protected_resource_mcp(request: HttpRequest) -> JsonResponse:
     """RFC 9728 경로별 메타데이터 — MCP 리소스. 인증 없음."""
-    body = protected_resource_metadata(
-        resource=get_mcp_validator().audience, issuer=settings.AUTH_ISSUER, scopes=MCP_SCOPES
-    )
-    return JsonResponse(body)
+    return metadata_response(settings.AUTH_MCP_RESOURCE, settings.AUTH_ISSUER, MCP_SCOPES)

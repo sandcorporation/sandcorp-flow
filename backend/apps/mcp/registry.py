@@ -41,7 +41,7 @@ from pydantic import BaseModel, Field, create_model
 
 from apps.flows.schema import JSON
 from apps.tenants.models import Membership
-from apps.tenants.resource_token import AccessToken
+from sandcorp_authkit.tokens import AccessToken
 
 type JSONObject = dict[str, JSON]
 Scope = Literal["flow.read", "flow.write", "flow.deploy", "flow.admin"]

@@ -24,7 +24,7 @@ from django.core.management.base import BaseCommand, CommandParser
 from apps.tenants.auth import create_member_access_token
 from apps.tenants.members import InviteRejected, accept_invite, member_user
 from apps.tenants.models import Membership, Tenant, TenantConfig, User
-from apps.tenants.operator_login import IdentityClaims
+from sandcorp_authkit.login import IdentityClaims
 
 
 class Command(BaseCommand):

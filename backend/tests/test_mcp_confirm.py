@@ -36,7 +36,7 @@ from mcp_helpers import (  # noqa: F401 — clock·signer·flow_validator는 픽
     signer,
     tool_text,
 )
-from resource_token_fakes import FrozenClock, Signer
+from authkit_fakes import FixedClock, Signer
 
 OTHER_SUB = "m_01JB2Z3Y4X5W6V7T8S9R0Q1P2M"
 TOOL = "test_confirm_write"
@@ -54,7 +54,7 @@ class _Calls:
 
 
 @pytest.fixture(autouse=True)
-def confirm_clock(clock: FrozenClock) -> Iterator[None]:
+def confirm_clock(clock: FixedClock) -> Iterator[None]:
     confirm.use_clock(clock)
     yield
     confirm.use_clock(None)
@@ -156,7 +156,7 @@ def test_forged_token_is_refused(signer: Signer, calls: _Calls) -> None:
 
 
 @pytest.mark.django_db
-def test_expired_token_is_refused(signer: Signer, clock: FrozenClock, calls: _Calls) -> None:
+def test_expired_token_is_refused(signer: Signer, clock: FixedClock, calls: _Calls) -> None:
     _admin_tenant()
     out = _preview(mcp_token(signer), {"name": "doc-1"})
 

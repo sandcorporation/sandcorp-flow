@@ -27,11 +27,9 @@ def _flow_service_error(request: HttpRequest, exc: FlowServiceError) -> HttpResp
 
 @api.exception_handler(ResourceAuthFailed)
 def _resource_auth_failed(request: HttpRequest, exc: ResourceAuthFailed) -> HttpResponse:
-    """Operator API 거부(sandcorp-auth 규칙 5절). 거부 이유는 응답에 싣지 않는다(로그에만)."""
-    detail = "Unauthorized" if exc.status == 401 else "Forbidden"
-    response = api.create_response(request, {"detail": detail}, status=exc.status)
-    response["WWW-Authenticate"] = exc.www_authenticate
-    return response
+    """Operator API 거부(sandcorp-auth 규칙 5절). 응답은 어댑터(`authkit.operator_denial`)가 만든다 —
+    거부 이유는 응답에 싣지 않는다(로그에만)."""
+    return exc.response
 
 api.add_router("/", core_router)
 api.add_router("/auth", auth_router)

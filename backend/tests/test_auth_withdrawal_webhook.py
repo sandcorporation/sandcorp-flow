@@ -87,7 +87,7 @@ def test_user_deleted_forgets_the_user_and_revokes_sessions() -> None:
 @pytest.mark.django_db
 def test_owner_sub_is_never_removed() -> None:
     from apps.tenants.models import Operator
-    from apps.tenants.operator_login import owner_operator
+    from apps.tenants.members import owner_operator
 
     owner_operator(ISS, "farrar142")
 

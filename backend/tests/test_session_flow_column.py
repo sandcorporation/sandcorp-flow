@@ -13,7 +13,7 @@ from apps.chat.models import ChatSession
 from apps.escalation.models import Escalation
 from apps.flows import services as flow_services
 from mcp_helpers import call, clock, flow_validator, make_tenant, member_of, mcp_token, signer, tool_text  # noqa: F401
-from resource_token_fakes import Signer
+from authkit_fakes import Signer
 
 
 def _auth(token: str) -> dict[str, str]:

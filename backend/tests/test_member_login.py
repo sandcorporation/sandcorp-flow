@@ -1,6 +1,6 @@
 """#40 — 고객(일반 사용자) 로그인·멤버십·초대 링크·break-glass.
 
-sandcorp-auth는 외부 경계라 토큰 엔드포인트만 대역(`FakeAuthorizationServer`, 실제 Ed25519 서명)으로
+sandcorp-auth는 외부 경계라 토큰 엔드포인트만 대역(`FlowAuthServer`, 실제 Ed25519 서명)으로
 바꾸고, 콜백·검증기·DB·쿠키·Ninja 엔드포인트는 실제로 돈다. 브라우저가 겪는 순서대로 시험한다:
 초대 링크(`/api/auth/authorize/member?invite=`) → sandcorp-auth → `/api/auth/callback` → 테넌트 세션.
 """
@@ -15,8 +15,8 @@ import pytest
 from django.test import Client
 from django.utils import timezone
 
-from operator_login_fakes import FakeAuthorizationServer
-from resource_token_fakes import MEMBER_SUB
+from authkit_fakes import FlowAuthServer
+from authkit_fakes import MEMBER_SUB
 from test_operator_login import clock, flow_client, server, signer  # noqa: F401 — 픽스처 재사용
 from tests.utils import make_membership, member_token
 
@@ -31,7 +31,7 @@ def member_home(settings):
 
 def login(
     client: Client,
-    server: FakeAuthorizationServer,
+    server: FlowAuthServer,
     *,
     sub: str = MEMBER_SUB,
     start_url: str = "/api/auth/authorize/member",
@@ -420,7 +420,7 @@ def test_forget_user_removes_memberships_and_sessions_but_keeps_handled_escalati
 def test_forget_user_never_removes_the_owner() -> None:
     from apps.tenants.members import forget_user
     from apps.tenants.models import Operator
-    from apps.tenants.operator_login import owner_operator
+    from apps.tenants.members import owner_operator
 
     owner_operator("https://auth.sandcorp.co.kr", "farrar142")
 

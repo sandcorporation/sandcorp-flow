@@ -1,6 +1,9 @@
 from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.conf import settings
 from django.urls import path
 from django.views.decorators.http import require_GET
+
+from sandcorp_authkit.resource import metadata_path
 
 from apps.mcp.views import mcp_endpoint, oauth_protected_resource_mcp
 from config.api import api
@@ -9,11 +12,11 @@ from config.api import api
 @require_GET
 def oauth_protected_resource(request: HttpRequest) -> JsonResponse:
     """RFC 9728 보호 리소스 메타데이터(sandcorp-auth 규칙 6절). 인증 없음."""
-    from apps.tenants.resource_token import get_validator, protected_resource_metadata
-    from django.conf import settings
+    from sandcorp_authkit.django import metadata_response
 
-    body = protected_resource_metadata(resource=get_validator().audience, issuer=settings.AUTH_ISSUER)
-    return JsonResponse(body)
+    from apps.tenants.authkit import API_SCOPES
+
+    return metadata_response(settings.AUTH_RESOURCE, settings.AUTH_ISSUER, API_SCOPES)
 
 
 @require_GET
@@ -36,5 +39,5 @@ urlpatterns = [
     path(".well-known/oauth-protected-resource", oauth_protected_resource),
     # MCP 서버(#74): API와 다른 리소스(aud …/mcp)라 메타데이터도 경로별(RFC 9728 3.1).
     path("mcp", mcp_endpoint),
-    path(".well-known/oauth-protected-resource/mcp", oauth_protected_resource_mcp),
+    path(metadata_path(settings.AUTH_MCP_RESOURCE).removeprefix("/"), oauth_protected_resource_mcp),
 ]

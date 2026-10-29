@@ -25,7 +25,7 @@ from mcp_helpers import (  # noqa: F401 — 픽스처
     signer,
     tool_text,
 )
-from resource_token_fakes import Signer
+from authkit_fakes import Signer
 
 ADMIN_SCOPES = "flow.read flow.write flow.admin"
 

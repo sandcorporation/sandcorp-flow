@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 from mcp_helpers import call, clock, flow_validator, mcp_token, member_of, make_tenant, signer  # noqa: F401
-from resource_token_fakes import Signer
+from authkit_fakes import Signer
 
 from apps.flows import services
 from apps.flows.models import DeployRequest

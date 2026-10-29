@@ -10,7 +10,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandParser
 
 from apps.tenants.auth import create_operator_access_token
-from apps.tenants.operator_login import owner_operator
+from apps.tenants.members import owner_operator
 
 
 class Command(BaseCommand):

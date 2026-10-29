@@ -37,7 +37,7 @@ from pydantic import BaseModel, ValidationError
 
 from apps.mcp.models import McpConfirmUse
 from apps.mcp.registry import CONFIRM_FIELD, DESCRIPTION_SUFFIX, ToolError
-from apps.tenants.resource_token import Clock, SystemClock
+from sandcorp_authkit.tokens import Clock, SystemClock
 
 __all__ = ["CONFIRM_FIELD", "DESCRIPTION_SUFFIX", "TTL_SECONDS", "Binding", "issue", "verify", "spend", "use_clock"]
 

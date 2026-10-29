@@ -304,7 +304,7 @@ def client():
 def operator_token(client, db):
     # sandcorp-auth 로그인 콜백(#21)이 연 Flow 세션의 Access Token과 같다.
     from apps.tenants.auth import create_operator_access_token
-    from apps.tenants.operator_login import owner_operator
+    from apps.tenants.members import owner_operator
 
     return create_operator_access_token(owner_operator("https://auth.sandcorp.co.kr", "admin"))
 
