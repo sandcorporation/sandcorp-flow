@@ -1,6 +1,6 @@
 {
   "typeCheckingMode": "basic",
-  "pythonVersion": "3.12",
+  "pythonVersion": "3.14",
   "include": ["apps", "config", "tests"],
   "exclude": ["**/migrations/**", "**/__pycache__/**", ".venv"],
   "reportMissingTypeStubs": false
