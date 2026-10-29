@@ -197,7 +197,7 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 
 | 영역 | 사양 |
 |------|------|
-| 백엔드 | Python 3.12, Django 5 + Django-Ninja (전면 async), **uvicorn ASGI**, **taskiq**(chat 워커) + Celery 5(배치 워커) |
+| 백엔드 | Python 3.14, Django 6.1 + Django-Ninja 1.7 (전면 async), **uvicorn ASGI**, **taskiq**(chat 워커) + Celery 5(배치 워커) |
 | LLM 오케스트레이션 | LangChain + LangGraph (PostgresSaver 체크포인트) |
 | LLM Provider | **per-Tenant** — OpenAI / Claude(Anthropic 네이티브) / Custom(OpenAI-호환). 미설정 시 플랫폼 기본(OpenRouter). 챗·추출 공용, 키 암호화 저장 |
 | Embedding Provider | **per-Tenant**(LLM과 독립) — OpenAI/Custom, OpenAI-호환 `/v1/embeddings`. dev 기본은 결정적 가짜(`fake_llm`, 1024차원), `--profile ollama`로 `bge-m3`(Ollama) |
