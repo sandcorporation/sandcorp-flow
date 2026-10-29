@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -8,9 +9,16 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
+    git \
+    openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt requirements-dev.txt ./
-RUN pip install --no-cache-dir -r requirements-dev.txt
+# sandcorp-authkit은 비공개 저장소(git+ssh)라 BuildKit ssh 전달(`--ssh default`)로 받는다.
+# known_hosts는 이 RUN 안에서만 쓰고 지운다 — 키는 소켓으로만 오고 레이어에 남지 않는다.
+RUN --mount=type=ssh mkdir -p -m 0700 /root/.ssh \
+    && ssh-keyscan -t ed25519 github.com > /root/.ssh/known_hosts 2>/dev/null \
+    && pip install --no-cache-dir -r requirements-dev.txt \
+    && rm -rf /root/.ssh
 
 COPY . .

@@ -27,7 +27,9 @@ services:
   # Neo4j는 제거됨(ADR-0021) — GraphRAG는 Postgres+pgvector(GraphStore)로 흡수.
 
   api:
-    build: ./backend
+    build:
+      context: ./backend
+      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
     # uvicorn ASGI(전면 async, ADR-0022) — async ninja view + async SSE generator를 네이티브로
     # 서빙한다. gunicorn gevent 폐기(블로킹-허브 병 원천 제거).
     command: uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 4
@@ -39,7 +41,9 @@ services:
         condition: service_healthy
 
   worker:
-    build: ./backend
+    build:
+      context: ./backend
+      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
     command: celery -A config.celery worker --loglevel=info
     env_file: .env
     depends_on:
@@ -52,7 +56,9 @@ services:
   # 노드가 async라 한 이벤트루프가 동시 다수 chat을 IO 대기 중 yield하며 처리(--max-async-tasks).
   # 무거운 배치(Celery worker)와 프로세스가 분리돼 chat이 굶지 않는다. 처리량은 replica로 확장.
   worker-chat:
-    build: ./backend
+    build:
+      context: ./backend
+      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
     command: taskiq worker config.taskiq_worker:broker --workers 2 --max-async-tasks 25
     env_file: .env
     depends_on:
@@ -65,7 +71,9 @@ services:
   # relay는 outbox 순서 보존을 위해 단일 인스턴스(스케일 금지). 소비자는 group별 독립
   # 프로세스라 장애·부하가 격리되고 필요 시 각자 replica로 확장한다(presence-bridge는 150).
   relay:
-    build: ./backend
+    build:
+      context: ./backend
+      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
     command: python manage.py relay
     env_file: .env
     depends_on:
@@ -75,7 +83,9 @@ services:
         condition: service_healthy
 
   worker-webhook:
-    build: ./backend
+    build:
+      context: ./backend
+      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
     command: python manage.py consume_events --group=webhook
     env_file: .env
     depends_on:
@@ -85,7 +95,9 @@ services:
         condition: service_healthy
 
   worker-visitor-bridge:
-    build: ./backend
+    build:
+      context: ./backend
+      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
     command: python manage.py consume_events --group=visitor-bridge
     env_file: .env
     depends_on:
@@ -95,7 +107,9 @@ services:
         condition: service_healthy
 
   worker-console-bridge:
-    build: ./backend
+    build:
+      context: ./backend
+      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
     command: python manage.py consume_events --group=console-bridge
     env_file: .env
     depends_on:
@@ -105,7 +119,9 @@ services:
         condition: service_healthy
 
   worker-presence-bridge:
-    build: ./backend
+    build:
+      context: ./backend
+      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
     command: python manage.py consume_events --group=presence-bridge --topic=signals.presence
     env_file: .env
     depends_on:
