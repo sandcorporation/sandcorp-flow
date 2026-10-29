@@ -11,9 +11,14 @@
 - 테스트는 독립적이어야 합니다. 다른 테스트에 의존하지 마세요.
 - **고정 시간 대기 금지, 사건을 기다리세요.** `waitForTimeout`·`networkidle`·`setTimeout`/`sleep` 대신 web-first 단언, `waitForResponse`(동작 전에 걸기), `e2e/tests/settle.js`의 `settled`(화면 가라앉음)·`trackRequests().idle()`(요청 끝남), vitest는 `findBy*`/`waitFor`/`admin/src/flushAsync.ts`를 쓰세요. `scripts/lint-fixed-waits.sh`(pre-commit 훅)가 막고, 정말 사건이 없을 때만 같은 줄 끝에 `// wait-ok: 이유`로 풉니다. fake 지연 마커(`[[delay:N]]`)는 의도된 지연이라 해당 없습니다.
 
+# 인증
+
+- 인증 코드는 sandcorp-authkit에서, 이 저장소에는 어댑터 한 파일(`backend/apps/tenants/authkit.py`)만. 시험 대역은 `sandcorp_authkit.testing`이고 Flow 기본값만 `backend/tests/authkit_fakes.py`에 둔다(#282).
+
 # 테스트 실행 (무조건 Docker)
 
 - **모든 테스트는 Docker 컨테이너에서 실행합니다. 호스트에서 직접 `pytest`/`vitest`/`npm test`를 돌리지 마세요.** 호스트엔 DB(Postgres+pgvector)·Redis·fake-llm이 없어 결과를 신뢰할 수 없습니다.
+- **이미지 빌드에 ssh-agent가 필요하다**: backend 이미지는 비공개 `sandcorp-authkit`을 git+ssh로 받는다. `scripts/test.sh`(시험 이미지를 처음 빌드할 때)와 e2e의 `docker compose -f docker-compose.test.yml build`는 compose `ssh: [default]`로 내 ssh-agent를 넘기므로, sandcorp-auth를 읽을 수 있는 키를 먼저 `ssh-add`한다(`ssh-add -l`이 비면 빌드가 `Permission denied (publickey)`로 실패한다).
 - **백엔드**: `bash scripts/test.sh` (전체) 또는 `bash scripts/test.sh tests/test_xxx.py[::test_fn]` (특정 대상). 이 스크립트가 `docker-compose.test.yml`로 필요한 인프라(db·redis·fake-llm)를 띄우고 종료 시 정리합니다. ollama는 기본으로 뜨지 않습니다(임베딩은 가짜). OCR은 테넌트 Vision Provider라 컨테이너가 없고 시험은 `transcribe_image` Fake입니다.
 - **프론트(admin/widget)**: Docker node 컨테이너에서 vitest 실행. 예) `docker compose -f docker-compose.dev.yml run --rm --no-deps admin sh -c "npm install && npm run test:run"`. (vitest는 jsdom+fetch mock이라 백엔드 인프라가 불필요하므로 `--no-deps`로 `api` 의존만 건너뛰는 것은 정상입니다.)
 - **백엔드에선 테스트가 요구하는 인프라(DB·Redis·fake-llm)를 건너뛰지 마세요.** 일부만 띄우고 돌리면(`--no-deps` 등) 통과처럼 보여도 인프라 의존 테스트가 조용히 실패·누락됩니다. 백엔드 검증은 항상 `scripts/test.sh`로 풀스택에서.
