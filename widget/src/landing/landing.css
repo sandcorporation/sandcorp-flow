@@ -156,3 +156,5 @@ html, body { margin: 0; background: var(--color-canvas); }
   .head-nav { gap: 12px; }
   .lead { font-size: 16px; }
 }
+.footer-madeby { margin-top: 6px; font-size: 12px; }
+.footer-madeby a { color: var(--color-muted); }

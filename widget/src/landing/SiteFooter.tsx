@@ -28,6 +28,7 @@ export default function SiteFooter() {
           <span>개인정보보호책임자 {BUSINESS.privacyOfficer}</span>
         </div>
         <div className="footer-copy">© {new Date().getFullYear()} {BUSINESS.name}. All rights reserved.</div>
+        <div className="footer-madeby"><a href="https://sandcorp.co.kr/?utm_source=flow&utm_medium=footer">Made by Sandcorp</a></div>
       </div>
     </footer>
   )
