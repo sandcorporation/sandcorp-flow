@@ -24,6 +24,11 @@ test('랜딩: 체험 CTA·템플릿 링크·로그인 링크·문의 링크', as
   await expect(page.getByRole('link', { name: /^운영자 로그인/ })).toHaveAttribute('href', '/admin-ui/')
   await expect(page.getByRole('link', { name: /^테넌트 로그인/ })).toHaveAttribute('href', '/admin-ui/tenant')
   await expect(page.getByRole('link', { name: /도입이 궁금하면 문의/ })).toHaveAttribute('href', 'https://sandcorp.co.kr/#home-inquiry')
+  // Made by Sandcorp(#288): 서버 HTML 사전 삽입분은 마운트 때 걷히고 React 푸터의 링크 하나만 남는다.
+  const madeBy = page.getByRole('link', { name: 'Made by Sandcorp' })
+  await expect(madeBy).toHaveCount(1)
+  await expect(madeBy).toHaveAttribute('href', 'https://sandcorp.co.kr/?utm_source=flow&utm_medium=footer')
+  await expect(madeBy).not.toHaveAttribute('rel', /.*/)
   await expect(page.locator('main a[href^="mailto:"], main a[href^="tel:"]')).toHaveCount(0)
 
   // 다크 수동 전환

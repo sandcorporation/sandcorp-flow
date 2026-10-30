@@ -54,3 +54,31 @@ describe('약관·처리방침 페이지', () => {
     expect(screen.getByText(/제1조 \(목적\)/)).toBeInTheDocument()
   })
 })
+
+// 빌드 입력 HTML 원문(vite 가 파일 시스템에서 읽는다).
+const pages = import.meta.glob<string>('../../*.html', { query: '?raw', import: 'default', eager: true })
+const pageHtml = (f: string) => pages[`../../${f}.html`]
+
+const MADE_BY = 'https://sandcorp.co.kr/?utm_source=flow&utm_medium=footer'
+
+describe('Made by Sandcorp 링크 (#288)', () => {
+  it('푸터에 utm 주소로 달고 rel(nofollow·sponsored)을 붙이지 않는다', () => {
+    render(<SiteFooter />)
+    const a = screen.getByRole('link', { name: 'Made by Sandcorp' })
+    expect(a).toHaveAttribute('href', MADE_BY)
+    expect(a.hasAttribute('rel')).toBe(false)
+  })
+
+  it('서버 HTML(landing·privacy·terms)의 #root 안에도 같은 링크가 있어 크롤러가 본다', () => {
+    for (const f of ['landing', 'privacy', 'terms']) {
+      const html = pageHtml(f)
+      const root = html.match(/<div id="root">([\s\S]*?)<\/div>\s*<script/)?.[1] ?? ''
+      expect(root, f).toContain(`<a href="${MADE_BY.replace('&', '&amp;')}">Made by Sandcorp</a>`)
+      expect(root, f).not.toMatch(/rel=/)
+    }
+  })
+
+  it('챗봇 위젯 진입 HTML에는 링크가 없다', () => {
+    expect(pageHtml('index')).not.toContain('sandcorp.co.kr')
+  })
+})
