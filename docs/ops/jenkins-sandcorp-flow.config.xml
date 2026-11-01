@@ -1,0 +1,43 @@
+<?xml version="1.1" encoding="UTF-8"?>
+<!-- Jenkins 잡 sandcorp-flow 설정(#293, ADR-0036). freestyle(release 브랜치)에서 파이프라인(main의 Jenkinsfile)으로 바꿀 때 쓴다.
+     트리거·동시 실행 금지·파라미터는 Jenkinsfile이 정하므로 첫 빌드 뒤에 Jenkins가 채운다. 자격은 ID로만 부른다. -->
+<flow-definition plugin="workflow-job">
+  <actions/>
+  <description>Sandcorp Flow 운영 배포 — main push 웹훅 → 이미지 빌드(macos, 못 잡으면 home) → oracle에서 scripts/deploy.sh. Jenkinsfile·docs/deployment.md 참고. 운영 .env는 oracle 호스트의 /var/jenkins_home/workspace/sandcorp-flow/.env.</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <org.jenkinsci.plugins.workflow.job.properties.PipelineTriggersJobProperty>
+      <triggers>
+        <com.cloudbees.jenkins.GitHubPushTrigger plugin="github">
+          <spec></spec>
+        </com.cloudbees.jenkins.GitHubPushTrigger>
+      </triggers>
+    </org.jenkinsci.plugins.workflow.job.properties.PipelineTriggersJobProperty>
+    <org.jenkinsci.plugins.workflow.job.properties.DisableConcurrentBuildsJobProperty>
+      <abortPrevious>false</abortPrevious>
+    </org.jenkinsci.plugins.workflow.job.properties.DisableConcurrentBuildsJobProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition" plugin="workflow-cps">
+    <scm class="hudson.plugins.git.GitSCM" plugin="git">
+      <configVersion>2</configVersion>
+      <userRemoteConfigs>
+        <hudson.plugins.git.UserRemoteConfig>
+          <url>git@github.com:sandcorporation/sandcorp-flow.git</url>
+          <credentialsId>github-farrar142</credentialsId>
+        </hudson.plugins.git.UserRemoteConfig>
+      </userRemoteConfigs>
+      <branches>
+        <hudson.plugins.git.BranchSpec>
+          <name>*/main</name>
+        </hudson.plugins.git.BranchSpec>
+      </branches>
+      <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
+      <submoduleCfg class="empty-list"/>
+      <extensions/>
+    </scm>
+    <scriptPath>Jenkinsfile</scriptPath>
+    <lightweight>true</lightweight>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>

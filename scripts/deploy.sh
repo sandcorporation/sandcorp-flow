@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# oracle(Ampere A1) 무중단 배포 — A1의 Jenkins가 release 브랜치 웹훅을 받아 Execute shell에서 호출한다(ADR-0015).
+# oracle(Ampere A1) 무중단 배포 — Jenkinsfile의 「배포」 단계가 oracle 노드에서 호출한다(ADR-0015·0036).
 #
 # 사용법(원격 A1에서): IMAGE_TAG=<git-sha> bash scripts/deploy.sh <git-sha>
 #
 # 전제(A1 호스트에 1회 준비):
 #   - docker + compose v2 + `docker rollout` 플러그인(https://github.com/wowu/docker-rollout)
 #   - `docker login ghcr.io`(read:packages PAT) — pull 인증, ~/.docker/config.json에 영속
-#   - 배포 디렉터리 = Jenkins 잡 워크스페이스(SCM 체크아웃이 release SHA에 맞춘 뒤 `cd $WORKSPACE`에서 부른다).
+#   - 배포 디렉터리 = Jenkins 잡 워크스페이스(파이프라인이 그 SHA를 체크아웃한 뒤 워크스페이스에서 부른다).
 #     호스트에 /home/jenkins/agent/workspace → /var/jenkins_home/workspace 심볼릭 링크 전제(상대 bind mount). docs/deployment.md
 #   - .env(SECRET_KEY·DB_PASSWORD·ALLOWED_HOSTS 등, 이름은 .env.prod.example) 호스트에 상주(이미지·git 제외)
 #   - docker-compose.prod.oracle.yml(이미지 GHCR 참조 + ${IMAGE_TAG} 핀)

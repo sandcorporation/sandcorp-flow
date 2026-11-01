@@ -281,9 +281,9 @@ Operator 비밀번호 로그인은 없다(#21). 관리 화면 Operator 로그인
 
 ## 프로덕션 배포
 
-실서버(**oracle A1**, arm64·CPU 전용)는 **무중단 롤링**으로 배포한다 — sub에서 GitHub Actions가
-arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브랜치 웹훅을 받아 `docker rollout`으로
-교체한다. NPM(Nginx Proxy Manager)이 공개 TLS를 종단한다. 운영 주소는 `https://flow.sandcorp.co.kr`,
+실서버(**oracle A1**, arm64·CPU 전용)는 **무중단 롤링**으로 배포한다 — main push를 Jenkins 잡
+`sandcorp-flow`(Jenkinsfile)가 받아 mac(못 잡으면 home)에서 arm64 이미지 3개를 굽고 GHCR에 올린 뒤, 같은 잡이
+oracle에서 `docker rollout`으로 교체한다(ADR-0036). NPM(Nginx Proxy Manager)이 공개 TLS를 종단한다. 운영 주소는 `https://flow.sandcorp.co.kr`,
 배포 경로는 Jenkins 잡 `sandcorp-flow`의 워크스페이스(호스트 `/var/jenkins_home/workspace/sandcorp-flow`), compose 프로젝트는 `sandcorp-flow-prod`다. 이 스택은 공유 박스에서
 도므로 서비스마다 메모리 상한을 둔다(합계 약 3.2G, 표는 deployment.md). 서버 쪽 설정(DNS·NPM·Jenkins
 잡·운영 `.env`)은 deployment.md의 「서버 쪽 할 일」 체크리스트를 따른다.
@@ -420,7 +420,7 @@ arm64 이미지를 빌드해 GHCR에 올리면, A1의 Jenkins가 `release` 브�
 ## 9. 테스트
 
 - **단위/통합**: `docker-compose.test.yml`의 `test` 서비스(pytest). **실제 Postgres(pgvector)·실제 Redis**를 사용(결정적). 비결정적 외부 경계인 **LLM·Vision OCR·임베딩 호출만 결정적 Fake로 교체**합니다(`apps/agent/llm` 경계 + conftest Fake, OCR은 `vision_ocr` 픽스처가 `transcribe_image`를 대체, 임베딩은 아래) — 외부 모델 판단이 아니라 우리 코드 동작을 검증.
-  - **인증 패키지 받기(ssh)**: backend 이미지는 비공개 저장소의 `sandcorp-authkit`을 git+ssh로 받는다(`requirements.txt`). 시험·e2e 이미지 빌드(`scripts/test.sh`가 처음 띄울 때, `docker compose -f docker-compose.test.yml build`)는 compose의 `ssh: [default]`로 **개발자 ssh-agent**를 넘긴다 — sandcorp-auth를 읽을 수 있는 키를 먼저 넣는다(`ssh-add ~/.ssh/<키>`, `ssh-add -l`로 확인). 운영 이미지를 직접 빌드할 때는 `docker build --ssh default backend`. 운영 빌드(GitHub Actions `build-images`)는 secret `AUTHKIT_SSH_KEY`(sandcorp-auth 읽기 전용 deploy key)를 api 빌드에만 ssh-agent로 넘긴다. 키와 known_hosts는 이미지 레이어에 남지 않는다(`RUN --mount=type=ssh` 한 줄 안에서만 쓴다).
+  - **인증 패키지 받기(ssh)**: backend 이미지는 비공개 저장소의 `sandcorp-authkit`을 git+ssh로 받는다(`requirements.txt`). 시험·e2e 이미지 빌드(`scripts/test.sh`가 처음 띄울 때, `docker compose -f docker-compose.test.yml build`)는 compose의 `ssh: [default]`로 **개발자 ssh-agent**를 넘긴다 — sandcorp-auth를 읽을 수 있는 키를 먼저 넣는다(`ssh-add ~/.ssh/<키>`, `ssh-add -l`로 확인). 운영 이미지를 직접 빌드할 때는 `docker build --ssh default backend`. 운영 빌드(Jenkins 잡 `sandcorp-flow`, `scripts/ci/build-images.sh`)는 Jenkins 자격 `github-farrar142`(sandcorp-auth를 읽는 SSH 키)를 api 빌드에만 ssh-agent로 넘긴다. 키와 known_hosts는 이미지 레이어에 남지 않는다(`RUN --mount=type=ssh` 한 줄 안에서만 쓴다).
   - **실행**: `./scripts/test.ps1` (PowerShell) 또는 `bash scripts/test.sh` — 호스트 `backend/`를 마운트해 코드 변경을 즉시 반영하고, **종료 시 테스트 전용 인프라(db·redis·fake-llm)를 자동 `stop`** 합니다(다음 실행은 `start`로 빠르게 재개). 인자로 특정 테스트 경로를 넘길 수 있습니다(예: `bash scripts/test.sh tests/test_rag.py`).
   - **결정적 가짜 임베딩(#260)**: 시험의 플랫폼 기본 임베딩(`OLLAMA_BASE_URL`)은 `fake_llm`의 OpenAI 호환 `/v1/embeddings`를 가리킵니다 — 실제 HTTP·정규화·사용량 기록 경로는 그대로이고 벡터만 가짜입니다. 같은 글은 같은 1024차원 L2 정규화 벡터이고, 낱말·글자 2-gram을 해시해 더하므로 낱말이 겹치는 글끼리 더 가깝습니다(의미 임베딩은 아님). 질의에 `[[delay:N]]`을 넣으면 응답을 N초 늦춥니다(최대 10초 — 느린 임베딩 시험용). ollama는 기본으로 뜨지 않고 첫 실행의 모델 내려받기(약 1.2GB)도 없습니다. `fake_llm/app.py`를 고치면 `test.sh`가 이미지를 다시 빌드하고, e2e는 `docker compose -f docker-compose.test.yml build`가 필요합니다.
   - **실제 bge-m3 시험(수동)**: `real_embedding` 마커 시험(`backend/tests/test_real_embedding.py`, 2건)은 기본 실행에서 빠집니다. `TEST_REAL_EMBEDDING=1 bash scripts/test.sh`(PowerShell은 `$env:TEST_REAL_EMBEDDING='1'; ./scripts/test.ps1`)가 profile `real-embedding`의 ollama를 띄워 bge-m3를 받고 마커 시험만 돌립니다(CPU로 도는 한 번에 몇 분, 첫 실행은 내려받기 포함). 가짜가 실제 모델의 계약(차원 1024·정규화)과 어긋나지 않는지 맞춰 보는 용도입니다. **임베딩이 바뀔 때만 돌립니다** — bge-m3 교체, 가짜 임베딩 계약 변경, 임베딩 코드를 바꾸는 PR에서 그 작업자가 실행하고, 정기 실행이나 배포 전 수동 실행은 하지 않습니다.

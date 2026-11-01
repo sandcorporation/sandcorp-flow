@@ -12,6 +12,11 @@ worker-chat → taskiq 워커**(배치는 Celery prefork 유지·공존). 아래
 대체됐다. 운영 절차의 최신 소스는 [deployment.md](../deployment.md)(특히 "최초 async 컷오버"),
 결정 근거는 [ADR-0022](0022-full-async-uvicorn-taskiq.md)·[ADR-0024](0024-taskiq-chat-celery-batch-coexist.md).
 
+## 갱신 (2026-11 — ADR-0036, #293)
+**빌드·트리거(Q6·Q7) 부분은 [ADR-0036](0036-image-build-on-jenkins.md)으로 대체됐다.** 이미지는 GitHub Actions
+self-hosted 러너가 아니라 Jenkins 잡 `sandcorp-flow`(Jenkinsfile)가 mac(대체 home)에서 굽고, 같은 잡이 oracle에
+배포한다. release 브랜치는 더 쓰지 않는다. 롤링·마이그레이션·정적 SPA 교체(Q1~Q5)는 그대로다.
+
 ## Context
 실서버를 **oracle**(Ampere A1, **arm64**, 4core/24GB, **CPU 전용**, SSH 배포 대상)로 옮긴다. 빌드/CI는 **sub**(Intel i7-8700, x86_64, 32GB RAM, Jenkins DinD `/server/jenkins`, 공개 URL `https://jenkins.honeycombpizza.link`)에서 돈다. 최우선 요구는 **새 배포 시 다운타임 0**(rolling).
 
