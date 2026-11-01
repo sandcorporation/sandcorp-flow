@@ -137,21 +137,19 @@ flowchart LR
 
 ## 4. 배포 파이프라인 (CI/CD)
 
-빌드(sub)와 런타임(A1)을 완전 분리 — A1은 pull만, 빌드는 절대 안 한다. 자세한 무중단 메커니즘은
+빌드(mac, 대체 home)와 런타임(A1)을 완전 분리 — A1은 pull만, 빌드는 절대 안 한다. main push 하나를 Jenkins 잡
+`sandcorp-flow`(Jenkinsfile)가 받아 빌드와 배포를 차례로 한다(ADR-0036). 자세한 무중단 메커니즘은
 [deployment.md](./deployment.md), 설계는 [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md).
 
 ```mermaid
 flowchart TB
-  push["git push main"] --> ga
-  subgraph sub["sub 호스트 (x86)"]
-    ga["GitHub Actions<br/>self-hosted 러너 ×3<br/>QEMU buildx → arm64"]
-  end
-  ga -->|"이미지 :sha (+latest)"| ghcr[("GHCR")]
-  ga -->|"release 브랜치 force-update"| rel["release 브랜치"]
-  rel -->|webhook| jenkins
+  push["git push main"] -->|webhook| job["Jenkins 잡 sandcorp-flow<br/>(Jenkinsfile)"]
+  job --> build["이미지 빌드<br/>macos(arm64 네이티브)<br/>3분 못 잡으면 home(QEMU)"]
+  build -->|"api·admin·widget :sha (+latest)"| ghcr[("GHCR")]
+  build -->|"셋 다 성공해야"| jenkins
 
   subgraph a1["Oracle A1 (arm64)"]
-    jenkins["Jenkins<br/>deploy.sh sha"]
+    jenkins["배포 단계(oracle 노드)<br/>deploy.sh sha"]
     jenkins --> migrate["migrate<br/>(expand / contract)"]
     migrate --> rollout["docker rollout<br/>api · worker · worker-chat<br/>start-first 무중단"]
     rollout --> smoke["스모크<br/>/api/health"]
