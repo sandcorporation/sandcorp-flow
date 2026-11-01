@@ -25,18 +25,41 @@ HITL/세션 라이프사이클은 **카논 도메인 이벤트**로 흐릅니다
 ## 프로세스 (compose)
 
 ```
-relay                     # 싱글톤 — outbox 드레인
-worker-webhook            # consume_events --group=webhook
-worker-visitor-bridge     # consume_events --group=visitor-bridge
-worker-console-bridge     # consume_events --group=console-bridge
-worker-presence-bridge    # consume_events --group=presence-bridge --topic=signals.presence
+events      # run_event_pipeline — relay + 소비자 4개(webhook·visitor/console/presence-bridge)를 한 프로세스로
 ```
 
-prod=`docker-compose.yml`, dev=`docker-compose.dev.yml`, e2e=`docker-compose.test.yml`.
+prod=`docker-compose.prod.oracle.yml`, 기본=`docker-compose.yml`, dev=`docker-compose.dev.yml`, e2e=`docker-compose.test.yml`(`events-e2e`).
+
+#290 전에는 루프마다 컨테이너가 하나씩(relay·worker-webhook·worker-*-bridge 5개) 돌았다. 각자 Django를
+한 벌씩 올려 ~100MiB씩 썼으므로, 한 Django 프로세스의 **스레드 5개**로 합쳤다(`apps/events/pipeline.py`의
+`Supervisor`). 루프 코드(`run_relay`·`run_consumer`)는 그대로다.
+
+- **스케일 금지**: relay는 outbox 순서 때문에 단일 인스턴스여야 하므로 `events`는 replica 1개로 고정한다.
+  `docker compose up --scale events=2`·`docker rollout events`를 하지 않는다.
+- **격리**: 루프가 예외로 빠져나오면 그 루프만 로그(`[pipeline] loop=<이름> crashed`)를 남기고 백오프
+  (1s부터 두 배씩, 최대 30s) 후 다시 시작한다. 다른 루프는 계속 돈다.
+- **포기 기준**: 한 루프가 **300초 안에 5번** 죽으면 전체를 멈추고 종료코드 1로 끝난다
+  (`[pipeline] … exiting for docker restart`) — `restart: unless-stopped`가 프로세스를 새로 띄운다.
+- **종료**: SIGTERM/SIGINT면 모든 루프가 다음 반복 경계에서 멈춘다(소비자 ≤1초, relay는 멈출 때 wake를
+  쏴 바로 깨운다). 20초 안에 안 멈춘 루프가 있으면 종료코드 1. compose `stop_grace_period: 30s`.
+- **DB 연결**: Django 연결은 스레드 로컬이다. 루프가 반복마다 `tidy_db_connections()`(=`close_old_connections`)로
+  끊긴 연결을 버리고, 스레드가 끝날 때 그 스레드의 연결을 닫는다. 프로세스 하나가 연결 최대 5개를 쓴다.
+
+### 그룹 떼어내기 (부하가 커질 때)
+
+`relay`·`consume_events` 명령은 그대로 남아 있다. 한 그룹(예: webhook)을 따로 돌리려면:
+
+1. `events` 명령을 `python manage.py run_event_pipeline --exclude=webhook`로 바꾼다(`--exclude`는 여러 번 가능).
+2. 같은 이미지로 서비스를 하나 더 둔다: `command: python manage.py consume_events --group=webhook`
+   (presence-bridge는 `--topic=signals.presence`도). 소비자는 consumer group이라 이 서비스는 replica를 늘려도 된다.
+3. 소비자 이름은 기본 `<group>-1`이다 — 합친 프로세스와 같아 남은 pending을 그대로 이어받는다. replica를
+   늘리면 `--consumer=<group>-N`으로 이름을 달리한다.
+
+relay를 떼어낼 때도 `--exclude=relay` + `python manage.py relay` 서비스 하나(역시 replica 1개)로 한다.
 
 ## 복원력 (컨테이너 생존 · 자가 회복)
 
-relay·소비자 루프는 **supervisor 패턴**이다 — 한 반복에서 인프라 오류(Redis/DB 단절, 발행 실패,
+relay·소비자 루프는 **supervisor 패턴**이다(루프 안쪽 — 그 바깥의 스레드 감독은 위 `Supervisor`) — 한 반복에서 인프라 오류(Redis/DB 단절, 발행 실패,
 부팅 시 마이그레이션 미적용 등)가 나도 프로세스를 죽이지 않고 `logger.exception` + backoff
 (`RELAY_BACKOFF_SECONDS`/`CONSUMER_BACKOFF_SECONDS`) 후 재구성(relay는 재구독+catch-up sweep,
 소비자는 `ensure_group` 재실행)해 재시도한다. 의존성이 복구되면 **컨테이너 재시작 없이 스스로
@@ -44,7 +67,7 @@ relay·소비자 루프는 **supervisor 패턴**이다 — 한 반복에서 인�
 
 > 다른 프로세스: **api**(uvicorn ASGI)는 요청 예외가 500일 뿐 서버는 생존하고, **Celery
 > worker**(배치)·**taskiq worker-chat**(chat)은 태스크 예외에 죽지 않고 브로커를 재연결한다. 즉
-> 무한 루프를 직접 도는 relay·consume_events만 이 가드가 필요하다.
+> 무한 루프를 직접 도는 relay·소비자(run_event_pipeline·consume_events)만 이 가드가 필요하다.
 
 ## 운영: dead-letter 처리
 
@@ -77,8 +100,9 @@ relay·소비자는 흐른 이벤트를 **INFO**로 남깁니다 — `docker log
 ```
 
 ```bash
-docker logs -f sandcorp-flow-worker-console-bridge-1   # 콘솔 델타 흐름
-docker logs -f sandcorp-flow-relay-1                    # outbox 발행 흐름
+docker logs -f sandcorp-flow-events-1                        # relay·소비자 전부(한 컨테이너)
+docker logs -f sandcorp-flow-events-1 2>&1 | grep 'group=console-bridge'   # 콘솔 델타 흐름만
+docker logs -f sandcorp-flow-events-1 2>&1 | grep '\[relay\]'            # outbox 발행 흐름만
 ```
 
 ## 운영 점검
@@ -90,5 +114,5 @@ python manage.py consume_events --group=webhook --once  # 소비자 1회 처리
 
 ## 주의
 
-- **relay는 반드시 단일 인스턴스**(순서 보존). 복제 금지(향후 leader-election 시 완화).
+- **relay는 반드시 단일 인스턴스**(순서 보존). 복제 금지(향후 leader-election 시 완화) — 그래서 relay를 품은 `events` 서비스도 replica 1개 고정.
 - Kafka 전환 시 EventBus 어댑터만 교체 — outbox·relay·트랜잭션 보장은 불변(dual-write 해결은 브로커 무관).

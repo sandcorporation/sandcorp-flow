@@ -46,28 +46,8 @@ services:
       fake-llm:
         condition: service_healthy
 
-  # ── Event pipeline (dev: 코드 마운트 + dev 설정) ──────────────────────────────
-  relay:
-    volumes:
-      - ./backend:/app
-    environment:
-      DJANGO_SETTINGS_MODULE: config.settings.dev
-  worker-webhook:
-    volumes:
-      - ./backend:/app
-    environment:
-      DJANGO_SETTINGS_MODULE: config.settings.dev
-  worker-visitor-bridge:
-    volumes:
-      - ./backend:/app
-    environment:
-      DJANGO_SETTINGS_MODULE: config.settings.dev
-  worker-console-bridge:
-    volumes:
-      - ./backend:/app
-    environment:
-      DJANGO_SETTINGS_MODULE: config.settings.dev
-  worker-presence-bridge:
+  # ── Event pipeline (dev: 코드 마운트 + dev 설정) — relay+소비자 4개 한 프로세스(#290) ──
+  events:
     volumes:
       - ./backend:/app
     environment:

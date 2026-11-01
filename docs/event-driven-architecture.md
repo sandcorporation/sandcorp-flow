@@ -55,6 +55,10 @@ Sandcorp Flow의 **HITL(사람 상담원 전환)/세션 라이프사이클**은 
    -once)     hitl_start/end) 콘솔 델타)        → 콘솔 델타)
 ```
 
+운영에서는 relay와 소비자 4개가 한 컨테이너(`events`, `run_event_pipeline`)의 스레드로 돈다(#290) — 루프마다
+따로 있던 컨테이너 5개를 합친 것이다. 그룹별 격리(한 루프가 죽어도 나머지는 계속)와 떼어내는 법은
+[event-pipeline.md](event-pipeline.md).
+
 핵심 불변식:
 
 - **상태 변경과 이벤트 기록이 원자적**(같은 트랜잭션). 커밋되면 둘 다, 롤백되면 둘 다 없음 → dual-write 유실/유령 이벤트 제거.
@@ -151,7 +155,7 @@ TTL 갱신)는 이벤트가 아니라 직접 Redis ZADD로 둡니다.
 - **parity가 컷오버의 머지 게이트**:
   - *단위* — 각 전이가 정확한 이벤트 1건을 event_store/outbox에 원자적으로 기록(롤백 시 둘 다 없음).
   - *통합* — 전이→outbox→relay→소비자→부수효과 전 구간을 인프로세스로 플러시(`drain_events` 픽스처)해 webhook/SSE/콘솔 결과가 컷오버 전과 동일함을 단언.
-  - *e2e* — Playwright로 위젯→escalation→상담원 클레임·takeover 전 플로우가 새 파이프라인(relay+소비자 실프로세스)으로 통과.
+  - *e2e* — Playwright로 위젯→escalation→상담원 클레임·takeover 전 플로우가 새 파이프라인(relay+소비자 실프로세스, #290부터 `events-e2e` 한 컨테이너)으로 통과.
 
 ---
 
@@ -160,7 +164,8 @@ TTL 갱신)는 이벤트가 아니라 직접 Redis ZADD로 둡니다.
 - `backend/apps/events/` — 이 도메인 전체
   - `bus.py` (EventBus 포트+Redis 어댑터) · `store.py`(record_event) · `models.py`(event_store/outbox/processed_events) · `relay.py` · `consumer.py` · `wake.py` · `types.py` · `signals.py`(ephemeral presence 발행)
   - `handlers/` (webhook · visitor_bridge · console_bridge · presence_bridge)
-  - `management/commands/` (`relay` · `consume_events` · `events_dlq`)
+  - `pipeline.py` (relay+소비자 루프를 한 프로세스 스레드로 감독, #290)
+  - `management/commands/` (`run_event_pipeline` · `relay` · `consume_events` · `events_dlq`)
 - 생산 지점(컷오버): `apps/agent/nodes.py`(AI escalation) · `apps/escalation/api.py`(claim·resolve) · `apps/memory/api.py`(takeover)
 
 ---
