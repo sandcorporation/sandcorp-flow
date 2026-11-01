@@ -21,7 +21,6 @@ flowchart TB
 
     subgraph web["웹 / 실시간"]
       api["api<br/>uvicorn ASGI · ninja API + async SSE"]
-      relay["relay<br/>outbox → EventBus 드레인 (싱글톤)"]
     end
 
     subgraph cworkers["Celery 워커 (배치)"]
@@ -32,11 +31,12 @@ flowchart TB
       workerchat["worker-chat<br/>async LangGraph 1턴"]
     end
 
-    subgraph consumers["EventBus 소비자 (consume_events)"]
-      webhook["worker-webhook"]
-      vbridge["worker-visitor-bridge"]
-      cbridge["worker-console-bridge"]
-      pbridge["worker-presence-bridge<br/>signals.presence"]
+    subgraph consumers["events 컨테이너 (run_event_pipeline · 한 프로세스의 스레드, replica 1 고정)"]
+      relay["relay<br/>outbox → EventBus 드레인 (싱글톤)"]
+      webhook["webhook"]
+      vbridge["visitor-bridge"]
+      cbridge["console-bridge"]
+      pbridge["presence-bridge<br/>signals.presence"]
     end
 
     subgraph sinit["정적 init (dist 볼륨 복사 후 종료)"]

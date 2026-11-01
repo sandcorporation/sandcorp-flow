@@ -221,11 +221,11 @@ services:
         condition: service_healthy
 
   # ── E2E용 Event pipeline (relay + 소비자) ────────────────────────────────
-  relay-e2e:
+  events-e2e:
     build:
       context: ./backend
       ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
-    command: python manage.py relay
+    command: python manage.py run_event_pipeline  # relay + 소비자 4개 한 프로세스(#290)
     environment: &event-pipeline-e2e-env
       DJANGO_SETTINGS_MODULE: config.settings.dev
       DB_HOST: db-test
@@ -234,46 +234,6 @@ services:
       DB_PASSWORD: postgres
       REDIS_URL: redis://redis-test:6379/0
       SECRET_KEY: e2e-secret-key-not-for-production
-    depends_on:
-      api-e2e:
-        condition: service_healthy
-
-  worker-webhook-e2e:
-    build:
-      context: ./backend
-      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
-    command: python manage.py consume_events --group=webhook
-    environment: *event-pipeline-e2e-env
-    depends_on:
-      api-e2e:
-        condition: service_healthy
-
-  worker-visitor-bridge-e2e:
-    build:
-      context: ./backend
-      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
-    command: python manage.py consume_events --group=visitor-bridge
-    environment: *event-pipeline-e2e-env
-    depends_on:
-      api-e2e:
-        condition: service_healthy
-
-  worker-console-bridge-e2e:
-    build:
-      context: ./backend
-      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
-    command: python manage.py consume_events --group=console-bridge
-    environment: *event-pipeline-e2e-env
-    depends_on:
-      api-e2e:
-        condition: service_healthy
-
-  worker-presence-bridge-e2e:
-    build:
-      context: ./backend
-      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
-    command: python manage.py consume_events --group=presence-bridge --topic=signals.presence
-    environment: *event-pipeline-e2e-env
     depends_on:
       api-e2e:
         condition: service_healthy
@@ -325,15 +285,7 @@ services:
         condition: service_started
       chat-worker-e2e:  # 챗 답변은 taskiq 워커가 만든다 — 없으면 위젯이 답을 못 받는다(#65)
         condition: service_started
-      relay-e2e:
-        condition: service_started
-      worker-webhook-e2e:
-        condition: service_started
-      worker-visitor-bridge-e2e:
-        condition: service_started
-      worker-console-bridge-e2e:
-        condition: service_started
-      worker-presence-bridge-e2e:
+      events-e2e:
         condition: service_started
 
 volumes:

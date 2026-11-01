@@ -132,13 +132,12 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
 | api | 512M | 161M → 약 300M(#177) | uvicorn 2 프로세스(async라 프로세스당 동시 SSE 다수). 1로 줄이면 롤아웃·이벤트루프 막힘 시 단일 장애점이라 2 유지. #177부터 워커가 시작 때 async 경로의 지연 import(langgraph·langchain_openai/anthropic·openai·taskiq)를 미리 불러 프로세스당 약 +70M — 시험 턴·메시지 enqueue를 처음 할 때 어차피 오르던 몫을 앞당긴 것(실측: setup 뒤 67M → warm_up 뒤 165M, 그중 URLconf ~28M은 원래 첫 요청에 오름) |
 | worker (Celery 배치) | 768M | 143M | `--concurrency=2`로 고정(기본은 코어 수=4 자식 상주). 인입은 문서 몇 건씩이라 2로 충분, 피크는 PDF·그래프 빌드 |
 | worker-chat (taskiq) | 512M | 151M | 프로세스 2 × 동시 25 유지 — LLM 대기 I/O 위주라 메모리가 아니라 동시성 한도 |
-| relay | 128M | 67M | outbox → Streams 중계, 1프로세스 |
-| worker-webhook · visitor-bridge · console-bridge · presence-bridge | 각 128M (512M) | 각 67M | `consume_events`가 프로세스당 그룹 1개만 받아 합칠 수 없다(코드 변경 필요, 이 티켓 범위 밖). 유휴가 작아 상한만 낮춤 |
+| events (relay + 소비자 4개) | 256M | 90M (e2e 전체 실행 직후) | `run_event_pipeline` 한 프로세스의 스레드 5개(#290). 따로 돌던 5개는 운영 실측 합 491MiB(각 87~109MiB, 한도 128M에 붙어 있었다). replica 1개 고정(relay 단일 인스턴스) |
 | nginx | 64M | 3M | 정적 서빙 + 프록시 |
-| **합계** | **3,264M** | ~0.8G | 목표 4G 이하 |
+| **합계** | **2,880M** | ~0.8G | 목표 4G 이하 |
 
 워커 수 판단: 줄인 것은 Celery 자식(4 → 2)뿐이다. 챗 taskiq·api는 동시성이 곧 서비스 품질이고 유휴 메모리가 작아 그대로 둔다.
-bridge·relay 5개는 합치면 메모리를 ~250M 더 아끼지만 이벤트 소비 구조(ADR) 변경이라 후속 후보로만 남긴다.
+relay·bridge 5개는 #290에서 `events` 하나로 합쳤다(그룹을 다시 떼는 법은 docs/event-pipeline.md).
 `deploy.resources.limits`는 compose v2가 컨테이너 cgroup 한도로 적용한다(swarm 아님).
 
 ## 환경변수 (워크스페이스 `.env`)
@@ -177,7 +176,7 @@ bridge·relay 5개는 합치면 메모리를 ~250M 더 아끼지만 이벤트 �
 - **GHCR pull 403/denied**: A1 `docker login` 만료 또는 PAT 권한/ SSO. classic `read:packages` + org authorize.
 - **스모크/healthcheck가 `/api/health`에서 400**: `ALLOWED_HOSTS`에 `127.0.0.1,localhost` 누락(DisallowedHost). → 추가.
 - **첫 배포 `migrate` 실패**: `.env`의 `DJANGO_SETTINGS_MODULE`·DB 변수 확인. db 컨테이너 healthy 대기 후 migrate(deploy.sh가 처리).
-- **이벤트 파이프라인 정지**: relay·bridge는 events 마이그레이션 미적용 시 크래시 — migrate가 모든 마이그레이션을 적용하므로 배포에 포함됨.
+- **이벤트 파이프라인 정지**: events(relay·bridge)는 events 마이그레이션 미적용 시 루프 오류를 반복 — migrate가 모든 마이그레이션을 적용하므로 배포에 포함됨.
 
 ## 시험 대화 SSE 실시간 확인 (#239)
 

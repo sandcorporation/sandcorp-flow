@@ -1,7 +1,8 @@
 # oracle(Ampere A1, arm64, GPU 없음) prod 배포 — GHCR 이미지를 pull만 한다(빌드 안 함).
 # Jenkins(A1)가 release 브랜치를 받아 scripts/deploy.sh로 docker rollout 무중단 배포한다(ADR-0015).
 #
-# - 모든 backend 서비스(api·worker·worker-chat·relay·4 bridge)는 같은 sandcorp-flow-api 이미지.
+# - 모든 backend 서비스(api·worker·worker-chat·events)는 같은 sandcorp-flow-api 이미지.
+#   events = relay + 소비자 그룹 4개를 한 프로세스로(#290). replica 1개 고정(relay 단일 인스턴스).
 # - 공개 TLS/도메인은 NPM(Nginx Proxy Manager)이 종단 → 공유 `proxy` 네트워크로 이 스택의 nginx
 #   (별칭 sandcorp-flow-web:80)에 포워딩. 그래서 nginx는 호스트 포트를 열지 않는다.
 # - 무중단: api·worker·worker-chat만 `docker rollout`(start-first). db·redis·nginx는 싱글톤.
@@ -107,46 +108,19 @@ services:
         limits:
           memory: 512M
 
-  relay:
+  # relay + 소비자 4개(webhook·visitor/console/presence-bridge)를 한 Django 프로세스로(#290).
+  # 따로 돌 땐 5개 × ~100MiB(각자 Django 한 벌)였다. relay는 outbox 순서 때문에 단일 인스턴스 —
+  # 이 서비스는 절대 스케일하지 않는다(replica 1, docker rollout 대상 아님). 그룹 떼어내기는
+  # docs/event-pipeline.md.
+  events:
     <<: *backend
-    command: python manage.py relay
+    command: python manage.py run_event_pipeline
     stop_grace_period: 30s
     deploy:
+      replicas: 1
       resources:
         limits:
-          memory: 128M
-
-  worker-webhook:
-    <<: *backend
-    command: python manage.py consume_events --group=webhook
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-
-  worker-visitor-bridge:
-    <<: *backend
-    command: python manage.py consume_events --group=visitor-bridge
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-
-  worker-console-bridge:
-    <<: *backend
-    command: python manage.py consume_events --group=console-bridge
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-
-  worker-presence-bridge:
-    <<: *backend
-    command: python manage.py consume_events --group=presence-bridge --topic=signals.presence
-    deploy:
-      resources:
-        limits:
-          memory: 128M
+          memory: 256M
 
   # 정적 SPA 빌드 산출물을 볼륨에 복사하고 종료(one-shot). nginx가 그 볼륨을 서빙.
   widget-init:

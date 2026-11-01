@@ -11,6 +11,19 @@ logger = logging.getLogger(__name__)
 
 CONSUMER_BACKOFF_SECONDS = 2.0  # 루프 오류(인프라 블립·DB 단절 등) 후 재시도 간격
 
+
+def tidy_db_connections() -> None:
+    """이 스레드의 Django DB 연결을 정리한다 — 끊겼거나 CONN_MAX_AGE가 지난 연결을 닫는다.
+
+    장수 루프(relay·소비자)는 요청 경계가 없어 Django가 연결을 정리해 주지 않는다. 반복마다 불러
+    DB 단절 뒤 다음 반복이 새 연결로 회복하게 한다(#290: 한 프로세스의 여러 스레드가 각자 연결).
+    테스트의 atomic 블록 안에서는 닫으면 테스트 트랜잭션이 깨지므로 건너뛴다.
+    """
+    from django.db import close_old_connections, connection
+
+    if not connection.in_atomic_block:
+        close_old_connections()
+
 # group 이름 → handler(envelope) 레지스트리. 각 소비자 슬라이스(146~150)가 등록한다.
 _HANDLERS = {}
 
@@ -79,7 +92,7 @@ class EventConsumer:
         self.bus.to_dead_letter(self.topic, self.group, msg, reason=str(last_exc))
 
 
-def run_consumer(group: str, bus=None, topic=None, consumer=None, stop=None) -> None:
+def run_consumer(group: str, bus=None, topic=None, consumer=None, stop=None, block_ms=1000) -> None:
     """management command 진입점 — 등록된 핸들러로 group 소비 루프를 돈다(149).
 
     supervisor 루프: 한 반복에서 인프라 오류(Redis/DB 단절 등)가 나도 프로세스를 죽이지 않고
@@ -96,10 +109,11 @@ def run_consumer(group: str, bus=None, topic=None, consumer=None, stop=None) -> 
     handler = get_handler(group)
     ec = None
     while stop is None or not stop():
+        tidy_db_connections()
         try:
             if ec is None:  # (재)구성 — ensure_group으로 재연결
                 ec = EventConsumer(bus, topic, group, consumer, handler)
-            ec.process_once()
+            ec.process_once(block_ms=block_ms)
         except Exception:  # noqa: BLE001 — 루프를 살려둔다(컨테이너 생존)
             logger.exception("[consumer] group=%s 루프 오류 — %.1fs 후 재시도", group, CONSUMER_BACKOFF_SECONDS)
             ec = None

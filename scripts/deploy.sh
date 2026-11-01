@@ -12,7 +12,7 @@
 #   - docker-compose.prod.oracle.yml(이미지 GHCR 참조 + ${IMAGE_TAG} 핀)
 #
 # 무중단 원리: stateless 앱(api·worker·worker-chat)만 `docker rollout`으로 start-first 교체.
-# db·redis·nginx·relay·bridge는 교체하지 않거나 짧은 재시작 허용(이벤트는 outbox/at-least-once
+# db·redis·nginx·events는 교체하지 않거나 짧은 재시작 허용(이벤트는 outbox/at-least-once
 # 라 소비자 순간 단절을 버팀). 마이그레이션은 롤아웃 전에(expand/contract — 옛/새 코드 공존).
 set -euo pipefail
 
@@ -47,9 +47,11 @@ echo "▶ 정적 SPA 갱신(init이 dist를 볼륨에 복사 후 종료)"
 $COMPOSE up -d --no-deps widget-init admin-init
 
 # --no-deps: depends_on로 api가 딸려 재생성돼 다운타임 나는 것을 막는다(api는 아래서 롤링).
-echo "▶ 인프라·이벤트 소비자 기동/갱신"
-$COMPOSE up -d --no-deps relay \
-  worker-webhook worker-visitor-bridge worker-console-bridge worker-presence-bridge
+# events = relay + 소비자 4개 한 프로세스(#290). --remove-orphans: compose 파일에서 빠진 서비스
+# (옛 relay·worker-*-bridge·worker-webhook 컨테이너)를 새 events를 만들기 전에 지운다 — relay가
+# 잠깐이라도 둘 뜨지 않게(outbox 순서). rollout 임시 컨테이너·run --rm은 orphan이 아니라 남는다.
+echo "▶ 이벤트 파이프라인 기동/갱신"
+$COMPOSE up -d --no-deps --remove-orphans events
 
 # nginx 설정은 단일 파일 bind mount라 (1) compose는 파일 내용 변경으로 재생성하지 않고,
 # (2) git reset --hard가 파일을 inode째 교체해 실행 중 컨테이너는 옛 inode를 계속 본다(reload·

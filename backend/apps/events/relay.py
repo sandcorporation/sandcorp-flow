@@ -53,6 +53,7 @@ def run_relay(bus=None, idle_drain=5.0, stop=None) -> None:
     catch-up sweep로 끊긴 사이 쌓인 outbox를 회수한다.
     """
     from apps.events.bus import RedisStreamsBus
+    from apps.events.consumer import tidy_db_connections
     from apps.events.wake import OUTBOX_WAKE_CHANNEL, _redis
 
     bus = bus or RedisStreamsBus()
@@ -68,6 +69,7 @@ def run_relay(bus=None, idle_drain=5.0, stop=None) -> None:
             pubsub = _close_pubsub(pubsub)
 
         while stop is None or not stop():
+            tidy_db_connections()
             try:
                 if pubsub is None:  # (재)연결 — 직후 catch-up sweep로 끊긴 사이 누락분 회수
                     pubsub = _redis().pubsub()

@@ -15,7 +15,7 @@ Sandcorp Flow는 타사 웹사이트에 iframe으로 삽입하는 챗봇을 제�
 | **Django API** (`/api/`) | 인증, 채팅(SSE), RAG/지식그래프, Visitor Memory, HITL, Provider 설정 |
 | **Celery Worker** (배치) | 문서 인제스션(그래프 구축), 엔티티 해소(SAME_AS) 재구축, 재임베딩, 메모리 추출 |
 | **taskiq worker-chat** (chat 전용) | Visitor chat 1턴 **async** 실행 — api(uvicorn) 프로세스에서 분리·격리(배치가 chat을 굶기지 않게). [ADR-0022](./docs/adr/0022-full-async-uvicorn-taskiq.md)/[0024](./docs/adr/0024-taskiq-chat-celery-batch-coexist.md) |
-| **relay + 이벤트 소비자** (Event 파이프라인) | HITL/세션 라이프사이클의 **Transactional Outbox** 발행(relay 싱글톤) + 디커플링된 소비자(webhook·visitor-bridge·console-bridge·presence-bridge). → [event-driven-architecture.md](./docs/event-driven-architecture.md) |
+| **relay + 이벤트 소비자** (Event 파이프라인) | HITL/세션 라이프사이클의 **Transactional Outbox** 발행(relay 싱글톤) + 디커플링된 소비자(webhook·visitor-bridge·console-bridge·presence-bridge). 운영은 `events` 컨테이너 하나(`run_event_pipeline`)가 relay와 소비자 4개를 한 프로세스에서 돌린다(#290). → [event-driven-architecture.md](./docs/event-driven-architecture.md) |
 | **Knowledge Graph** | **Postgres + pgvector**에 흡수 — Entity Mention·관계(메타데이터) + **per-Tenant 가변차원 HNSW**(Text Unit/Mention 임베딩, 차원별 vec 테이블). 과거 Neo4j에서 이전([ADR-0021](./docs/adr/0021-graphstore-pgvector-replaces-neo4j.md)) |
 | **PostgreSQL** | Django 모델(Tenant·Document·ChatMessage 등) + **LangGraph Checkpoint**(대화 state) |
 | **Ollama** | 실제 임베딩 `bge-m3`(다국어, 1024차원). dev는 `--profile ollama`로 켜고(기본은 `fake_llm` 가짜 임베딩), 시험은 `real_embedding` 마커 시험에서만 쓴다. prod에선 Tenant Embedding Provider가 대체 |

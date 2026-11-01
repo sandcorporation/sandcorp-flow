@@ -68,62 +68,18 @@ services:
         condition: service_healthy
 
   # ── Event pipeline (Transactional Outbox + EventBus) ─────────────────────────
-  # relay는 outbox 순서 보존을 위해 단일 인스턴스(스케일 금지). 소비자는 group별 독립
-  # 프로세스라 장애·부하가 격리되고 필요 시 각자 replica로 확장한다(presence-bridge는 150).
-  relay:
+  # relay + 소비자 그룹 4개(webhook·visitor/console/presence-bridge)를 한 프로세스의 스레드로 돌린다
+  # (#290, docs/event-pipeline.md). relay는 outbox 순서 보존을 위해 단일 인스턴스여야 하므로 이
+  # 서비스는 replica 1개로 고정한다(스케일 금지). 한 그룹이 죽으면 그 그룹만 백오프 후 다시 뜬다.
+  # 부하가 커진 그룹은 `run_event_pipeline --exclude=<group>` + `consume_events --group=<group>`
+  # 서비스로 떼어낸다(소비자만 replica 확장 가능).
+  events:
     build:
       context: ./backend
       ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
-    command: python manage.py relay
+    command: python manage.py run_event_pipeline
     env_file: .env
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  worker-webhook:
-    build:
-      context: ./backend
-      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
-    command: python manage.py consume_events --group=webhook
-    env_file: .env
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  worker-visitor-bridge:
-    build:
-      context: ./backend
-      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
-    command: python manage.py consume_events --group=visitor-bridge
-    env_file: .env
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  worker-console-bridge:
-    build:
-      context: ./backend
-      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
-    command: python manage.py consume_events --group=console-bridge
-    env_file: .env
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  worker-presence-bridge:
-    build:
-      context: ./backend
-      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
-    command: python manage.py consume_events --group=presence-bridge --topic=signals.presence
-    env_file: .env
+    stop_grace_period: 30s
     depends_on:
       db:
         condition: service_healthy
