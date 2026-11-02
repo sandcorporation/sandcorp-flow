@@ -42,7 +42,8 @@ fi
 # node 컨테이너에서 admin·widget 시험. 소스는 tar 로 넣는다(node_modules 제외).
 # admin 시험은 /e2e/narrow-routes.json(e2e 라우트 목록)을 읽는다. $1 = admin|widget, $2 = 그 안에서 돌릴 명령
 node_run() {
-  tar -cf - --exclude=node_modules --exclude=dist "$1" e2e/tests/narrow-routes.json \
+  # macos(bsdtar)는 확장 속성을 ._<파일> 로 끼워 넣어 vitest 가 그것까지 시험 파일로 읽는다 — COPYFILE_DISABLE·._* 제외.
+  COPYFILE_DISABLE=1 tar -cf - --exclude=node_modules --exclude=dist --exclude='._*' "$1" e2e/tests/narrow-routes.json \
     | docker run -i --rm node:20-alpine sh -euc "mkdir -p /src /e2e && cd /src && tar -xf - \
         && cp e2e/tests/narrow-routes.json /e2e/ && cd $1 && npm ci --no-audit --no-fund --loglevel=error && $2"
 }
