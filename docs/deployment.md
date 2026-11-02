@@ -2,7 +2,8 @@
 
 실서버 **oracle**(Ampere A1, arm64, GPU 없음)에 무중단으로 배포하는 런북. main push 하나를 Jenkins 잡
 `sandcorp-flow`([Jenkinsfile](../Jenkinsfile))가 받아 **이미지는 oracle 밖(mac, 대체 home)에서 굽고 oracle은 pull·교체만**
-한다. 설계 근거는 [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md)(무중단 롤링)와
+한다. 파이프라인은 공용 Jenkins 라이브러리 `sandcorp`(sandcorporation/jenkins-shared)의 `sandcorpDeploy`이고 이 저장소
+Jenkinsfile은 값만 넘긴다(jenkins-shared #9). PR은 잡 `sandcorp-flow-pr`([Jenkinsfile.pr](../Jenkinsfile.pr))이 검사한다(아래 「PR 검사」). 설계 근거는 [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md)(무중단 롤링)와
 [ADR-0036](./adr/0036-image-build-on-jenkins.md)(빌드를 Jenkins로, #293).
 
 ## 전체 흐름
@@ -10,13 +11,16 @@
 ```
 git push main
    │
-   ▼  GitHub 웹훅 → Jenkins 잡 sandcorp-flow (Jenkinsfile, 파이프라인)
+   ▼  GitHub 웹훅 → Jenkins 잡 sandcorp-flow (Jenkinsfile → 라이브러리 sandcorpDeploy)
+[배포할 커밋 확인]  built-in: main sha가 직전 성공 빌드와 같으면 NOT_BUILT(작업 브랜치 push·중복) — 알림 없음
+                    PR 검사가 이 트리를 통과시켰으면 배포 전 검사 생략(GitHub 상태로 판정)
 [이미지 빌드]  macos(M4, arm64 네이티브) — 3분(MAC_WAIT_SECONDS) 안에 실행기를 못 잡으면 home(built-in, QEMU)
-               scripts/ci/build-images.sh: api·admin·widget 차례로 buildx → GHCR
-               ghcr.io/sandcorporation/sandcorp-flow-{api,admin,widget}:<sha> (+ latest), 캐시 :buildcache
-   │  (셋 다 성공해야 다음 단계 — 이미지가 다 올라가기 전에 배포가 돌지 않는다)
+               검사(scripts/ci/check.sh, 생략이 아니면)와 굽기를 나란히: api·admin·widget 차례로 buildx → GHCR
+               ghcr.io/sandcorporation/sandcorp-flow-{api,admin,widget}:<sha>, 캐시 :buildcache
+   │  (검사와 셋 다 성공해야 다음 단계 — 이미지가 다 올라가기 전에 배포가 돌지 않는다)
    ▼
-[배포 on oracle]  같은 잡 워크스페이스에서 scripts/deploy.sh <sha>
+[배포 on oracle]  같은 잡 워크스페이스에서 scripts/deploy.sh(SANDCORP_IMAGE_SHA=<sha>)
+                  실패하면 직전 성공 sha로 같은 스크립트를 SANDCORP_ROLLBACK=1(migrate 건너뜀)로 한 번 더 — 자동 롤백
    │
    ▼  pull → migrate → 정적 init swap → docker rollout(api·worker·worker-chat)
 [NPM] 공개 443/TLS → <A1 호스트>:${NGINX_PORT} → 우리 nginx → api / SPA
@@ -25,7 +29,21 @@ git push main
 - **빌드(mac/home)와 런타임(A1)을 완전 분리** — A1은 pull만, 빌드 절대 안 함.
 - 노드를 **못 잡았을 때만** home으로 넘어간다. mac에서 빌드가 실패하면 그대로 실패로 끝낸다.
 - 빌드 노드는 콘솔(`== 빌드 노드: macos (...)`), 빌드 설명(`<sha12> · 빌드 macos · oracle pull`), 디스코드 알림(`[Flow]`)에 남는다.
-- 이미지 태그 = **git SHA**(불변 핀). 롤백 = 파라미터 `ROLLBACK_SHA`(아래 「운영」).
+- 이미지 태그 = **git SHA**(불변 핀). `:latest`는 더 올리지 않는다(라이브러리 전환, #9) — 운영 compose는 `IMAGE_TAG`로 고정하니,
+  oracle에서 compose를 손으로 부를 때도 `IMAGE_TAG=<sha>`를 준다(안 주면 옛 `:latest`를 받는다). 롤백 = 파라미터 `ROLLBACK_SHA`(아래 「운영」).
+- 자동 롤백: 배포 스크립트가 실패하면(롤링·스모크) 직전 성공 빌드의 sha 이미지로 되돌린다. migrate는 되돌리지 않는다 —
+  파괴적 migrate(열·표 지우기·바꾸기, null 불가 새 열에 `db_default` 없음)는 PR 검사가 막는다(jenkins-shared README).
+- 작업 규칙: PR은 `wait-ci.py <PR>`이 SUCCESS(상태 `continuous-integration/jenkins/pr-merge`)일 때만 병합하고, 병합 뒤
+  `wait-deploy.py --job sandcorp-flow --pr <PR>`로 배포를 기다린다.
+
+### PR 검사
+
+멀티브랜치 잡 `sandcorp-flow-pr`(설정 [docs/ops/jenkins-sandcorp-flow-pr.config.xml](./ops/jenkins-sandcorp-flow-pr.config.xml))이 PR 열기·push마다
+빌드 노드(macos, 못 잡으면 home)에서 PR 머지 결과로 파괴적 migrate 검사 → `scripts/ci/check.sh`를 돌리고 PR head에 상태를 올린다.
+`check.sh`는 로컬 Docker 시험 전부다: 고정 대기 lint·deploy.sh 시험 → 백엔드 pytest → admin·widget vitest·widget typecheck →
+OpenAPI·orval 드리프트 → e2e, 그리고 nginx 계약 시험(기다림이 대부분이라 pytest~드리프트와 나란히). PR 검사 한 판 약 8분(macos, 2026-11-02). compose 프로젝트를 실행마다 따로(`flow-check-…`) 띄우고 끝나면 지운다.
+home 노드는 Jenkins 컨테이너 안이라 bind mount가 맞지 않아 nginx·e2e를 건너뛴다(로그에 남는다). 로컬에서 `bash scripts/ci/check.sh`,
+일부만 `CHECK_ONLY="backend vitest" bash scripts/ci/check.sh`.
 - A1은 **arm64·CPU 전용** — ollama·paddle 없음(임베딩·OCR은 per-Tenant Provider / Vision OCR).
 
 ### 잡 파라미터
@@ -34,9 +52,9 @@ git push main
 |---|---|---|
 | `BUILDER` | `auto` | `auto` / `macos` / `home` — 시험용으로 빌드 노드를 강제 |
 | `MAC_WAIT_SECONDS` | `180` | auto에서 macos 실행기를 기다리는 시간(초). 넘으면 home |
-| `ROLLBACK_SHA` | 빈 값 | 채우면 빌드 없이 그 커밋의 이미지로 되돌린다 |
+| `ROLLBACK_SHA` | 빈 값 | 채우면 빌드 없이 그 커밋의 이미지로 되돌린다(이미 배포한 sha여도 다시 배포) |
 
-병합 뒤 첫 빌드가 돌아야 파라미터가 잡에 등록된다.
+파라미터·트리거는 라이브러리가 정한다.
 
 ## 무중단 메커니즘
 
@@ -63,12 +81,15 @@ gunicorn/gevent→uvicorn + Celery worker-chat→taskiq로 전환하는 **첫 �
 
 | 파일 | 역할 |
 |---|---|
-| [Jenkinsfile](../Jenkinsfile) | 잡 `sandcorp-flow`: 이미지 빌드(mac → home) → oracle 배포, 디스코드 알림 |
-| [scripts/ci/build-images.sh](../scripts/ci/build-images.sh) | 빌드 노드에서 api·admin·widget을 linux/arm64로 굽고 GHCR에 push |
+| [Jenkinsfile](../Jenkinsfile) | 잡 `sandcorp-flow`: 라이브러리 `sandcorpDeploy`에 넘기는 값(이미지 3개·검사·배포 스크립트) |
+| [Jenkinsfile.pr](../Jenkinsfile.pr) | 잡 `sandcorp-flow-pr`: 라이브러리 `sandcorpPrCheck`(파괴적 migrate 검사 + `check.sh`) |
+| [scripts/ci/check.sh](../scripts/ci/check.sh) | PR 검사·배포 전 검사(로컬 Docker 시험 전부) |
+| [scripts/test-deploy.sh](../scripts/test-deploy.sh) | `deploy.sh` 시험(가짜 docker — 이미지 태그·자동 롤백 때 migrate 건너뜀) |
+| [docs/ops/jenkins-sandcorp-flow-pr.config.xml](./ops/jenkins-sandcorp-flow-pr.config.xml) | PR 검사 잡 설정(멀티브랜치) |
 | [docs/ops/jenkins-sandcorp-flow.config.xml](./ops/jenkins-sandcorp-flow.config.xml) | 잡 설정(파이프라인, SCM의 Jenkinsfile) — 잡을 다시 만들 때 쓴다 |
 | [docker-compose.prod.oracle.yml](../docker-compose.prod.oracle.yml) | A1 스택 — GHCR 이미지, `${IMAGE_TAG}` 핀, healthcheck·stop_grace·메모리 limit, nginx를 `${NGINX_PORT}`로 노출(NPM 연결용) |
 | [backend/nginx/nginx.oracle.conf](../backend/nginx/nginx.oracle.conf) | 동적 resolver + SSE + SPA 서빙, NPM의 `X-Forwarded-Proto` 보존 |
-| [scripts/deploy.sh](../scripts/deploy.sh) | A1에서 pull→migrate→init swap→rollout→스모크 |
+| [scripts/deploy.sh](../scripts/deploy.sh) | A1에서 pull→migrate(자동 롤백 땐 건너뜀)→init swap→rollout→스모크 |
 
 ## 1회 설정
 
@@ -98,13 +119,14 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
   「있음」으로 오판한다(첫 배포 build 2가 이걸로 롤링 단계에서 실패). `scripts/deploy.sh`도 시작할 때 같은 grep으로 확인하고 없으면 migrate 전에 멈춘다.
 - **Job `sandcorp-flow`(파이프라인)**: 설정은 [docs/ops/jenkins-sandcorp-flow.config.xml](./ops/jenkins-sandcorp-flow.config.xml).
   - Pipeline script from SCM: `git@github.com:sandcorporation/sandcorp-flow.git`(자격 `github-farrar142`), 브랜치 `*/main`, Script Path `Jenkinsfile`.
-  - 트리거(GitHub hook)·동시 실행 금지·파라미터는 Jenkinsfile이 정한다.
+  - 트리거(GitHub hook)·동시 실행 금지·파라미터는 라이브러리 `sandcorpDeploy`가 정한다.
   - **Manage Jenkins → Security → Git Host Key Verification → "Accept first connection"**.
   - 배포 단계는 `oracle` 노드의 잡 워크스페이스에서 돈다. 파이프라인의 `checkout scm`은 추적 파일만 바꾸므로 `.env`·`media`는 그대로다.
-- **빌드 노드(macos·built-in)**: docker CLI + buildx. 스크립트가 `docker-container` 빌더 `sandcorp-flow-images`를 처음 한 번 만든다.
+- **빌드 노드(macos·built-in)**: docker CLI + buildx. 라이브러리의 `build-image.sh`가 `docker-container` 빌더 `sandcorp-flow-images`(Jenkinsfile `builder`)를 처음 한 번 만든다.
+  macos는 실행기가 하나라 PR 검사와 배포가 겹치면 뒤의 것이 3분 기다린 뒤 home으로 간다.
   home(built-in, x86)은 QEMU arm64 에뮬레이션이 등록돼 있어야 한다(portfolio·news와 같은 노드).
 - **자격**(이름만, 모두 기존 것을 다시 쓴다): ghcr 쓰기 `ghcr-push-token`(Secret text), 비공개 sandcorp-auth 읽기 SSH
-  `github-farrar142`(api 빌드만 ssh-agent에 넣어 BuildKit `--ssh default`로 넘긴다 — `backend/requirements.txt`의
+  `github-farrar142`(빌드·검사 때 임시 ssh-agent에 넣어 BuildKit `--ssh default`로 넘긴다 — `backend/requirements.txt`의
   `sandcorp-authkit`, #282), 알림 `discord-deploy-webhook`. oracle은 호스트 docker의 ghcr **읽기** 로그인을 쓴다.
 - **GHCR login**: Jenkins 컨테이너 안(빌드 실행 유저)에서 1회. 컨테이너를 자주 재생성하면 Execute
   shell 맨 앞에서 Credential로 매번 login하는 게 견고: `echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USER" --password-stdin`.
@@ -169,8 +191,8 @@ relay·bridge 5개는 #290에서 `events` 하나로 합쳤다(그룹을 다시 �
 
 ## 배포 / 롤백
 
-- **배포**: `main`에 push → 자동(Jenkins 잡 `sandcorp-flow`가 빌드→배포). Jenkins에서 수동 "Build with Parameters"로 main 재배포도 가능.
-- **롤백**: Jenkins `sandcorp-flow`를 「Build with Parameters」로 `ROLLBACK_SHA=<되돌릴 커밋 sha 40자>`를 넣고 돌린다. 빌드 단계는 건너뛰고 oracle이 그 sha 이미지를 pull해 같은 migrate·교체 절차를 밟는다(배포 스크립트·compose는 지금 main 것). migrate는 앞으로만 가므로 되돌리는 코드가 새 스키마를 못 읽으면 DB를 따로 되돌려야 한다.
+- **배포**: `main`에 push → 자동(Jenkins 잡 `sandcorp-flow`가 빌드→배포). 이미 배포한 main sha는 다시 돌지 않는다(NOT_BUILT) — 같은 sha를 강제로 다시 배포하려면 아래 롤백처럼 `ROLLBACK_SHA=<그 sha>`. 배포까지 갔다 실패한 sha는 「Build Now」가 다시 시도한다.
+- **롤백**: Jenkins `sandcorp-flow`를 「Build with Parameters」로 `ROLLBACK_SHA=<되돌릴 커밋 sha 40자>`를 넣고 돌린다. 빌드 단계는 건너뛰고 oracle이 그 sha 이미지를 pull해 같은 migrate·교체 절차를 밟는다(배포 스크립트·compose는 지금 main 것, 배포 전 검사 없음). migrate는 앞으로만 가므로 되돌리는 코드가 새 스키마를 못 읽으면 DB를 따로 되돌려야 한다.
   - ⚠️ expand/contract라 **마이그레이션 역방향이 불가**할 수 있음 — 파괴적 스키마 변경은 애초에 금지(롤백 가능성 보존).
 
 ## 트러블슈팅

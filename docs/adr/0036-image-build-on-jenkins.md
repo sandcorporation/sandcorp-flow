@@ -1,5 +1,8 @@
 # ADR-0036: 운영 이미지를 Jenkins에서 굽는다 — mac 우선, 대체 home, 같은 잡이 oracle 배포
 
+> 갱신(2026-11-02, jenkins-shared #9): 파이프라인을 공용 라이브러리 `sandcorpDeploy`로 옮겼다. `scripts/ci/build-images.sh`는 없어지고
+> 라이브러리 `build-image.sh`가 이미지마다 굽는다. `:latest`는 더 올리지 않는다(캐시 `:buildcache`·sha 태그는 그대로). 지금 흐름은 [deployment.md](../deployment.md).
+
 ## Status
 Accepted (2026-11-02, #293). [ADR-0015](0015-oracle-zero-downtime-rolling-deploy.md)의 빌드·트리거 부분(Q6·Q7)을 대체한다.
 

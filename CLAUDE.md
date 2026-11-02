@@ -17,6 +17,8 @@
 
 # 테스트 실행 (무조건 Docker)
 
+- **PR 검사에 맡긴다.** 시험 묶음 전체(`bash scripts/ci/check.sh`, 전체 `scripts/test.sh`·e2e 전체)는 로컬에서 돌리지 않는다 — PR을 열면 잡 `sandcorp-flow-pr`이 PR 머지 결과로 `scripts/ci/check.sh`(lint·deploy.sh 시험·pytest·vitest·typecheck·OpenAPI 드리프트·nginx·e2e)와 파괴적 migrate 검사를 돌려 상태 `continuous-integration/jenkins/pr-merge`를 올린다. `python3 ~/.claude/skills/issue-track/scripts/wait-ci.py <PR>`로 기다리고 SUCCESS일 때만 병합하며, 병합 뒤에는 `wait-deploy.py --job sandcorp-flow --pr <PR>`로 배포를 기다린다(docs/deployment.md 「PR 검사」).
+- **로컬은 바꾼 부분과 관련된 시험만.** 시험이 실패하면 그 시험만 좁혀서(`scripts/test.sh tests/test_x.py::test_fn`, `-k`, 스펙 파일:줄) 다시 돌린다. 일부 단계만 보려면 `CHECK_ONLY="backend vitest" bash scripts/ci/check.sh`.
 - **모든 테스트는 Docker 컨테이너에서 실행합니다. 호스트에서 직접 `pytest`/`vitest`/`npm test`를 돌리지 마세요.** 호스트엔 DB(Postgres+pgvector)·Redis·fake-llm이 없어 결과를 신뢰할 수 없습니다.
 - **이미지 빌드에 ssh-agent가 필요하다**: backend 이미지는 비공개 `sandcorp-authkit`을 git+ssh로 받는다. `scripts/test.sh`(시험 이미지를 처음 빌드할 때)와 e2e의 `docker compose -f docker-compose.test.yml build`는 compose `ssh: [default]`로 내 ssh-agent를 넘기므로, sandcorp-auth를 읽을 수 있는 키를 먼저 `ssh-add`한다(`ssh-add -l`이 비면 빌드가 `Permission denied (publickey)`로 실패한다).
 - **백엔드**: `bash scripts/test.sh` (전체) 또는 `bash scripts/test.sh tests/test_xxx.py[::test_fn]` (특정 대상). 이 스크립트가 `docker-compose.test.yml`로 필요한 인프라(db·redis·fake-llm)를 띄우고 종료 시 정리합니다. ollama는 기본으로 뜨지 않습니다(임베딩은 가짜). OCR은 테넌트 Vision Provider라 컨테이너가 없고 시험은 `transcribe_image` Fake입니다.

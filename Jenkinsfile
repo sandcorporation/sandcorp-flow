@@ -1,134 +1,26 @@
-// main에 푸시하면: 운영 이미지 3개(api·admin·widget)를 oracle 밖에서 굽고(mac 우선, 못 잡으면 home) ghcr에 올린 뒤,
-// oracle은 받아서 무중단 교체만 한다(#293, ADR-0036). 본보기는 portfolio·AI-Trend-News의 Jenkinsfile이다.
+// main 배포 — 파이프라인은 Jenkins 공용 라이브러리 sandcorp(sandcorporation/jenkins-shared)의 sandcorpDeploy에 있다(jenkins-shared #9).
+// 여기에는 이 저장소가 넘기는 값만 둔다. 동작(작업 브랜치 push 무시·이미 배포한 sha 건너뜀·배포 전 검사(PR 검사가 같은 트리를
+// 통과시켰으면 생략)·mac 우선 빌드(3분 못 잡으면 home)·oracle pull 배포·실패 시 직전 이미지로 자동 롤백·디스코드 알림)과
+// 인자·잡 파라미터(BUILDER·MAC_WAIT_SECONDS·ROLLBACK_SHA)는 jenkins-shared README, 이 저장소 사정은 docs/deployment.md.
 //
-//   이미지 빌드   macos(M4, arm64 네이티브) → 3분(MAC_WAIT_SECONDS) 안에 실행기를 못 잡으면 home(built-in, QEMU).
-//                 넘어가는 건 「노드를 못 잡았을 때」뿐이다 — mac에서 빌드가 실패하면 실패로 끝낸다.
-//                 셋 중 하나라도 실패하면 배포 단계로 가지 않는다(이미지가 다 올라가기 전에 배포가 돌지 않는다).
-//   배포(oracle)  굽지 않는다. ghcr.io/sandcorporation/sandcorp-flow-*:<커밋 sha>를 pull해 scripts/deploy.sh.
-//
-// .env는 여기서 만들지 않는다. oracle 워크스페이스(/var/jenkins_home/workspace/sandcorp-flow/.env)에 상주한다.
-// 시험은 로컬 Docker에서 돌린다(CI 없음). Jenkins 스크립트 승인이 필요한 API를 쓰지 않는다 — 표준 단계만.
+// .env는 여기서 만들지 않는다. oracle 잡 워크스페이스(/home/jenkins/agent/workspace/sandcorp-flow/.env)에 상주한다(deployDir 기본값).
+@Library('sandcorp') _
 
-// 이 노드에서 체크아웃하고 이미지 3개를 굽는다. where = macos | home. 커밋 sha는 env.DEPLOY_SHA에 남긴다.
-def buildImages(String where) {
-  def scmVars = checkout scm
-  env.DEPLOY_SHA = scmVars.GIT_COMMIT
-  env.BUILT_ON = where
-  currentBuild.description = "${env.DEPLOY_SHA.take(12)} · 빌드 ${where}"
-  echo "== 빌드 노드: ${where} (${env.NODE_NAME})"
-  withCredentials([
-    string(credentialsId: 'ghcr-push-token', variable: 'GHCR_TOKEN'),
-    sshUserPrivateKey(credentialsId: 'github-farrar142', keyFileVariable: 'GIT_SSH_KEY')
-  ]) {
-    sh "bash scripts/ci/build-images.sh ${where}"
-  }
-}
+String repo = 'ghcr.io/sandcorporation/sandcorp-flow'
 
-pipeline {
-  agent none
-
-  options {
-    disableConcurrentBuilds()
-    timeout(time: 90, unit: 'MINUTES')   // home(QEMU)에서 캐시 없이 구우면 길다
-    timestamps()
-  }
-
-  parameters {
-    choice(name: 'BUILDER', choices: ['auto', 'macos', 'home'], description: 'auto=macos 먼저, 못 잡으면 home. 시험용으로 강제 선택')
-    string(name: 'MAC_WAIT_SECONDS', defaultValue: '180', description: 'auto에서 macos 실행기를 기다리는 시간(초). 넘으면 home')
-    string(name: 'ROLLBACK_SHA', defaultValue: '', description: '비우지 않으면 빌드 없이 이 커밋 sha의 이미지(ghcr)로 되돌린다 — docs/deployment.md')
-  }
-
-  triggers {
-    githubPush()
-  }
-
-  stages {
-    stage('이미지 빌드') {
-      when { expression { !params.ROLLBACK_SHA?.trim() } }
-      steps {
-        script {
-          def b = params.BUILDER
-          if (b == 'macos') {
-            node('macos') { buildImages('macos') }
-          } else if (b == 'home') {
-            node('built-in') { buildImages('home') }
-          } else {
-            // auto: macos를 잡으면 거기서 끝까지 굽는다. 대기가 길어지면 감시가 실패해 failFast로 mac 대기를
-            // 걷어 내고(대기열 항목이 취소된다) home으로 간다. 실행기를 잡은 뒤의 실패는 그대로 실패다.
-            env.MAC_ACQUIRED = 'false'
-            def waitSec = (params.MAC_WAIT_SECONDS ?: '180') as int
-            try {
-              parallel(
-                failFast: true,
-                'macos': {
-                  node('macos') {
-                    env.MAC_ACQUIRED = 'true'
-                    buildImages('macos')
-                  }
-                },
-                '대기 감시': {
-                  def waited = 0
-                  while (env.MAC_ACQUIRED != 'true' && waited < waitSec) {
-                    sleep time: 5, unit: 'SECONDS'
-                    waited += 5
-                  }
-                  if (env.MAC_ACQUIRED != 'true') {
-                    error("macos 실행기를 ${waitSec}초 안에 못 잡았다")
-                  }
-                }
-              )
-            } catch (err) {
-              if (env.MAC_ACQUIRED == 'true') { throw err }
-              echo "macos를 못 잡아 home에서 굽는다: ${err.getMessage()}"
-              node('built-in') { buildImages('home') }
-            }
-          }
-        }
-      }
-    }
-
-    stage('배포') {
-      agent { label 'oracle' }
-      steps {
-        script {
-          def sha = params.ROLLBACK_SHA?.trim() ?: env.DEPLOY_SHA
-          // 배포 스크립트·compose는 이 빌드의 커밋 것을 쓴다(되돌릴 때는 지금 main 것 + 옛 이미지).
-          // 체크아웃은 추적 파일만 바꾸므로 워크스페이스의 .env는 그대로다.
-          def scmVars = checkout scm
-          if (!params.ROLLBACK_SHA?.trim() && scmVars.GIT_COMMIT != sha) {
-            sh "git checkout -q --detach ${sha}"
-          }
-          env.DEPLOY_SHA = sha
-          currentBuild.description = "${sha.take(12)} · " + (params.ROLLBACK_SHA?.trim() ? '되돌리기' : "빌드 ${env.BUILT_ON}") + ' · oracle pull'
-          echo "== oracle은 굽지 않는다: sandcorp-flow-*:${sha} 를 pull"
-          sh "bash scripts/deploy.sh ${sha}"
-        }
-      }
-    }
-  }
-
-  post {
-    // 결과 한 줄을 디스코드로(다른 제품과 같은 웹훅, 표식 [Flow]). 웹훅은 자격 `discord-deploy-webhook`을 이름으로만
-    // 부른다. 알림 실패는 빌드 결과를 뒤집지 않는다.
-    always {
-      node('built-in') {
-        catchError(buildResult: null, stageResult: null, message: '디스코드 알림 실패 — 배포 결과와 무관하다') {
-          withCredentials([string(credentialsId: 'discord-deploy-webhook', variable: 'DISCORD_WEBHOOK')]) {
-            script {
-              def result = currentBuild.currentResult
-              def mark = result == 'SUCCESS' ? '✅' : (result == 'ABORTED' ? '⚪' : '❌')
-              def took = currentBuild.durationString.replace(' and counting', '')
-              def text = "${mark} [Flow] 배포 ${result} — #${env.BUILD_NUMBER} (${(env.DEPLOY_SHA ?: '').take(12)}) · 빌드 ${env.BUILT_ON ?: '-'} · ${took} · ${env.BUILD_URL}"
-              writeFile file: 'discord-payload.json', text: groovy.json.JsonOutput.toJson([content: text])
-              sh 'curl -sS -X POST -H "Content-Type: application/json" --data @discord-payload.json "$DISCORD_WEBHOOK" > /dev/null || true'
-            }
-          }
-        }
-      }
-    }
-    failure {
-      echo '배포 실패 — 콘솔의 빌드 노드 줄과 scripts/ci/build-images.sh·scripts/deploy.sh 출력을 보라.'
-    }
-  }
-}
+sandcorpDeploy(
+  name: 'Flow',
+  // 캐시는 전환 전 주소(<repo>:buildcache)를 이어 쓴다. envVar는 compose가 읽지 않는다 — compose는 IMAGE_TAG 하나로 셋을 고정한다.
+  images: [
+    [repo: "${repo}-api", envVar: 'FLOW_API_IMAGE', dockerfile: 'backend/Dockerfile', context: 'backend', cache: "${repo}-api:buildcache"],
+    [repo: "${repo}-admin", envVar: 'FLOW_ADMIN_IMAGE', dockerfile: 'admin/Dockerfile', context: 'admin', cache: "${repo}-admin:buildcache"],
+    [repo: "${repo}-widget", envVar: 'FLOW_WIDGET_IMAGE', dockerfile: 'widget/Dockerfile', context: 'widget', cache: "${repo}-widget:buildcache"],
+  ],
+  sourceUrl: 'https://github.com/sandcorporation/sandcorp-flow',
+  buildSsh: true,                         // api가 sandcorp-authkit(비공개 git 의존성)을 받는다
+  builder: 'sandcorp-flow-images',        // 전환 전 buildx 빌더를 그대로 쓴다
+  check: 'bash scripts/ci/check.sh',      // Jenkinsfile.pr과 같은 것. 실패하면 굽기를 끊고 배포하지 않는다
+  composeProject: 'sandcorp-flow-prod',   // docker-compose.prod.oracle.yml의 name:과 같아야 한다(다르면 새 스택이 뜬다)
+  composeFiles: ['docker-compose.prod.oracle.yml'],
+  deployScript: 'scripts/deploy.sh',      // 무중단 롤링(docker rollout). 자동 롤백 때는 SANDCORP_ROLLBACK=1로 migrate를 건너뛴다
+)
