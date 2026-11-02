@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# oracle(Ampere A1) 무중단 배포 — Jenkinsfile의 「배포」 단계가 oracle 노드에서 호출한다(ADR-0015·0036).
+# oracle(Ampere A1) 무중단 배포 — Jenkins 잡 sandcorp-flow(공용 라이브러리 sandcorpDeploy의 deployScript)가 oracle 노드의
+# 잡 워크스페이스에서 부른다(ADR-0015·0036, jenkins-shared #9).
 #
-# 사용법(원격 A1에서): IMAGE_TAG=<git-sha> bash scripts/deploy.sh <git-sha>
+# 사용법(원격 A1에서): bash scripts/deploy.sh <git-sha>
+#   인자가 없으면 라이브러리가 넘기는 SANDCORP_IMAGE_SHA(이번에 올릴 이미지 sha)를 쓴다.
+#   SANDCORP_ROLLBACK=1이면 자동 롤백(라이브러리가 이 스크립트가 실패하면 직전 성공 sha로 한 번 더 부른다) — migrate를
+#   건너뛰고 같은 무중단 순서로 옛 이미지를 다시 올린다. migrate는 되돌리지 않는다(expand/contract, PR의 파괴적 migrate 검사).
 #
 # 전제(A1 호스트에 1회 준비):
 #   - docker + compose v2 + `docker rollout` 플러그인(https://github.com/wowu/docker-rollout)
@@ -16,7 +20,11 @@
 # 라 소비자 순간 단절을 버팀). 마이그레이션은 롤아웃 전에(expand/contract — 옛/새 코드 공존).
 set -euo pipefail
 
-GIT_SHA="${1:?usage: deploy.sh <git-sha>}"
+GIT_SHA="${1:-${SANDCORP_IMAGE_SHA:-}}"
+if [ -z "$GIT_SHA" ]; then
+  echo "usage: deploy.sh <git-sha> (또는 SANDCORP_IMAGE_SHA)" >&2
+  exit 2
+fi
 
 if [ ! -f .env ]; then
   echo ".env가 없다. .env.prod.example을 복사해 채워 두어야 한다(docs/deployment.md)." >&2
@@ -40,8 +48,12 @@ $COMPOSE pull
 echo "▶ 데이터스토어 기동(마이그레이션 전제)"
 $COMPOSE up -d db redis
 
-echo "▶ migrate (롤아웃 전 — expand/contract). collectstatic은 STATIC_ROOT 미사용으로 불필요."
-$COMPOSE run --rm api python manage.py migrate --noinput
+if [ "${SANDCORP_ROLLBACK:-0}" = 1 ]; then
+  echo "▶ migrate 건너뜀(자동 롤백 — 직전 이미지로 되돌리는 중. migrate는 되돌리지 않는다)"
+else
+  echo "▶ migrate (롤아웃 전 — expand/contract). collectstatic은 STATIC_ROOT 미사용으로 불필요."
+  $COMPOSE run --rm api python manage.py migrate --noinput
+fi
 
 echo "▶ 정적 SPA 갱신(init이 dist를 볼륨에 복사 후 종료)"
 $COMPOSE up -d --no-deps widget-init admin-init

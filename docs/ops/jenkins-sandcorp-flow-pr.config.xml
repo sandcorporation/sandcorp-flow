@@ -1,0 +1,60 @@
+<?xml version="1.1" encoding="UTF-8"?>
+<org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject plugin="workflow-multibranch@842.v3a_b_59b_57b_e6e">
+  <actions/>
+  <description>sandcorp-flow PR 검사 — Jenkinsfile.pr(jenkins-shared sandcorpPrCheck). 결과는 PR head 커밋 상태 continuous-integration/jenkins/pr-merge, 작업자는 wait-ci.py 통과 뒤 병합.</description>
+  <properties/>
+  <folderViews class="jenkins.branch.MultiBranchProjectViewHolder" plugin="branch-api@2.1303.v9f3b_95dc329d">
+    <owner class="org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject" reference="../.."/>
+  </folderViews>
+  <healthMetrics/>
+  <icon class="jenkins.branch.MetadataActionFolderIcon" plugin="branch-api@2.1303.v9f3b_95dc329d">
+    <owner class="org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject" reference="../.."/>
+  </icon>
+  <orphanedItemStrategy class="com.cloudbees.hudson.plugins.folder.computed.DefaultOrphanedItemStrategy" plugin="cloudbees-folder@6.1107.v31f8955765c8">
+    <pruneDeadBranches>true</pruneDeadBranches>
+    <daysToKeep>-1</daysToKeep>
+    <numToKeep>-1</numToKeep>
+    <abortBuilds>true</abortBuilds>
+  </orphanedItemStrategy>
+  <triggers>
+    <com.cloudbees.hudson.plugins.folder.computed.PeriodicFolderTrigger plugin="cloudbees-folder@6.1107.v31f8955765c8">
+      <spec>H * * * *</spec>
+      <interval>3600000</interval>
+    </com.cloudbees.hudson.plugins.folder.computed.PeriodicFolderTrigger>
+  </triggers>
+  <disabled>false</disabled>
+  <sources class="jenkins.branch.MultiBranchProject$BranchSourceList" plugin="branch-api@2.1303.v9f3b_95dc329d">
+    <data>
+      <jenkins.branch.BranchSource>
+        <source class="org.jenkinsci.plugins.github_branch_source.GitHubSCMSource" plugin="github-branch-source@1986.v801e40614d00">
+          <id>sandcorp-flow-pr-github</id>
+          <apiUri>https://api.github.com</apiUri>
+          <credentialsId>github-sandcorporation-token</credentialsId>
+          <repoOwner>sandcorporation</repoOwner>
+          <repository>sandcorp-flow</repository>
+          <repositoryUrl>https://github.com/sandcorporation/sandcorp-flow</repositoryUrl>
+          <traits>
+            <org.jenkinsci.plugins.github__branch__source.OriginPullRequestDiscoveryTrait>
+              <strategyId>1</strategyId>
+            </org.jenkinsci.plugins.github__branch__source.OriginPullRequestDiscoveryTrait>
+            <jenkins.plugins.git.traits.RefSpecsSCMSourceTrait plugin="git@5.11.0">
+              <templates>
+                <jenkins.plugins.git.traits.RefSpecsSCMSourceTrait_-RefSpecTemplate>
+                  <value>+refs/heads/main:refs/remotes/@{remote}/main</value>
+                </jenkins.plugins.git.traits.RefSpecsSCMSourceTrait_-RefSpecTemplate>
+              </templates>
+            </jenkins.plugins.git.traits.RefSpecsSCMSourceTrait>
+          </traits>
+        </source>
+        <strategy class="jenkins.branch.DefaultBranchPropertyStrategy">
+          <properties class="empty-list"/>
+        </strategy>
+      </jenkins.branch.BranchSource>
+    </data>
+    <owner class="org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject" reference="../.."/>
+  </sources>
+  <factory class="org.jenkinsci.plugins.workflow.multibranch.WorkflowBranchProjectFactory">
+    <owner class="org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject" reference="../.."/>
+    <scriptPath>Jenkinsfile.pr</scriptPath>
+  </factory>
+</org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject>
