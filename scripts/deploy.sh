@@ -69,7 +69,7 @@ fi
 
 echo "▶ 무중단 롤링(start-first → /api/health 통과 → 옛 컨테이너 드레인)"
 for svc in api worker worker-chat; do
-  docker rollout -f "$COMPOSE_FILE" "$svc"
+  docker rollout -t 180 -f "$COMPOSE_FILE" "$svc"
 done
 
 # 우리 nginx는 호스트 포트를 안 열고 NPM 뒤에 있으므로, api 컨테이너 내부에서 health를 친다.
