@@ -41,7 +41,7 @@ git push main
 멀티브랜치 잡 `sandcorp-flow-pr`(설정 [docs/ops/jenkins-sandcorp-flow-pr.config.xml](./ops/jenkins-sandcorp-flow-pr.config.xml))이 PR 열기·push마다
 빌드 노드(macos, 못 잡으면 home)에서 PR 머지 결과로 파괴적 migrate 검사 → `scripts/ci/check.sh`를 돌리고 PR head에 상태를 올린다.
 `check.sh`는 로컬 Docker 시험 전부다: 고정 대기 lint·deploy.sh 시험 → 백엔드 pytest → admin·widget vitest·widget typecheck →
-OpenAPI·orval 드리프트 → nginx 계약 시험 → e2e. compose 프로젝트를 실행마다 따로(`flow-check-…`) 띄우고 끝나면 지운다.
+OpenAPI·orval 드리프트 → e2e, 그리고 nginx 계약 시험(기다림이 대부분이라 pytest~드리프트와 나란히). PR 검사 한 판 약 8분(macos, 2026-11-02). compose 프로젝트를 실행마다 따로(`flow-check-…`) 띄우고 끝나면 지운다.
 home 노드는 Jenkins 컨테이너 안이라 bind mount가 맞지 않아 nginx·e2e를 건너뛴다(로그에 남는다). 로컬에서 `bash scripts/ci/check.sh`,
 일부만 `CHECK_ONLY="backend vitest" bash scripts/ci/check.sh`.
 - A1은 **arm64·CPU 전용** — ollama·paddle 없음(임베딩·OCR은 per-Tenant Provider / Vision OCR).

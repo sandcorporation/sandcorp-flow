@@ -6,7 +6,7 @@
 #   bash scripts/ci/check.sh            # 전부
 #   CHECK_ONLY="backend vitest" bash scripts/ci/check.sh   # 일부만(lint backend vitest openapi nginx e2e)
 #
-# 단계: ① 고정 대기 lint·deploy.sh 시험(가짜 docker) ② 백엔드 pytest(db·redis·fake-llm) ③ admin·widget vitest + widget typecheck
+# 단계(⑤는 ②~④와 나란히): ① 고정 대기 lint·deploy.sh 시험(가짜 docker) ② 백엔드 pytest(db·redis·fake-llm) ③ admin·widget vitest + widget typecheck
 #       ④ OpenAPI·orval 생성물 드리프트 ⑤ nginx 계약 시험 ⑥ e2e(Playwright)
 # - compose 프로젝트 이름을 이 실행만의 것(flow-check-…)으로 덮어 dev·로컬 시험 스택, 다른 검사와 겹치지 않는다.
 #   끝나면 그 프로젝트의 컨테이너·볼륨·구운 이미지를 지운다(빌드 캐시는 남아 다음 실행이 빠르다).
@@ -28,6 +28,8 @@ started="$(date +%s)"
 lap() { echo "== $1 끝: $(( $(date +%s) - t0 ))초"; }
 
 cleanup() {
+  if [ -n "${nginx_pid:-}" ]; then kill "$nginx_pid" >/dev/null 2>&1 || true; fi
+  rm -f "${nginx_log:-}"
   "${T[@]}" down -v --remove-orphans --rmi local >/dev/null 2>&1 || true
   if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi
 }
@@ -53,6 +55,25 @@ if want lint; then
   bash scripts/lint-fixed-waits.sh
   bash scripts/test-deploy.sh
   lap ①
+fi
+
+# ⑤ nginx 계약 시험은 컨테이너 기동·응답을 기다리는 시간이 대부분이라(CPU 를 거의 안 쓴다) ②~④와 나란히 돌리고 ⑥ 전에 거둔다.
+nginx_pid=""
+nginx_log="$(mktemp "${TMPDIR:-/tmp}/flow-nginx.XXXXXX")"
+if want nginx; then
+  if [ "$on_home" = 1 ]; then
+    echo "== ⑤ nginx 계약 시험 건너뜀(home: bind mount·호스트 포트가 Jenkins 컨테이너 밖이다)"
+  else
+    echo "== ⑤ nginx 계약 시험 — 배경에서 시작(로그는 ⑥ 전에)"
+    (
+      t0="$(date +%s)"
+      bash scripts/test-nginx-seo.sh && bash scripts/test-nginx-metrics.sh && bash scripts/test-nginx-embed-policy.sh
+      rc=$?
+      echo "== ⑤ 끝: $(( $(date +%s) - t0 ))초 (종료 $rc)"
+      exit "$rc"
+    ) > "$nginx_log" 2>&1 &
+    nginx_pid=$!
+  fi
 fi
 
 if want backend || want openapi; then
@@ -91,16 +112,13 @@ if want openapi; then
   lap ④
 fi
 
-if want nginx; then
-  if [ "$on_home" = 1 ]; then
-    echo "== ⑤ nginx 계약 시험 건너뜀(home: bind mount·호스트 포트가 Jenkins 컨테이너 밖이다)"
-  else
-    t0="$(date +%s)"; echo "== ⑤ nginx 계약 시험"
-    bash scripts/test-nginx-seo.sh
-    bash scripts/test-nginx-metrics.sh
-    bash scripts/test-nginx-embed-policy.sh
-    lap ⑤
-  fi
+if [ -n "$nginx_pid" ]; then
+  echo "== ⑤ nginx 계약 시험 거두기"
+  nginx_rc=0
+  wait "$nginx_pid" || nginx_rc=$?
+  nginx_pid=""
+  cat "$nginx_log"
+  if [ "$nginx_rc" != 0 ]; then echo "== ⑤ nginx 계약 시험 실패" >&2; exit 1; fi
 fi
 
 if want e2e; then
