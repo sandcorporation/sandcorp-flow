@@ -275,7 +275,7 @@ Operator 비밀번호 로그인은 없다(#21). 관리 화면 Operator 로그인
 | 경로 | 용도 |
 |------|------|
 | `http://localhost:5174/admin-ui/` | Operator·Tenant 관리 화면 |
-| `http://localhost:8000/api/docs` | Django-Ninja 자동 API 문서 |
+| `http://localhost:8000/api/docs` | Django-Ninja 자동 API 문서 (개발·시험만, 운영은 꺼짐 — `API_DOCS_ENABLED`) |
 | `http://localhost:5173/chatbot/{slug}/` | Visitor 챗봇 위젯 (토큰 없이 slug로) |
 | `http://localhost:7474` | Neo4j Browser (그래프 직접 조회, 개발용) |
 
@@ -376,7 +376,7 @@ PR은 잡 `sandcorp-flow-pr`이 `scripts/ci/check.sh`(로컬 Docker 시험 전�
 
 ---
 
-## 8. API 개요 (`GET /api/docs`에 전체)
+## 8. API 개요 (개발에서 `GET /api/docs`에 전체; 운영은 비공개)
 
 **Operator 인증**(`/api/operator/*`): `Authorization: Bearer <토큰>`으로 두 가지를 받는다. ① sandcorp-auth 액세스 토큰(Resource Token, `aud`=`AUTH_RESOURCE`) — 규칙은 sandcorp-auth `docs/resource-server-token-validation.md` 3~6·10절(T1~T10 → A1~A3 → S1). 검증 코드는 패키지 `sandcorp-authkit`(sandcorp-auth `clients/python`, 태그 `authkit-v0.2.0`)에 있고, 이 저장소에는 settings를 패키지 설정으로 바꾸는 어댑터 `backend/apps/tenants/authkit.py` 한 파일만 있다(#282). **대표 토큰(`acct` 없음, `sub`=`AUTH_OWNER_SUB`) + `admin` 스코프**일 때만 열린다. 일반 사용자 토큰(`acct=member`)은 검증을 통과해도 403. 실패는 401(토큰 없음/`invalid_token`)·403(`insufficient_scope`)에 `WWW-Authenticate` 헤더. ② Flow 세션 Access Token(30분, ADR-0013) — 관리 화면이 sandcorp-auth 로그인 콜백 뒤 `/api/operator/auth/refresh`로 받는다.
 
