@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 from ninja import NinjaAPI
 from apps.tenants.secrets_api import domain_router, secret_router
@@ -15,7 +16,13 @@ from apps.tenants.try_api import try_router
 from apps.flows.public_api import public_router
 from apps.mcp.api import audit_router
 
-api = NinjaAPI(title="Sandcorp Flow API", version="1.0.0")
+# 운영(API_DOCS_ENABLED=False)에서는 /api/docs·/api/openapi.json을 끈다(#301). 개발·시험은 열어 둔다.
+api = NinjaAPI(
+    title="Sandcorp Flow API",
+    version="1.0.0",
+    docs_url="/docs" if settings.API_DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if settings.API_DOCS_ENABLED else None,
+)
 
 
 @api.exception_handler(FlowServiceError)

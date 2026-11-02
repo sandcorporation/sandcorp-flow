@@ -1,6 +1,8 @@
 from .base import *
 
 DEBUG = False
+# 공개 API 문서(/api/docs·/api/openapi.json)는 운영에서 끈다(#301).
+API_DOCS_ENABLED = False
 # 운영자는 .env에 도메인만 넣으면 된다 — 컨테이너 내부 healthcheck·배포 스모크가 127.0.0.1로
 # /api/health를 치므로 127.0.0.1·localhost를 항상 추가한다(빠지면 DisallowedHost 400).
 ALLOWED_HOSTS = [h for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h] + ["127.0.0.1", "localhost"]

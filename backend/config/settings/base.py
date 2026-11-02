@@ -213,3 +213,6 @@ PRICE_CHECK_RECENT_DAYS = int(os.environ.get("PRICE_CHECK_RECENT_DAYS", "7"))
 PRICE_CHECK_TOLERANCE = Decimal(os.environ.get("PRICE_CHECK_TOLERANCE", "0.01"))
 PRICE_ALERT_WEBHOOK_URL = os.environ.get("PRICE_ALERT_WEBHOOK_URL", "")
 PRICE_ALERT_WEBHOOK_TYPE = os.environ.get("PRICE_ALERT_WEBHOOK_TYPE", "generic")  # discord | slack | generic
+
+# 공개 API 문서(/api/docs·/api/openapi.json). 운영(prod.py)에서만 끈다(#301).
+API_DOCS_ENABLED = True
