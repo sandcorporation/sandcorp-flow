@@ -145,7 +145,7 @@ services:
     # 호스트 포트로 노출 → NPM이 <A1 호스트>:${NGINX_PORT}로 포워딩한다(공유 네트워크 불필요).
     # 이 포트는 Oracle 보안목록에 열지 말 것 — 같은 호스트의 NPM만 접근한다.
     ports:
-      - "${NGINX_PORT:-8080}:80"
+      - "172.17.0.1:${NGINX_PORT:-8080}:80"
     volumes:
       - ./backend/nginx/nginx.oracle.conf:/etc/nginx/nginx.conf:ro
       # 방문 지표 스니펫(#154): 공식 이미지가 시작 때 envsubst 로 conf.d/flow-metrics.conf 를 만든다.
