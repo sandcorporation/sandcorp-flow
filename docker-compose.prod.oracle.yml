@@ -36,9 +36,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
-      interval: 5s
+      interval: 60s
       timeout: 5s
       retries: 5
+      start_period: 60s
+      start_interval: 2s
     restart: unless-stopped
     deploy:
       resources:
@@ -53,9 +55,11 @@ services:
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 60s
       timeout: 3s
       retries: 5
+      start_period: 60s
+      start_interval: 2s
     restart: unless-stopped
     deploy:
       resources:
@@ -70,10 +74,11 @@ services:
       - media:/app/media
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')\" || exit 1"]
-      interval: 10s
+      interval: 60s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 60s
+      start_interval: 2s
     stop_grace_period: 30s
     deploy:
       resources:
