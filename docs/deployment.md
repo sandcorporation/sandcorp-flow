@@ -62,6 +62,7 @@ home 노드는 Jenkins 컨테이너 안이라 bind mount가 맞지 않아 nginx�
 |---|---|
 | 앱 교체 | **`docker rollout`**(start-first): 새 컨테이너 → `/api/health` 통과 → 옛 것 드레인. **api·worker·worker-chat만**. db·redis·nginx는 싱글톤. |
 | 프록시 수렴 | nginx **동적 resolver**(`127.0.0.11 valid=5s`) + 변수 `proxy_pass` → rollout로 바뀐 api IP를 reload 없이 ~5s 수렴. |
+| nginx 재생성 가드(#302) | 실행 중 nginx의 `nginx.conf`가 repo와 다르면 `--force-recreate`(단일 파일 bind mount는 inode 교체라 compose가 못 봄). 같을 때도 force 없는 `up -d --no-deps nginx`를 불러 compose가 **서비스 정의(포트·볼륨·환경) 변경**을 스스로 반영한다(#300 포트 바인딩 사례). `IMAGE_TAG`는 nginx 정의에 없어 api 태그만 바뀐 배포는 no-op(무중단). |
 | 마이그레이션 | **expand/contract** — migrate를 rollout보다 먼저. 옛/새 코드가 공존해야 하므로 컬럼 drop/rename·즉시 NOT NULL 금지. |
 | 워커 드레인 | `stop_grace_period`(api 30s·worker 120s·worker-chat 60s). 배치(Celery)는 `acks_late=True`+`reject_on_worker_lost`로 SIGKILL돼도 재배달(전제: ingest 멱등 — 결정적 ID + upsert). chat(taskiq)은 `ListQueueBroker` pop=소비라 재배달 없음(at-most-once, 중복 응답 방지) — SIGTERM 후 신규 수신을 멈추고 진행 중 응답(LLM ~30s)을 마치도록 드레인. |
 | 정적 SPA | init이 dist를 볼륨에 복사(additive). Vite content-hash라 in-flight 세션 안전. |

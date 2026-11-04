@@ -17,7 +17,7 @@ cat > "$work/bin/docker" <<'SH'
 echo "[${IMAGE_TAG:-}] docker $*" >> "$FAKE_LOG"
 case "$*" in
   "rollout --help") echo "Rollout new Compose service version." ;;
-  *" exec -T nginx "*) exit 1 ;;
+  *" exec -T nginx "*) if [ -n "${FAKE_NGINX_SAME:-}" ]; then : ; else exit 1; fi ;;
   *" exec -T api "*) [ -n "${FAKE_SMOKE_FAIL:-}" ] && exit 1 ;;
 esac
 exit 0
@@ -63,6 +63,16 @@ has '롤백도 옛 이미지 pull' '[ccc333] docker compose -f docker-compose.pr
 has '롤백도 정적 갱신' 'up -d --no-deps widget-init admin-init'
 has '롤백도 worker-chat 롤링' '[ccc333] docker rollout -t 180 -f docker-compose.prod.oracle.yml worker-chat'
 has '롤백도 스모크' 'exec -T api python'
+
+# nginx 가드(#302): conf가 같아도 compose가 정의(포트·볼륨 등) 변경을 보고 재생성하도록 force 없는 up을 항상 부른다.
+# IMAGE_TAG는 nginx 정의에 안 들어가므로 태그만 바뀐 배포는 compose가 no-op으로 둔다(무중단) — force는 conf 변경 때만.
+run ngsame 0 FAKE_NGINX_SAME=1 SANDCORP_IMAGE_SHA=eee555
+has 'conf 같아도 compose가 정의를 판단' 'up -d --no-deps nginx'
+lacks 'conf 같으면 force-recreate 안 함' 'force-recreate'
+grep -q '변경 없음' "$LAST/out" && pass=$((pass + 1)) || { echo "FAIL 변경 없음 문구"; fail=$((fail + 1)); }
+
+run ngdiff 0 SANDCORP_IMAGE_SHA=fff666
+has 'conf 다르면 force-recreate' 'up -d --no-deps --force-recreate nginx'
 
 run nosha 2
 lacks 'sha 없으면 아무것도 안 함' 'pull'

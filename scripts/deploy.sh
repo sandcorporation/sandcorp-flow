@@ -70,12 +70,17 @@ $COMPOSE up -d --no-deps --remove-orphans events
 # restart는 mount 유지라 stale, recreate만 현재 파일을 봄). 그래서 컨테이너가 서빙 중인 설정이
 # 현재 파일과 다를 때만 재생성한다 — 설정 안 바뀐 배포는 nginx를 안 건드려 무중단, 바뀐 배포에서만
 # ~1s 재생성(NPM 재시도로 흡수).
+# 그 밖에 nginx 서비스 정의(포트·볼륨·환경·이미지)만 바뀐 배포(#302, 예 #300 포트 바인딩)는 conf 비교로 못 잡으므로,
+# 조건 없이 force 없는 `up -d --no-deps nginx`를 한 번 더 부른다 — compose가 정의 해시가 달라졌을 때만 재생성하고
+# 같으면 no-op이다. IMAGE_TAG는 nginx 정의에 안 들어가 api 태그만 바뀐 평범한 배포는 건드리지 않는다(무중단).
 echo "▶ nginx 설정 변경 확인"
 if ! $COMPOSE exec -T nginx cat /etc/nginx/nginx.conf 2>/dev/null \
      | cmp -s - backend/nginx/nginx.oracle.conf; then
   echo "  변경 감지 → nginx 재생성"
   $COMPOSE up -d --no-deps --force-recreate nginx
 else
+  echo "  설정 파일 변경 없음 → compose가 서비스 정의(포트·볼륨 등) 변경만 확인"
+  $COMPOSE up -d --no-deps nginx
   echo "  변경 없음 → 유지(무중단)"
 fi
 
