@@ -4,11 +4,11 @@
 #   admin/public/flow/og.png  ← og-admin.svg   (/admin-ui/, /try)
 # 렌더는 docker 안의 헤드리스 Chromium(ghcr.io/browserless/chromium, 한글 글꼴 포함)이 한다.
 # Pretendard(Bold·SemiBold .otf)는 저장소에 두지 않는다: PRETENDARD_DIR 로 폴더를 준다
-# (기본: sandcorp-design 의 node_modules — pnpm install 한 곳).
+# (기본: ~/workspace/design(sandcorp-design 저장소) 의 node_modules — pnpm install 한 곳).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
-fonts="${PRETENDARD_DIR:-$HOME/workspace/sandcorp-design/node_modules/.pnpm/pretendard@1.3.9/node_modules/pretendard/dist/public/static}"
+fonts="${PRETENDARD_DIR:-$HOME/workspace/design/node_modules/.pnpm/pretendard@1.3.9/node_modules/pretendard/dist/public/static}"
 [ -f "$fonts/Pretendard-Bold.otf" ] || { echo "Pretendard-Bold.otf 없음: PRETENDARD_DIR=$fonts" >&2; exit 1; }
 IMG=ghcr.io/browserless/chromium:v2.30.0
 tmp="$(mktemp -d)"
