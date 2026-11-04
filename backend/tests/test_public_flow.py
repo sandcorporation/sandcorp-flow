@@ -136,6 +136,20 @@ def test_public_view_shows_deployed_graph_without_any_planted_value(client, plan
 
 
 @pytest.mark.django_db
+def test_response_carries_only_what_the_view_draws(client, planted):
+    """응답 키는 공개 보기 화면이 그리는 것뿐이다(#301 대조표). 키를 더하려면 화면이 읽는지 먼저 대조한다."""
+    body = _get(client, "leakcorp").json()
+
+    assert set(body) == {"slug", "brand_name", "flow_name", "version", "graph", "template"}
+    assert set(body["graph"]) == {"nodes", "edges"}
+    for node in body["graph"]["nodes"]:
+        assert set(node) == {"id", "kind", "code", "name", "position", "config"}, node["id"]
+        assert set(node["position"]) == {"x", "y"}
+    for edge in body["graph"]["edges"]:
+        assert set(edge) == {"from", "to", "handle"}
+
+
+@pytest.mark.django_db
 def test_reserved_demo_api_url_stays_but_without_query(client, db, settings):
     import secrets as _secrets
 
