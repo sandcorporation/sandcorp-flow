@@ -292,6 +292,11 @@ PR은 잡 `sandcorp-flow-pr`이 `scripts/ci/check.sh`(로컬 Docker 시험 전�
 전체 흐름·1회 설정·환경변수·롤백·트러블슈팅은 **[docs/deployment.md](docs/deployment.md)** 참조
 (설계 근거: [ADR-0015](docs/adr/0015-oracle-zero-downtime-rolling-deploy.md)).
 
+운영 오류는 자체 GlitchTip으로 보낸다(#308) — 백엔드(api·워커·events)는 `sentry-sdk`, admin·widget은 `@sentry/react`.
+운영 `.env`의 `SENTRY_DSN_BACKEND`·`SENTRY_DSN_ADMIN`·`SENTRY_DSN_WIDGET`이 비면 꺼진다(dev·시험은 꺼짐). release는 배포 sha,
+프런트 DSN은 빌드가 아니라 init 컨테이너가 쓰는 `runtime-config.js`에서 온다. 연동 확인은 `manage.py glitchtip_test`
+(deployment.md 「GlitchTip 오류 수집」).
+
 > ⚠️ prod `SECRET_KEY`는 테넌트 provider 키 암호화 키의 파생원이라 **로테이트 금지**(바꾸면 저장된
 > 키 복호화 불가). prod는 `PLATFORM_DEFAULT_PROVIDERS_ENABLED=False`라 테넌트가 자기 Provider를
 > 설정해야 한다.

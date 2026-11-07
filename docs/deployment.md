@@ -182,6 +182,7 @@ relay·bridge 5개는 #290에서 `events` 하나로 합쳤다(그룹을 다시 �
 | `NGINX_PORT` | ○ | 호스트에 여는 nginx 포트(기본 8080). **이 박스는 컨테이너가 많으니 비어 있는 포트를 고르고** NPM Forward에 같은 값을 쓴다. |
 | `CHAT_STREAMING_ENABLED` | ○ | 기본 on. 토큰 스트리밍 킬스위치. |
 | `CHAT_RATE_LIMIT_PER_TENANT`·`_PER_VISITOR` | ○ | 레이트리밋. |
+| `SENTRY_DSN_BACKEND`·`SENTRY_DSN_ADMIN`·`SENTRY_DSN_WIDGET` | ○ | GlitchTip DSN(아래 「GlitchTip 오류 수집」). 비면 그 앱의 SDK가 꺼진다. |
 
 > 쿠키·HTTPS·CORS는 env가 아니라 코드(`config/settings/prod.py`·`base.py`)에 고정돼 있다: `SESSION_COOKIE_SECURE`·`CSRF_COOKIE_SECURE` 켜짐(NPM의 `X-Forwarded-Proto` 신뢰), CORS는 위젯이 고객 사이트에 임베드되므로 모든 출처 허용(Bearer JWT, 쿠키 인증 아님). HTTPS 강제는 NPM(프록시) 몫이다. 앱은 리디렉션하지 않는다(`SecurityMiddleware` 없음).
 > `AUTH_*`(#20·#21, sandcorp-auth)·`PLATFORM_*`(#39, 플랫폼 OpenAI 키)는 해당 티켓이 이름을 정해 `.env.prod.example`에 더한다. 그 전까지 운영 `.env`에 넣지 않는다.
@@ -189,6 +190,34 @@ relay·bridge 5개는 #290에서 `events` 하나로 합쳤다(그룹을 다시 �
 > prod는 `PLATFORM_DEFAULT_PROVIDERS_ENABLED=False`라 `OPEN_ROUTER_*`·`OLLAMA_*`는
 > 불필요 — 테넌트가 자기 LLM·Embedding·OCR Provider를 설정한다(ADR-0012). 미설정 테넌트는 인입·검색이
 > 설계대로 실패한다.
+
+## GlitchTip 오류 수집 (#308)
+
+운영 오류를 자체 GlitchTip(Sentry SDK)으로 보낸다. 프로젝트는 `flow-backend`·`flow-admin`·`flow-widget`.
+
+- **운영 `.env` 세 줄**(값은 대장이 넣는다. 문서·PR·로그에 값을 적지 않는다):
+  `SENTRY_DSN_BACKEND=`·`SENTRY_DSN_ADMIN=`·`SENTRY_DSN_WIDGET=`. 비면 그 앱의 SDK가 꺼진다(dev·시험 compose는 넣지 않는다).
+- compose가 컨테이너 env `SENTRY_DSN`으로 넘긴다 — BACKEND는 api·worker·worker-chat·events(모두 settings 끝의
+  `configure_sentry()`로 켜진다), ADMIN·WIDGET은 `admin-init`·`widget-init`.
+- **release = 배포 커밋 sha 40자**: compose가 `SENTRY_RELEASE: ${IMAGE_TAG}`를 넣는다. `IMAGE_TAG`는 deploy.sh가
+  `SANDCORP_IMAGE_SHA`(sandcorpDeploy의 `GIT_COMMIT`, 롤백이면 `ROLLBACK_SHA` — 이미지 태그가 40자 sha라 짧은 sha는 pull부터 실패한다)로 정한다.
+  environment는 `production` 고정.
+- **프런트는 빌드에 박지 않는다**: `admin-init`·`widget-init`이 시작할 때 `runtime-config.sh`가 산출물을 볼륨에 복사하고
+  env로 `runtime-config.js`(`window.__FLOW_RUNTIME__`)를 쓴다. index.html이 앱보다 먼저 읽는다. DSN이 비면 SDK 청크를 받지도 않는다.
+  DSN만 바꿨을 때는 init 컨테이너가 다시 돌아야 반영된다(다음 배포, 또는 `docker compose … up -d admin-init widget-init`).
+- **widget은 고객 사이트에 iframe으로만 들어간다**(`/chatbot/<slug>/`) — 고객 페이지에 스크립트를 심지 않으므로 SDK의 전역
+  핸들러는 iframe 안 우리 window만 감싼다. 그래도 `allowUrls`로 우리 번들(`<출처>/embed/`·`/admin-ui/`)에서 난 오류만 받는다(확장 스크립트 제외).
+- 보내지 않는 것: 요청 본문·쿠키·자격증명 헤더·프레임 지역 변수·토큰 모양 문자열(JWT·`Bearer`·`sk-` 키·`token=` 쿼리), 의도한 4xx
+  (ninja `HttpError` 4xx·검증 실패·인증 실패, `Http404`·`PermissionDenied`). 소스맵은 올리지 않는다.
+- **확인**(DSN을 넣고 재배포한 뒤, oracle 워크스페이스에서):
+
+  ```bash
+  docker compose -f docker-compose.prod.oracle.yml exec -T api python manage.py glitchtip_test
+  ```
+
+  `GlitchTipOnboardingTest("연동 시험 flow <날짜>")`를 보내고(flush) 그 예외로 끝난다(종료 코드 1이 정상). DSN이 없으면
+  「SDK가 꺼져 있다」를 찍는다. 프런트는 운영 화면에서 일으키지 않는다 — `curl -s https://flow.sandcorp.co.kr/embed/runtime-config.js`에
+  DSN이 들어갔는지까지만 보고, 실제 이벤트는 첫 자연 오류로 확인한다.
 
 ## 배포 / 롤백
 
