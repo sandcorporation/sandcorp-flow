@@ -216,3 +216,9 @@ PRICE_ALERT_WEBHOOK_TYPE = os.environ.get("PRICE_ALERT_WEBHOOK_TYPE", "generic")
 
 # 공개 API 문서(/api/docs·/api/openapi.json). 운영(prod.py)에서만 끈다(#301).
 API_DOCS_ENABLED = True
+
+# 운영 오류 수집(GlitchTip, #308) — SENTRY_DSN 이 있을 때만 켠다(dev·시험은 비어 있어 꺼짐).
+# 모든 프로세스(api·celery·taskiq 워커·events·관리 명령)가 settings 를 거치므로 여기 한 줄로 다 켜진다.
+from apps.core.observability import configure_sentry  # noqa: E402
+
+configure_sentry()
