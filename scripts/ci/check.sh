@@ -54,6 +54,7 @@ if want lint; then
   t0="$(date +%s)"; echo "== ① 고정 대기 lint · 배포 스크립트 시험"
   bash scripts/lint-fixed-waits.sh
   bash scripts/test-deploy.sh
+  bash scripts/test-runtime-config.sh
   lap ①
 fi
 

@@ -16,6 +16,8 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- 실행 설정(#308): 운영 init 컨테이너가 env 로 다시 쓴다. 앱보다 먼저 읽어야 한다(classic script 는 module 보다 먼저 돈다) -->
+    <script src="/runtime-config.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
