@@ -32,7 +32,7 @@ services:
       ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
     # uvicorn ASGI(전면 async, ADR-0022) — async ninja view + async SSE generator를 네이티브로
     # 서빙한다. gunicorn gevent 폐기(블로킹-허브 병 원천 제거).
-    command: uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 4
+    command: uvicorn config.asgi:application --lifespan off --host 0.0.0.0 --port 8000 --workers 4
     env_file: .env
     depends_on:
       db:
