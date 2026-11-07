@@ -14,6 +14,11 @@
 x-backend: &backend
   image: ghcr.io/sandcorporation/sandcorp-flow-api:${IMAGE_TAG:-latest}
   env_file: .env
+  # 오류 수집(GlitchTip, #308). DSN 은 운영 .env 의 SENTRY_DSN_BACKEND(비면 SDK 꺼짐), release 는 배포 커밋 sha 40자
+  # (deploy.sh 가 IMAGE_TAG 로 넘기는 이미지 태그 = sandcorpDeploy 의 GIT_COMMIT).
+  environment:
+    SENTRY_DSN: ${SENTRY_DSN_BACKEND:-}
+    SENTRY_RELEASE: ${IMAGE_TAG:-}
   restart: unless-stopped
   depends_on:
     db:
@@ -130,12 +135,20 @@ services:
   # 정적 SPA 빌드 산출물을 볼륨에 복사하고 종료(one-shot). nginx가 그 볼륨을 서빙.
   widget-init:
     image: ghcr.io/sandcorporation/sandcorp-flow-widget:${IMAGE_TAG:-latest}
+    # 시작할 때 이 env 로 runtime-config.js 를 쓴다(runtime-config.sh, #308) — 빌드에 박지 않는다.
+    environment:
+      SENTRY_DSN: ${SENTRY_DSN_WIDGET:-}
+      SENTRY_RELEASE: ${IMAGE_TAG:-}
     volumes:
       - widget_dist:/output
     restart: "no"
 
   admin-init:
     image: ghcr.io/sandcorporation/sandcorp-flow-admin:${IMAGE_TAG:-latest}
+    # 시작할 때 이 env 로 runtime-config.js 를 쓴다(runtime-config.sh, #308) — 빌드에 박지 않는다.
+    environment:
+      SENTRY_DSN: ${SENTRY_DSN_ADMIN:-}
+      SENTRY_RELEASE: ${IMAGE_TAG:-}
     volumes:
       - admin_dist:/output
     restart: "no"
