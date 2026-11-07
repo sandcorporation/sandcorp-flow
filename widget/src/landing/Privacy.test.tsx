@@ -38,4 +38,14 @@ describe('Privacy (처리방침) — 서비스 오류 기록 (#312)', () => {
     render(<Privacy />)
     expect(screen.getByText(/개정 이력: 2026\. 11\. 7\. — 서비스 오류 기록 항목 추가/)).toBeInTheDocument()
   })
+
+  it('가린 접속 IP를 밝히고 회원 식별 번호는 싣지 않는다', () => {
+    const { container } = render(<Privacy />)
+    const text = container.textContent ?? ''
+    expect(text).toContain('접속 IP 주소(끝자리를 가려 저장')
+    expect(text).toContain('IPv4는 마지막 8비트')
+    expect(text).toContain('IPv6는 /64 이후')
+    expect(text).not.toContain('회원 식별 번호')
+    expect(screen.getByText(/개정 이력: 2026\. 11\. 7\. — 오류 기록에 가린 접속 IP 추가/)).toBeInTheDocument()
+  })
 })
