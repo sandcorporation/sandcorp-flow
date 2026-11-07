@@ -112,7 +112,7 @@ services:
              (python manage.py seed_e2e_member --sub m_E2EINVITEE0000000000000001 --name 'E2E 초대받은 사람' --email e2e-invitee@example.com --accept-invite-from /e2e-shared/invite_token --token-file /e2e-shared/invitee_token &) &&
              (python manage.py seed_e2e_member --token-file /dev/null --issue-tickets-to /e2e-shared/onboarding_ticket &) &&
              (python manage.py seed_e2e_member --token-file /dev/null --serve-tenants-from /e2e-shared/tenant_requests &) &&
-             uvicorn $${E2E_ASGI_APP:-config.asgi:application} --host 0.0.0.0 --port 8000 --workers $${E2E_API_WORKERS:-2}"
+             uvicorn $${E2E_ASGI_APP:-config.asgi:application} --lifespan off --host 0.0.0.0 --port 8000 --workers $${E2E_API_WORKERS:-2}"
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
       DB_HOST: db-test

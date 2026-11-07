@@ -74,7 +74,8 @@ services:
   api:
     <<: *backend
     # uvicorn ASGI(전면 async, ADR-0022). A1 메모리 제약상 워커 2(async라 워커당 동시 다수 SSE 처리).
-    command: uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 2
+    # --lifespan off: Django ASGI는 lifespan을 거절하며 ValueError를 오류 로그로 남긴다(GlitchTip 115, #310). lifespan은 쓰지 않는다.
+    command: uvicorn config.asgi:application --lifespan off --host 0.0.0.0 --port 8000 --workers 2
     volumes:
       - media:/app/media
     healthcheck:

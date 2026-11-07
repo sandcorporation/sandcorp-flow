@@ -13,7 +13,7 @@ services:
 
   api:
     # uvicorn ASGI + --reload(코드 변경 핫리로드) — async view·SSE를 dev에서도 네이티브로.
-    command: uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn config.asgi:application --lifespan off --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/app
     ports:
