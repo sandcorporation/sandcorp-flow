@@ -68,8 +68,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      # 빌드 캐시(gha): 이 단계가 buildx 빌더를 캐시로 데우면 check.sh 의 compose build 가 같은 빌더에서 캐시를 맞힌다. 저장은 main push 에서만
+      # 빌드 캐시(gha): containerd 이미지 저장소를 켜면 기본 docker 드라이버도 type=gha 캐시를 쓴다(docker-container 빌더는
+      # 맞혀도 이미지마다 레이어를 tarball 로 docker 에 보내 e2e 에서 194초가 들었다). bake 가 docker 의 빌드 캐시를 데우면
+      # check.sh 의 compose build 가 같은 데몬에서 맞힌다. 저장은 main push 에서만.
+      - name: docker containerd 이미지 저장소 켜기
+        run: |
+          f=/etc/docker/daemon.json
+          { [ -s "$f" ] && sudo cat "$f" || echo '{}'; } | jq '.features["containerd-snapshotter"] = true' | sudo tee "$f.new" >/dev/null
+          sudo mv "$f.new" "$f" && sudo systemctl restart docker
+          docker info -f '{{.DriverStatus}}'
       - uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
         with:
           source: .
@@ -90,8 +97,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      # 빌드 캐시(gha): 이 단계가 buildx 빌더를 캐시로 데우면 check.sh 의 compose build 가 같은 빌더에서 캐시를 맞힌다. 저장은 main push 에서만
+      # 빌드 캐시(gha): containerd 이미지 저장소를 켜면 기본 docker 드라이버도 type=gha 캐시를 쓴다(docker-container 빌더는
+      # 맞혀도 이미지마다 레이어를 tarball 로 docker 에 보내 e2e 에서 194초가 들었다). bake 가 docker 의 빌드 캐시를 데우면
+      # check.sh 의 compose build 가 같은 데몬에서 맞힌다. 저장은 main push 에서만.
+      - name: docker containerd 이미지 저장소 켜기
+        run: |
+          f=/etc/docker/daemon.json
+          { [ -s "$f" ] && sudo cat "$f" || echo '{}'; } | jq '.features["containerd-snapshotter"] = true' | sudo tee "$f.new" >/dev/null
+          sudo mv "$f.new" "$f" && sudo systemctl restart docker
+          docker info -f '{{.DriverStatus}}'
       - uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
         with:
           source: .
@@ -112,8 +126,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      # 빌드 캐시(gha): 이 단계가 buildx 빌더를 캐시로 데우면 check.sh 의 compose build 가 같은 빌더에서 캐시를 맞힌다. 저장은 main push 에서만
+      # 빌드 캐시(gha): containerd 이미지 저장소를 켜면 기본 docker 드라이버도 type=gha 캐시를 쓴다(docker-container 빌더는
+      # 맞혀도 이미지마다 레이어를 tarball 로 docker 에 보내 e2e 에서 194초가 들었다). bake 가 docker 의 빌드 캐시를 데우면
+      # check.sh 의 compose build 가 같은 데몬에서 맞힌다. 저장은 main push 에서만.
+      - name: docker containerd 이미지 저장소 켜기
+        run: |
+          f=/etc/docker/daemon.json
+          { [ -s "$f" ] && sudo cat "$f" || echo '{}'; } | jq '.features["containerd-snapshotter"] = true' | sudo tee "$f.new" >/dev/null
+          sudo mv "$f.new" "$f" && sudo systemctl restart docker
+          docker info -f '{{.DriverStatus}}'
       - uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
         with:
           source: .
