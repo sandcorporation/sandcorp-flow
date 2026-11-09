@@ -125,7 +125,7 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
   확인은 `docker rollout --help | grep 'Rollout new Compose'` — 플러그인이 없으면 `docker rollout --help`가 docker 일반 도움말을 **exit 0**으로 내서
   「있음」으로 오판한다(첫 배포 build 2가 이걸로 롤링 단계에서 실패). `scripts/deploy.sh`도 시작할 때 같은 grep으로 확인하고 없으면 migrate 전에 멈춘다.
 - **Job `sandcorp-flow`(파이프라인)**: 설정은 [docs/ops/jenkins-sandcorp-flow.config.xml](./ops/jenkins-sandcorp-flow.config.xml).
-  - Pipeline script from SCM: `git@github.com:sandcorporation/sandcorp-flow.git`(자격 `github-farrar142`), 브랜치 `*/main`, Script Path `Jenkinsfile`.
+  - Pipeline script from SCM: `git@github.com:sandcorporation/sandcorp-flow.git`(자격 `<github-ssh-credentials-id>`), 브랜치 `*/main`, Script Path `Jenkinsfile`.
   - 트리거(GitHub hook)·동시 실행 금지·파라미터는 라이브러리 `sandcorpDeploy`가 정한다.
   - **Manage Jenkins → Security → Git Host Key Verification → "Accept first connection"**.
   - 배포 단계는 `oracle` 노드의 잡 워크스페이스에서 돈다. 파이프라인의 `checkout scm`은 추적 파일만 바꾸므로 `.env`·`media`는 그대로다.
@@ -150,7 +150,7 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
 
 ### GitHub
 - GitHub Actions 워크플로는 없다(#293에서 `build-images.yml`을 지웠다). 빌드·배포 자격은 모두 Jenkins에 있다.
-- 웹훅 `https://jenkins.honeycombpizza.link/github-webhook/`(push)만 있으면 된다.
+- 웹훅 `https://<jenkins-host>/github-webhook/`(push)만 있으면 된다.
 - A1 pull용 **classic PAT**(`read:packages`)만 A1의 `docker login`에 사용(org면 SSO authorize).
 
 ## 메모리 상한 (`docker-compose.prod.oracle.yml`)
