@@ -23,6 +23,8 @@ only=" ${CHECK_ONLY:-lint backend vitest openapi nginx e2e} "
 want() { case "$only" in *" $1 "*) return 0 ;; esac; return 1; }
 on_home=0
 if [ "${SANDCORP_BUILT_ON:-}" = home ]; then on_home=1; fi
+# e2e backend 이미지(api-e2e 가 굽고 worker·events 가 같이 쓴다, #332)는 이름이 붙어 down --rmi local 이 안 지운다 — 실행마다 이름을 주고 cleanup 에서 지운다
+export E2E_BACKEND_IMAGE="$run_id-backend-e2e:local"
 T=(docker compose -p "$run_id" -f docker-compose.test.yml)
 started="$(date +%s)"
 lap() { echo "== $1 끝: $(( $(date +%s) - t0 ))초"; }
@@ -31,6 +33,7 @@ cleanup() {
   if [ -n "${nginx_pid:-}" ]; then kill "$nginx_pid" >/dev/null 2>&1 || true; fi
   rm -f "${nginx_log:-}"
   "${T[@]}" down -v --remove-orphans --rmi local >/dev/null 2>&1 || true
+  docker image rm "$E2E_BACKEND_IMAGE" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM

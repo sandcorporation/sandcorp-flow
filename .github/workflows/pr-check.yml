@@ -147,15 +147,12 @@ jobs:
         with:
           source: .
           files: docker-compose.test.yml
-          targets: test,fake-llm,api-e2e,chat-worker-e2e,worker-e2e,events-e2e,admin-e2e,widget-e2e,e2e
+          targets: test,fake-llm,api-e2e,admin-e2e,widget-e2e,e2e
           set: |
             test.cache-from=type=gha,scope=flow-test
             fake-llm.cache-from=type=gha,scope=flow-fake-llm
             api-e2e.cache-from=type=gha,scope=flow-backend
             ${{ github.event_name == 'push' && matrix.shard == '1/2' && 'api-e2e.cache-to=type=gha,scope=flow-backend,mode=max' || '' }}
-            chat-worker-e2e.cache-from=type=gha,scope=flow-backend
-            worker-e2e.cache-from=type=gha,scope=flow-backend
-            events-e2e.cache-from=type=gha,scope=flow-backend
             admin-e2e.cache-from=type=gha,scope=flow-admin-e2e
             ${{ github.event_name == 'push' && matrix.shard == '1/2' && 'admin-e2e.cache-to=type=gha,scope=flow-admin-e2e,mode=max' || '' }}
             widget-e2e.cache-from=type=gha,scope=flow-widget-e2e

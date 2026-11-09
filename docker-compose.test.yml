@@ -100,9 +100,12 @@ services:
         condition: service_healthy
 
   # ── E2E용 Django API ─────────────────────────────────────────────────────
+  # backend 이미지 하나를 api-e2e 가 굽고 worker-e2e·chat-worker-e2e·events-e2e 는 같은 이름으로 쓴다(#332 — 전엔 서비스마다
+  # 같은 Dockerfile 을 따로 구워 bake·이미지 저장·디스크를 네 번 썼다). 이름은 check.sh 가 실행마다 덮고(동시 실행 분리) 끝에 지운다.
   api-e2e:
     build:
       context: ./backend
+    image: ${E2E_BACKEND_IMAGE:-flow-backend-e2e:local}
     command: >
       sh -c "python manage.py migrate --noinput &&
              python manage.py seed_e2e_operator --token-file /e2e-shared/operator_token &&
@@ -178,8 +181,8 @@ services:
   # ── E2E용 Celery Worker(배치 전담) ────────────────────────────────────────
   # chat은 taskiq(chat-worker-e2e)로 분리됐다 — 여기선 기본 큐(ingest/OCR/community 등)만 소비.
   worker-e2e:
-    build:
-      context: ./backend
+    image: ${E2E_BACKEND_IMAGE:-flow-backend-e2e:local}  # api-e2e 가 굽는다(#332)
+    pull_policy: never
     command: celery -A config worker --loglevel=info
     environment: &worker-e2e-env
       DJANGO_SETTINGS_MODULE: config.settings.dev
@@ -204,8 +207,8 @@ services:
   # ── E2E용 taskiq chat 워커 ────────────────────────────────────────────────
   # send_message가 dispatch한 chat_task(taskiq redis 큐)를 실제로 실행한다 — 없으면 chat이 멈춘다.
   chat-worker-e2e:
-    build:
-      context: ./backend
+    image: ${E2E_BACKEND_IMAGE:-flow-backend-e2e:local}  # api-e2e 가 굽는다(#332)
+    pull_policy: never
     command: taskiq worker config.taskiq_worker:broker --workers 1 --max-async-tasks 10
     environment: *worker-e2e-env
     volumes:
@@ -218,8 +221,8 @@ services:
 
   # ── E2E용 Event pipeline (relay + 소비자) ────────────────────────────────
   events-e2e:
-    build:
-      context: ./backend
+    image: ${E2E_BACKEND_IMAGE:-flow-backend-e2e:local}  # api-e2e 가 굽는다(#332)
+    pull_policy: never
     command: python manage.py run_event_pipeline  # relay + 소비자 4개 한 프로세스(#290)
     environment: &event-pipeline-e2e-env
       DJANGO_SETTINGS_MODULE: config.settings.dev
