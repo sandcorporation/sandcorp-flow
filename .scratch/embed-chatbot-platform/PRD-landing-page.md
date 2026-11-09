@@ -47,7 +47,7 @@ Status: ready-for-agent
 - **mock 챗 트랜스포트(랜딩)**: `ChatTransport` 구현체. `createEventSource`가 즉시 `connected` 발화, `postMessage`가 질문에 맞는 스크립트 답변을 **`token` 델타로 setInterval 스트리밍 후 `done`**. 추천 질문 칩은 매칭 답변(마크다운), 자유 입력은 일반 답변으로 폴백. 우리가 만든 스트리밍+마크다운을 그대로 쇼케이스.
 - **KG 데모 = `ForceGraph2D` + 목업**: `KnowledgeGraphTab`은 인증 admin API·router에 묶여 재사용 불가 → 랜딩은 `react-force-graph-2d`를 직접 쓰고 목업 `{nodes,edges}` 공급(admin의 `toGraphData` 매핑·노드리스트·디테일 패널 재현). 노드 클릭 시 목업 이웃을 머지해 확장 연출.
 - **서빙 = `/`에 별도 엔트리, admin 무변경**: admin 레포의 멀티페이지 빌드에 landing 엔트리 추가. nginx에 `location /` 추가해 랜딩을 루트에서 정적 서빙. admin은 `/admin-ui/` 그대로. 공개 방문자는 admin 전체 SPA가 아니라 랜딩 번들만 받는다. (자산 base 처리는 구현에서 확정 — 단일 빌드 base `/admin-ui/` + nginx가 landing.html을 `/`에 서빙하는 방식 권장.)
-- **레이아웃**: Hero(분할 — 좌 카피, 우 라이브 챗봇 데모, "운영자 로그인"→`/admin-ui/` CTA) → 소개/특징 카드 4개(지식그래프 RAG·실시간 토큰 스트리밍·HITL 상담 전환·임베드 위젯) → 지식그래프 데모 → Contact(Email `gksdjf1690@gmail.com` mailto · 전화 `010-2483-1690` tel) → footer.
+- **레이아웃**: Hero(분할 — 좌 카피, 우 라이브 챗봇 데모, "운영자 로그인"→`/admin-ui/` CTA) → 소개/특징 카드 4개(지식그래프 RAG·실시간 토큰 스트리밍·HITL 상담 전환·임베드 위젯) → 지식그래프 데모 → Contact(Email `gksdjf1690@gmail.com` mailto · 전화 `<LANDING_TEL>` tel) → footer.
 - **스타일/언어**: admin의 Tailwind + shadcn 테마 재사용(카드·버튼 등), 다크모드 지원, 한국어. 브랜드명 "Embed Chat".
 
 ## Testing Decisions
