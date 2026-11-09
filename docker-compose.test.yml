@@ -265,6 +265,7 @@ services:
       NGINX_URL: http://nginx-e2e
       E2E_OPERATOR_TOKEN_FILE: /e2e-shared/operator_token
       E2E_SHARED_DIR: /e2e-shared
+      E2E_WORKERS: ${E2E_WORKERS:-4}  # Playwright 워커 수(playwright.config.js 기본 4). Actions 2 vCPU 실행기는 2
     volumes:
       - e2e-shared:/e2e-shared  # 초대 원문(invite_token)을 써서 수락 대역에 넘긴다(#56)
     depends_on:

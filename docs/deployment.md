@@ -44,6 +44,7 @@ GitHub 호스팅 실행기에서 PR 머지 결과로 잡을 나란히 돌린다:
 ③ admin·widget vitest·widget typecheck(`vitest`) · ④ OpenAPI·orval 드리프트(`openapi`) · ⑤ nginx 계약 시험(`nginx`) · ⑥ e2e(`e2e`) ·
 파괴적 migrate 검사([scripts/ci/migrate-guard.sh](../scripts/ci/migrate-guard.sh) — 비공개 jenkins-shared 것의 사본) · admin·widget `vite build`.
 각 잡은 `scripts/ci/check.sh`를 `CHECK_ONLY`로 부르고, compose 프로젝트를 실행마다 따로(`flow-check-…`) 띄우고 끝나면 지운다.
+⑥ e2e 잡은 `E2E_WORKERS: 2`로 Playwright 워커를 줄인다(비공개 저장소 실행기 2 vCPU에서 4워커면 다수가 3초 한도를 넘었다). 시험 한도는 그대로다.
 트리거는 `pull_request`·main push뿐(`pull_request_target` 금지), 권한 `contents: read`, secrets 없음, 액션은 커밋 SHA 고정이다.
 `sandcorp-authkit`은 공개 sandcorp-auth에서 git+https로 받으므로 자격이 필요 없다. 병합 조건은 **전 잡 초록**(`gh pr checks <PR> --watch`).
 로컬에서 `bash scripts/ci/check.sh`, 일부만 `CHECK_ONLY="backend vitest" bash scripts/ci/check.sh`.

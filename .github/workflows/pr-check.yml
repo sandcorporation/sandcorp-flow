@@ -84,6 +84,8 @@ jobs:
     name: ⑥ e2e(Playwright)
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      E2E_WORKERS: 2  # 비공개 저장소 실행기 2 vCPU에 4워커면 다수가 3초 한도를 넘었다(run 42553683765). 한도는 그대로
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
