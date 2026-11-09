@@ -66,17 +66,40 @@ test.describe('흐름 편집기 — 시험 대화·판단 기록(실제 스택)'
     await expect(page.locator('[data-node-id="side"]')).not.toHaveAttribute('data-active', 'true')
     await shot(page, 'log-1600x900')
 
-    // 새로고침해도 마지막 시험 세션의 판단 기록이 되돌아온다(저장된 판단 기록에서 복원, #85)
-    await page.reload()
+    // 시험 대화 탭으로 돌아가면 강조가 꺼진다
+    await aside.getByRole('tab', { name: '시험 대화' }).click()
+    await expect(page.locator('[data-node-id="ask"]')).not.toHaveAttribute('data-active', 'true')
+  })
+
+  // 새로고침 복원·새 대화는 따로 본다(#343) — 화면에서 두 턴을 돌리고 새로고침까지 한 시험에 담으면 느린 실행기에서 3초 한도 근처였다.
+  // 앞 단계(두 턴)는 같은 시험 API 로 만들고, 화면이 하듯 이 흐름의 마지막 시험 세션 id 를 브라우저에 기억시킨 뒤 연다.
+  test('새로고침해도 마지막 시험 세션의 판단 기록이 되돌아오고, 「새 대화」는 시험 대화를 비운다', async ({ page }) => {
+    const tenant = await provisionTenant(`Flow Test Chat Restore ${Date.now()}`)
+    const api = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${tenant.token}` } })
+    const made = await (await api.post('/api/tenant/flows/', { data: { name: '시험 흐름', graph: GRAPH } })).json()
+    let sessionId = null
+    for (const message of ['안녕하세요, 견적이 궁금해요', '웹사이트 리뉴얼이에요']) {
+      const res = await api.post(`/api/tenant/flows/${made.id}/test/`, { data: { message, session_id: sessionId } })
+      expect(res.ok()).toBeTruthy()
+      const sid = /"session_id":\s*"([^"]+)"/.exec(await res.text()) // SSE 본문 — 스트림이 끝나야 text() 가 돌아온다
+      sessionId = sessionId ?? sid?.[1] ?? null
+    }
+    expect(sessionId).toBeTruthy()
+    await api.dispose()
+    await page.addInitScript(([k, v]) => localStorage.setItem(k, v), [`flow-test-session:${made.id}`, sessionId])
+    await openMemberSession(page, ADMIN_URL, tenant.token, `tenant/flows/${made.id}`)
+    await page.setViewportSize({ width: 1600, height: 900 })
     await expect(page.locator('.react-flow__node')).toHaveCount(4)
+
+    // 저장된 판단 기록에서 복원(#85)
+    const aside = page.locator('aside[aria-label="노드 설정"]')
     await aside.getByRole('tab', { name: '판단 기록' }).click()
     await expect(aside.getByRole('region', { name: '판단 기록' }).getByText(/^턴 \d$/)).toHaveCount(2)
     await expect(aside.getByRole('region', { name: '판단 기록' }).getByText(/세션 합계/)).toBeVisible()
     await shot(page, 'log-restored-1600x900')
 
-    // 설정 탭으로 가면 강조가 꺼지고, 새 대화는 시험 대화를 비운다
+    // 새 대화는 시험 대화를 비운다
     await aside.getByRole('tab', { name: '시험 대화' }).click()
-    await expect(page.locator('[data-node-id="ask"]')).not.toHaveAttribute('data-active', 'true')
     await aside.getByRole('button', { name: '새 대화' }).click()
     await expect(aside.getByRole('region', { name: '시험 대화' }).locator('li')).toHaveCount(0)
 
