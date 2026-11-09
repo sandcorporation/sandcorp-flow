@@ -463,20 +463,25 @@ def test_seed_e2e_member_accepts_invite_dropped_in_file(tenant_with_key, tmp_pat
     invite_file, token_file = tmp_path / "invite", tmp_path / "token"
     invite_file.write_text(raw)
 
-    # 시작할 때 남은 원문은 버리므로, 시작 뒤에 다시 쓰는 것처럼 스레드로 떨군다.
+    # 시작할 때 남은 원문은 버리므로, 명령이 그것을 지운 뒤(사건)에 다시 쓰는 것처럼 스레드로 떨군다.
+    # 고정 지연(0.3초)은 느린 노드에서 명령의 지우기보다 먼저 써져 새 원문까지 지워졌다(#320).
     import threading
     import time
 
     def drop() -> None:
-        time.sleep(0.3)
+        deadline = time.monotonic() + 10
+        while invite_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)  # wait-ok: 파일이 지워지는 사건을 짧게 폴링한다
         invite_file.write_text(raw)
 
-    threading.Thread(target=drop).start()
+    dropper = threading.Thread(target=drop)
+    dropper.start()
     call_command(
         "seed_e2e_member", "--sub", "m_E2EINVITEE0000000000000001",
         "--accept-invite-from", str(invite_file), "--token-file", str(token_file),
         "--wait-seconds", "10", "--once",
     )
+    dropper.join(timeout=10)
 
     me = Client().get("/api/tenant/members/me", **_hdr(token_file.read_text()))
     assert me.status_code == 200 and me.json()["tenant_id"] == str(tenant.id) and me.json()["role"] == "member"

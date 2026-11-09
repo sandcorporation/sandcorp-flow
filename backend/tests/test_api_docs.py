@@ -1,6 +1,12 @@
-import subprocess
-import sys
-import textwrap
+import importlib
+import uuid
+
+import pytest
+from django.urls import Resolver404, URLResolver, path
+from django.urls.resolvers import RegexPattern
+from ninja import NinjaAPI
+
+from config.api import docs_routes
 
 
 def test_docs_and_openapi_open_in_dev(client):
@@ -9,19 +15,23 @@ def test_docs_and_openapi_open_in_dev(client):
     assert client.get("/api/health").status_code == 200
 
 
+def _resolver(enabled: bool) -> URLResolver:
+    """config.api 와 같은 문서 경로로 만든 NinjaAPI 를 /api/ 아래 라우팅한다(이름공간은 이 시험만의 것)."""
+    api = NinjaAPI(urls_namespace=f"docs-check-{uuid.uuid4().hex}", **docs_routes(enabled))
+    return URLResolver(RegexPattern(r"^/"), [path("api/", api.urls)])
+
+
 def test_docs_and_openapi_closed_in_prod_settings():
-    """운영 설정(config.settings.prod)으로 새 프로세스를 띄워 라우팅을 직접 확인한다."""
-    code = textwrap.dedent(
-        """
-        import django
-        from django.test import Client
-        django.setup()
-        c = Client(HTTP_HOST="localhost")
-        print([c.get(p).status_code for p in ("/api/docs", "/api/openapi.json", "/api/health")])
-        """
-    )
-    env = {"DJANGO_SETTINGS_MODULE": "config.settings.prod"}
-    import os
-    out = subprocess.run([sys.executable, "-c", code], env={**os.environ, **env},
-                         capture_output=True, text=True, timeout=60)
-    assert out.stdout.strip().endswith("[404, 404, 200]"), out.stdout + out.stderr
+    """운영 설정 모듈(config.settings.prod)의 값으로 만든 라우팅에 /api/docs·/api/openapi.json 이 없다.
+
+    자식 프로세스로 Django 를 통째로 띄우던 것(CPU 1.7초, #320)을 같은 프로세스 라우팅 확인으로 바꿨다.
+    """
+    prod = importlib.import_module("config.settings.prod")
+    assert prod.API_DOCS_ENABLED is False
+    closed = _resolver(prod.API_DOCS_ENABLED)
+    for p in ("/api/docs", "/api/openapi.json"):
+        with pytest.raises(Resolver404):
+            closed.resolve(p)
+    opened = _resolver(True)  # 대조: 켜면 같은 방법으로 찾아진다(빈 확인이 아님)
+    for p in ("/api/docs", "/api/openapi.json"):
+        opened.resolve(p)
