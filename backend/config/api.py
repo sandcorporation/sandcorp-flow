@@ -1,3 +1,5 @@
+from typing import TypedDict
+
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 from ninja import NinjaAPI
@@ -16,13 +18,17 @@ from apps.tenants.try_api import try_router
 from apps.flows.public_api import public_router
 from apps.mcp.api import audit_router
 
-# 운영(API_DOCS_ENABLED=False)에서는 /api/docs·/api/openapi.json을 끈다(#301). 개발·시험은 열어 둔다.
-api = NinjaAPI(
-    title="Sandcorp Flow API",
-    version="1.0.0",
-    docs_url="/docs" if settings.API_DOCS_ENABLED else None,
-    openapi_url="/openapi.json" if settings.API_DOCS_ENABLED else None,
-)
+class DocsRoutes(TypedDict):
+    docs_url: str | None
+    openapi_url: str | None
+
+
+def docs_routes(enabled: bool) -> DocsRoutes:
+    """API 문서 경로. 운영(API_DOCS_ENABLED=False)에서는 /api/docs·/api/openapi.json을 끈다(#301). 개발·시험은 열어 둔다."""
+    return {"docs_url": "/docs" if enabled else None, "openapi_url": "/openapi.json" if enabled else None}
+
+
+api = NinjaAPI(title="Sandcorp Flow API", version="1.0.0", **docs_routes(settings.API_DOCS_ENABLED))
 
 
 @api.exception_handler(FlowServiceError)

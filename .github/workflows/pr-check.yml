@@ -1,0 +1,68 @@
+# PR 검사(GitHub 호스팅 Actions, #317) — scripts/ci/check.sh 의 단계 중 비공개 sandcorp-auth 없이 되는 것만.
+# backend pytest·OpenAPI 드리프트·e2e·파괴적 migrate 검사는 아직 Jenkins `sandcorp-flow-pr` 에 남는다(docs/deployment.md 「PR 검사」).
+# 보안: 공개 저장소라 남의 PR 코드가 돈다 — pull_request 만(pull_request_target 금지), GitHub 호스팅 실행기만,
+# 읽기 권한만, secrets 를 쓰지 않는다. 액션은 커밋 SHA 로 고정한다(옆 주석이 태그).
+name: PR 검사
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: ① lint·deploy.sh·runtime-config 시험
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: CHECK_ONLY=lint bash scripts/ci/check.sh
+
+  vitest:
+    name: ③ admin·widget vitest + widget typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: CHECK_ONLY=vitest bash scripts/ci/check.sh
+
+  nginx:
+    name: ⑤ nginx 계약 시험
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: CHECK_ONLY=nginx bash scripts/ci/check.sh
+
+  build:
+    name: vite build (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [admin, widget]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - working-directory: ${{ matrix.app }}
+        run: npm ci --no-audit --no-fund --loglevel=error && npm run build

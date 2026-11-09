@@ -44,6 +44,12 @@ git push main
 OpenAPI·orval 드리프트 → e2e, 그리고 nginx 계약 시험(기다림이 대부분이라 pytest~드리프트와 나란히). PR 검사 한 판 약 8분(macos, 2026-11-02). compose 프로젝트를 실행마다 따로(`flow-check-…`) 띄우고 끝나면 지운다.
 home 노드는 Jenkins 컨테이너 안이라 bind mount가 맞지 않아 nginx·e2e를 건너뛴다(로그에 남는다). 로컬에서 `bash scripts/ci/check.sh`,
 일부만 `CHECK_ONLY="backend vitest" bash scripts/ci/check.sh`.
+
+**GitHub Actions**([.github/workflows/pr-check.yml](../.github/workflows/pr-check.yml), #317)가 같은 PR에서 비공개 `sandcorp-auth` 없이 되는 단계를
+GitHub 호스팅 실행기로 나란히 돌린다: ① lint·deploy.sh·runtime-config 시험(`CHECK_ONLY=lint`), ③ admin·widget vitest·widget typecheck(`CHECK_ONLY=vitest`),
+⑤ nginx 계약 시험(`CHECK_ONLY=nginx`), admin·widget `vite build`. 트리거는 `pull_request`·main push뿐(`pull_request_target` 금지),
+권한 `contents: read`, secrets 없음, 액션은 커밋 SHA 고정이다. **아직 Jenkins에만 있는 단계**: ② 백엔드 pytest·④ OpenAPI 드리프트·⑥ e2e·파괴적 migrate 검사
+(backend 이미지가 비공개 `sandcorp-auth`를 git+ssh로 받아야 해서 — sandcorp-auth 공개 뒤 옮긴다). 병합은 Actions 초록과 Jenkins `continuous-integration/jenkins/pr-merge` SUCCESS 둘 다.
 - A1은 **arm64·CPU 전용** — ollama·paddle 없음(임베딩·OCR은 per-Tenant Provider / Vision OCR).
 
 ### 잡 파라미터
@@ -119,7 +125,7 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
   확인은 `docker rollout --help | grep 'Rollout new Compose'` — 플러그인이 없으면 `docker rollout --help`가 docker 일반 도움말을 **exit 0**으로 내서
   「있음」으로 오판한다(첫 배포 build 2가 이걸로 롤링 단계에서 실패). `scripts/deploy.sh`도 시작할 때 같은 grep으로 확인하고 없으면 migrate 전에 멈춘다.
 - **Job `sandcorp-flow`(파이프라인)**: 설정은 [docs/ops/jenkins-sandcorp-flow.config.xml](./ops/jenkins-sandcorp-flow.config.xml).
-  - Pipeline script from SCM: `git@github.com:sandcorporation/sandcorp-flow.git`(자격 `github-farrar142`), 브랜치 `*/main`, Script Path `Jenkinsfile`.
+  - Pipeline script from SCM: `git@github.com:sandcorporation/sandcorp-flow.git`(자격 `<github-ssh-credentials-id>`), 브랜치 `*/main`, Script Path `Jenkinsfile`.
   - 트리거(GitHub hook)·동시 실행 금지·파라미터는 라이브러리 `sandcorpDeploy`가 정한다.
   - **Manage Jenkins → Security → Git Host Key Verification → "Accept first connection"**.
   - 배포 단계는 `oracle` 노드의 잡 워크스페이스에서 돈다. 파이프라인의 `checkout scm`은 추적 파일만 바꾸므로 `.env`·`media`는 그대로다.
@@ -127,7 +133,7 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
   macos는 실행기가 하나라 PR 검사와 배포가 겹치면 뒤의 것이 3분 기다린 뒤 home으로 간다.
   home(built-in, x86)은 QEMU arm64 에뮬레이션이 등록돼 있어야 한다(portfolio·news와 같은 노드).
 - **자격**(이름만, 모두 기존 것을 다시 쓴다): ghcr 쓰기 `ghcr-push-token`(Secret text), 비공개 sandcorp-auth 읽기 SSH
-  `github-farrar142`(빌드·검사 때 임시 ssh-agent에 넣어 BuildKit `--ssh default`로 넘긴다 — `backend/requirements.txt`의
+  `<github-ssh-credentials-id>`(빌드·검사 때 임시 ssh-agent에 넣어 BuildKit `--ssh default`로 넘긴다 — `backend/requirements.txt`의
   `sandcorp-authkit`, #282), 알림 `discord-deploy-webhook`. oracle은 호스트 docker의 ghcr **읽기** 로그인을 쓴다.
 - **GHCR login**: Jenkins 컨테이너 안(빌드 실행 유저)에서 1회. 컨테이너를 자주 재생성하면 Execute
   shell 맨 앞에서 Credential로 매번 login하는 게 견고: `echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USER" --password-stdin`.
@@ -145,7 +151,7 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
 
 ### GitHub
 - GitHub Actions 워크플로는 없다(#293에서 `build-images.yml`을 지웠다). 빌드·배포 자격은 모두 Jenkins에 있다.
-- 웹훅 `https://jenkins.honeycombpizza.link/github-webhook/`(push)만 있으면 된다.
+- 웹훅 `https://<jenkins-host>/github-webhook/`(push)만 있으면 된다.
 - A1 pull용 **classic PAT**(`read:packages`)만 A1의 `docker login`에 사용(org면 SSO authorize).
 
 ## 메모리 상한 (`docker-compose.prod.oracle.yml`)
