@@ -12,6 +12,11 @@ module.exports = defineConfig({
   testDir: './tests',
   timeout: 3_000, // 시험 하나(앞뒤 걸이 포함) 3초. 스펙에서 test.setTimeout/slow 로 올리지 않는다(#257)
   retries: 0,
+  // 조각(--shard)을 파일이 아니라 시험 단위로 나눈다 — 파일 단위면 큰 파일이 한 조각에 몰려 137/70으로 갈렸다(#333).
+  // 파일 안 시험도 워커에 흩어지므로 test.beforeAll 은 워커마다 다시 돈다(각자 새 테넌트를 만든다). 시험끼리 상태를 넘기지 않는다.
+  fullyParallel: true,
+  // 시험마다 걸린 시간을 남긴다 — 3초 한도 근처(2초 넘는) 시험을 CI 로그에서 바로 찾는다
+  reporter: [['list']],
   // 워커가 많으면 한 시험의 시간이 부풀어 3초 한도 근처에서 번갈아 떨어진다(Docker Desktop 14코어 실측: 7워커 23건 >2초, 4워커 1건 실패). E2E_WORKERS 로 조정.
   workers: Number(process.env.E2E_WORKERS) || 4,
   shard,
