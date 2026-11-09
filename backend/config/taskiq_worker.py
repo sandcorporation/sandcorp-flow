@@ -16,7 +16,11 @@ import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.prod")
 django.setup()
 
-from taskiq import TaskiqMessage, TaskiqMiddleware, TaskiqResult  # noqa: E402
+import asyncio  # noqa: E402
+
+from taskiq import TaskiqEvents, TaskiqMessage, TaskiqMiddleware, TaskiqResult, TaskiqState  # noqa: E402
+
+from apps.core.loop_pool import install_loop_thread_pool  # noqa: E402
 
 from config.taskiq_broker import broker  # noqa: E402
 import apps.chat.chat_task  # noqa: E402,F401 — @broker.task 등록(import 부작용)
@@ -45,3 +49,9 @@ class DjangoORMConnCleanupMiddleware(TaskiqMiddleware):
 # 격리를 깨뜨릴 수 있다. prod redis 워커에서만 커넥션 위생을 강제한다.
 if os.environ.get("TASKIQ_INMEMORY") != "1":
     broker.add_middlewares(DjangoORMConnCleanupMiddleware())
+
+
+@broker.on_event(TaskiqEvents.WORKER_STARTUP)
+async def _loop_thread_pool(state: TaskiqState) -> None:
+    """턴의 임베딩·http_tool이 도는 루프 기본 풀을 --max-async-tasks 이상으로(#322)."""
+    install_loop_thread_pool(asyncio.get_running_loop())

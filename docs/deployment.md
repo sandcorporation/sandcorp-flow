@@ -188,6 +188,7 @@ relay·bridge 5개는 #290에서 `events` 하나로 합쳤다(그룹을 다시 �
 | `CHAT_STREAMING_ENABLED` | ○ | 기본 on. 토큰 스트리밍 킬스위치. |
 | `CHAT_RATE_LIMIT_PER_TENANT`·`_PER_VISITOR` | ○ | 레이트리밋. |
 | `SENTRY_DSN_BACKEND`·`SENTRY_DSN_ADMIN`·`SENTRY_DSN_WIDGET` | ○ | GlitchTip DSN(아래 「GlitchTip 오류 수집」). 비면 그 앱의 SDK가 꺼진다. |
+| `LOOP_THREAD_POOL_SIZE` | – | 턴이 도는 루프(api·worker-chat)의 기본 스레드 풀 크기(#322). 기본 32 — taskiq `--max-async-tasks`(25)보다 작게 두지 않는다. |
 
 > 쿠키·HTTPS·CORS는 env가 아니라 코드(`config/settings/prod.py`·`base.py`)에 고정돼 있다: `SESSION_COOKIE_SECURE`·`CSRF_COOKIE_SECURE` 켜짐(NPM의 `X-Forwarded-Proto` 신뢰), CORS는 위젯이 고객 사이트에 임베드되므로 모든 출처 허용(Bearer JWT, 쿠키 인증 아님). HTTPS 강제는 NPM(프록시) 몫이다. 앱은 리디렉션하지 않는다(`SecurityMiddleware` 없음).
 > `AUTH_*`(#20·#21, sandcorp-auth)·`PLATFORM_*`(#39, 플랫폼 OpenAI 키)는 해당 티켓이 이름을 정해 `.env.prod.example`에 더한다. 그 전까지 운영 `.env`에 넣지 않는다.
@@ -268,7 +269,7 @@ curl -sN -X POST "https://flow.sandcorp.co.kr/api/tenant/flows/<flow-id>/test/" 
 
 ## 동시 위젯 턴의 지식 검색 대기 확인 (#262)
 
-운영 위젯 턴은 taskiq `worker-chat`(`--workers 2 --max-async-tasks 25`)에서 돈다. 한 워커 프로세스의 턴들은 DB 단계를 thread-sensitive 스레드 하나에서 돌리지만, 지식 검색의 임베딩 HTTP는 그 스레드 밖(풀 스레드)에서 기다린다(ADR-0035 #262 덧붙임). 그래서 한 대화의 임베딩이 느려도 다른 대화의 DB·검색 단계가 그 시간만큼 기다리지 않는다. DB 연결 수는 늘지 않는다.
+운영 위젯 턴은 taskiq `worker-chat`(`--workers 2 --max-async-tasks 25`)에서 돈다. 한 워커 프로세스의 턴들은 DB 단계를 thread-sensitive 스레드 하나에서 돌리지만, 지식 검색의 임베딩 HTTP는 그 스레드 밖(풀 스레드)에서 기다린다(ADR-0035 #262 덧붙임). 그래서 한 대화의 임베딩이 느려도 다른 대화의 DB·검색 단계가 그 시간만큼 기다리지 않는다. DB 연결 수는 늘지 않는다. 그 풀은 파이썬 기본(`min(32, CPU+4)`, oracle 4코어면 8)이 아니라 `LOOP_THREAD_POOL_SIZE`(기본 32)로 건다(#322, `apps.core.loop_pool`) — 동시 턴이 8개를 넘어도 임베딩·http_tool이 줄을 서지 않는다.
 
 **운영 확인 절차**(배포 뒤 한 번): 지식 검색 노드가 있는 공개 흐름에서 서로 다른 방문자 대화 5개를 거의 동시에 보낸다(위젯 창 여러 개, 또는 `POST /api/chat/message`를 동시에). 각 세션 상세의 판단 기록(노드 배지 시간, 또는 `GET …/sessions/{id}/decision-traces`의 `duration_ms`)에서 지식 검색 노드 시간을 본다.
 - **정상**: 다섯 대화의 kb `duration_ms`가 혼자 보낸 대화의 kb 시간과 비슷하다.

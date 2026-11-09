@@ -1,4 +1,5 @@
 # pyright: reportAttributeAccessIssue=false
+import asyncio
 import json
 import os
 import socket
@@ -11,6 +12,23 @@ from django.test import Client
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.dev")
 os.environ.setdefault("TASKIQ_INMEMORY", "1")  # taskiq chat 태스크를 인라인 실행(issue 190)
+
+
+class _LoopPoolPolicy(asyncio.DefaultEventLoopPolicy):
+    """시험 루프에도 운영과 같은 기본 스레드 풀 크기를 건다(#322, apps.core.loop_pool) — CPU 수에 따라 결과가 갈리지 않게."""
+
+    def new_event_loop(self) -> asyncio.AbstractEventLoop:
+        from apps.core.loop_pool import install_loop_thread_pool
+
+        loop = super().new_event_loop()
+        install_loop_thread_pool(loop)
+        return loop
+
+
+@pytest.fixture(scope="session")
+def event_loop_policy() -> asyncio.AbstractEventLoopPolicy:
+    """pytest-asyncio 가 시험마다 만드는 루프의 정책."""
+    return _LoopPoolPolicy()
 
 # langgraph-checkpoint(serde/jsonplus.py)가 import 시점에 `Reviver()`를 인자 없이 만들어 langchain-core가
 # `allowed_objects` 기본값 변경 예고(LangChainPendingDeprecationWarning)를 낸다(#190). 우리 코드가 넘길 인자가
