@@ -140,6 +140,7 @@ services:
     environment:
       SENTRY_DSN: ${SENTRY_DSN_WIDGET:-}
       SENTRY_RELEASE: ${IMAGE_TAG:-}
+      LANDING_TEL: ${LANDING_TEL:-}   # 랜딩 푸터·처리방침 전화(#326). 비면 줄 숨김
     volumes:
       - widget_dist:/output
     restart: "no"

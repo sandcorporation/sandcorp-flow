@@ -22,6 +22,8 @@ import type { BrowserOptions, ErrorEvent } from '@sentry/react'
 export type FlowRuntimeConfig = {
   sentryDsn?: string
   sentryRelease?: string
+  /** 랜딩 푸터·처리방침에 보이는 전화번호(#326, 운영 env LANDING_TEL). 비면 그 줄을 숨긴다. widget 만 쓴다. */
+  landingTel?: string
 }
 
 declare global {
