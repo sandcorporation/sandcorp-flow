@@ -45,7 +45,7 @@ GitHub 호스팅 실행기에서 PR 머지 결과로 잡을 나란히 돌린다:
 파괴적 migrate 검사([scripts/ci/migrate-guard.sh](../scripts/ci/migrate-guard.sh) — 비공개 jenkins-shared 것의 사본) · admin·widget `vite build`.
 각 잡은 `scripts/ci/check.sh`를 `CHECK_ONLY`로 부르고, compose 프로젝트를 실행마다 따로(`flow-check-…`) 띄우고 끝나면 지운다.
 backend·openapi·e2e 잡은 이미지 레이어를 buildx 빌드 캐시 `type=gha`(이미지별 scope `flow-*`, `mode=max`)로 받는다 — 실행기 docker에 containerd 이미지 저장소를 켜고(기본 docker 드라이버가 gha 캐시를 쓰게), `docker/bake-action`이 `docker-compose.test.yml`을 읽어 데몬의 빌드 캐시를 데우면 `check.sh`의 `compose build`가 같은 데몬에서 맞힌다. 캐시 저장은 main push 실행에서만, PR은 main 캐시를 복원만 한다.
-⑥ e2e 잡은 `E2E_WORKERS: 2`로 Playwright 워커를 줄인다(비공개 저장소 실행기 2 vCPU에서 4워커면 다수가 3초 한도를 넘었다). 시험 한도는 그대로다.
+⑥ e2e 잡은 Playwright `--shard`(`E2E_SHARD=i/2`, `e2e/playwright.config.js`)로 실행기 2대에 나눠 돌리고 워커는 `E2E_WORKERS: 2`다 — 4 vCPU 실행기 실측에서 나누지 않은 워커 2는 잡 341초, 워커 4는 3초 한도 초과 40건, 2조각·워커 2는 287초·259초로 초과가 없었다. 시험 한도는 그대로다.
 트리거는 `pull_request`·main push뿐(`pull_request_target` 금지), 권한 `contents: read`, secrets 없음, 액션은 커밋 SHA 고정이다.
 `sandcorp-authkit`은 공개 sandcorp-auth에서 git+https로 받으므로 자격이 필요 없다. 병합 조건은 **전 잡 초록**(`gh pr checks <PR> --watch`).
 로컬에서 `bash scripts/ci/check.sh`, 일부만 `CHECK_ONLY="backend vitest" bash scripts/ci/check.sh`.
