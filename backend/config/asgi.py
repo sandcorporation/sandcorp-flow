@@ -8,7 +8,10 @@ import os
 from django.core.asgi import get_asgi_application
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.prod")
-application = get_asgi_application()
+from apps.core.loop_pool import with_loop_thread_pool  # noqa: E402 — django 설정 뒤
+
+# 턴의 임베딩·http_tool이 도는 루프 기본 풀을 CPU 수가 아니라 LOOP_THREAD_POOL_SIZE로(#322).
+application = with_loop_thread_pool(get_asgi_application())
 
 from config.warmup import warm_up  # noqa: E402 — django.setup()(get_asgi_application) 뒤라야 한다
 
