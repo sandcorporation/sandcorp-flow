@@ -10,7 +10,7 @@ mac(못 잡으면 home, QEMU)에서 하고 oracle에 배포했다. 배포 경로
 공개 저장소에서 git+https로 받아져 이미지 빌드에 자격이 필요 없어졌다. 저장소가 공개라 GitHub 호스팅 arm64 실행기(`ubuntu-24.04-arm`)를 쓸 수 있다.
 
 ## Decision
-- `release.yml`(on push main): `check`(pr-check.yml을 workflow_call) → `image`(image.yml, 이미지마다 matrix 잡, arm64 네이티브,
+- `release.yml`(on push main): `check`(pr-check.yml을 workflow_call)와 나란히 `image`(image.yml — #347부터 병렬, 이미지마다 matrix 잡, arm64 네이티브,
   GHCR `<이미지>:<sha>`, 레지스트리 캐시 `:buildcache`) → `promote`(`scripts/ci/promote.sh ff <sha>` — `production` fast-forward만).
 - **운영 = `production` 브랜치 머리.** Jenkins 잡은 `*/production`만 보고 `sandcorpDeploy(deployFrom: 'production')`로
   검사·굽기 없이 이미지가 GHCR에 있는지만 확인하고 배포한다.
