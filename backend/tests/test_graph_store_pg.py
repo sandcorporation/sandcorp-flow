@@ -107,6 +107,80 @@ def test_ensure_vector_index_idempotent(pg_backend):
     assert gs.vector_search([1.0, 0.0, 0.0], top_k=1)[0]["content"] == "문서"
 
 
+
+@pytest.mark.django_db(transaction=True)
+def test_first_vec_table_ddl_is_safe_under_concurrent_ingest(pg_backend):
+    """#339: 빈 DB에서 두 색인이 같은 차원의 vec 테이블을 동시에 처음 만들어도 둘 다 성공한다.
+
+    `CREATE TABLE IF NOT EXISTS`는 동시성에 안전하지 않다 — 앞 트랜잭션이 아직 커밋하지 않은 테이블을
+    뒤 세션은 못 보고 만들러 들어가 카탈로그 유일 인덱스에서 기다렸다가 UniqueViolation으로 죽는다
+    (e2e fullyParallel 첫 색인이 failed가 된 원인). A가 만든 채 커밋 전, B가 기다리는 것을 본 뒤 A를 커밋한다.
+    """
+    import threading
+    from django.db import connection, connections, transaction
+    from apps.rag.graph_store import GraphStore
+
+    dim = 777  # 다른 시험이 쓰지 않는 차원 — 이 시험이 처음 만든다
+    tables = [f"kg_{k}_vec_d{dim}" for k in ("text_unit", "mention")]
+
+    def drop():
+        with connection.cursor() as cur:
+            for t in tables:
+                cur.execute(f"DROP TABLE IF EXISTS {t}")
+
+    drop()
+    ta, tb = str(_tenant(dim=dim).id), str(_tenant(dim=dim).id)
+    a_created, b_waiting = threading.Event(), threading.Event()
+    errors: dict[str, BaseException] = {}
+
+    def run_a():
+        try:
+            with transaction.atomic():
+                GraphStore(ta).ensure_vector_index(dimensions=dim)
+                a_created.set()
+                b_waiting.wait(10)
+        except BaseException as e:  # noqa: BLE001 — 스레드 예외를 본 스레드로 넘긴다
+            errors["a"] = e
+            a_created.set()
+        finally:
+            connections.close_all()
+
+    def run_b():
+        try:
+            a_created.wait(10)
+            GraphStore(tb).ensure_vector_index(dimensions=dim)
+        except BaseException as e:  # noqa: BLE001
+            errors["b"] = e
+        finally:
+            connections.close_all()
+
+    a, b = threading.Thread(target=run_a), threading.Thread(target=run_b)
+    a.start()
+    b.start()
+    try:
+        assert a_created.wait(10)
+        # B가 잠금을 기다리기 시작할 때까지(사건) — 그 뒤에 A를 커밋해야 경합이 재현된다
+        for _ in range(2000):
+            with connection.cursor() as cur:
+                cur.execute(
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                    "AND wait_event_type = 'Lock'"
+                )
+                if cur.fetchone()[0]:
+                    break
+        else:
+            pytest.fail("B가 잠금 대기에 들어가지 않았다")
+        b_waiting.set()
+        a.join(10)
+        b.join(10)
+        assert errors == {}
+    finally:
+        b_waiting.set()
+        a.join(10)
+        b.join(10)
+        drop()
+
+
 # ── issue 163: Mention 저장 + SAME_AS + search_entities ──────────────────────
 
 @pytest.mark.django_db

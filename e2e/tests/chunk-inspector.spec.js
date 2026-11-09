@@ -1,5 +1,6 @@
 const { test, expect, request } = require('@playwright/test')
 const { provisionTenant, openMemberSession } = require('./memberToken')
+const { expectDocumentReady } = require('./documents')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const API_URL = process.env.API_URL || 'http://localhost:8000'
@@ -65,10 +66,7 @@ test.describe('Document Chunk Inspector', () => {
     // 색인은 서버 비동기 작업이라 알릴 사건이 없다 — API 로 ready 를 다시 보고, 화면은 ready 인 채로 연다
     // (화면 목록은 3초 주기로 새로고침해 3초 한도 안에 ready 를 기다릴 수 없다, #257).
     const docId = (await upload.json()).id
-    await expect.poll(async () => {
-      const docs = await (await api.get('/api/tenant/documents/', { headers: { Authorization: `Bearer ${tenant.token}` } })).json()
-      return docs.find((d) => d.id === docId)?.status
-    }, { timeout: 30_000, intervals: [50, 100, 200, 400] }).toBe('ready')
+    await expectDocumentReady(api, tenant.token, docId)
     await api.dispose()
 
     await loginAsTenantAgent(page, tenant)
@@ -100,10 +98,7 @@ test.describe('Document Chunk Inspector', () => {
     // 색인은 서버 비동기 작업이라 알릴 사건이 없다 — API 로 ready 를 다시 보고, 화면은 ready 인 채로 연다
     // (화면 목록은 3초 주기로 새로고침해 3초 한도 안에 ready 를 기다릴 수 없다, #257).
     const docId = (await upload.json()).id
-    await expect.poll(async () => {
-      const docs = await (await api.get('/api/tenant/documents/', { headers: { Authorization: `Bearer ${tenant.token}` } })).json()
-      return docs.find((d) => d.id === docId)?.status
-    }, { timeout: 30_000, intervals: [50, 100, 200, 400] }).toBe('ready')
+    await expectDocumentReady(api, tenant.token, docId)
     await api.dispose()
 
     await loginAsTenantAgent(page, tenant)
