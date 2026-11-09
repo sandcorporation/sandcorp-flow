@@ -35,5 +35,5 @@ psycopg[binary]>=3.0,<4.0
 # 타입 체크 스텁(Pylance/Pyright; 런타임 무관)
 django-types>=0.19
 celery-types>=0.22
-# MCP·운영자 인증(sandcorp-auth #54). 비공개 저장소라 ssh로 받는다 — 빌드에 ssh 전달이 필요하다(README 「인증 패키지」).
-sandcorp-authkit[django] @ git+ssh://git@github.com/sandcorporation/sandcorp-auth.git@authkit-v0.2.0#subdirectory=clients/python
+# MCP·운영자 인증(sandcorp-auth #54). 공개 저장소에서 git+https로 받는다(인증·ssh 전달 불필요, #320).
+sandcorp-authkit[django] @ git+https://github.com/sandcorporation/sandcorp-auth.git@authkit-v0.2.0#subdirectory=clients/python

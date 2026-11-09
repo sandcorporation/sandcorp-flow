@@ -17,10 +17,10 @@
 
 # 테스트 실행 (무조건 Docker)
 
-- **PR 검사에 맡긴다.** 시험 묶음 전체(`bash scripts/ci/check.sh`, 전체 `scripts/test.sh`·e2e 전체)는 로컬에서 돌리지 않는다 — PR을 열면 잡 `sandcorp-flow-pr`이 PR 머지 결과로 `scripts/ci/check.sh`(lint·deploy.sh 시험·pytest·vitest·typecheck·OpenAPI 드리프트·nginx·e2e)와 파괴적 migrate 검사를 돌려 상태 `continuous-integration/jenkins/pr-merge`를 올린다. `python3 ~/.claude/skills/issue-track/scripts/wait-ci.py <PR>`로 기다리고 SUCCESS일 때만 병합하며, 병합 뒤에는 `wait-deploy.py --job sandcorp-flow --pr <PR>`로 배포를 기다린다(docs/deployment.md 「PR 검사」).
+- **PR 검사에 맡긴다.** 시험 묶음 전체(`bash scripts/ci/check.sh`, 전체 `scripts/test.sh`·e2e 전체)는 로컬에서 돌리지 않는다 — PR을 열면 GitHub Actions 워크플로 `.github/workflows/pr-check.yml`이 PR 머지 결과로 `scripts/ci/check.sh`의 단계(lint·deploy.sh 시험·pytest·vitest·typecheck·OpenAPI 드리프트·nginx·e2e)와 파괴적 migrate 검사·vite build를 잡마다 나란히 돌린다. `gh pr checks <PR> --watch`로 기다리고 **전 잡 초록일 때만** 병합하며, 병합 뒤에는 `wait-deploy.py --job sandcorp-flow --pr <PR>`로 배포(Jenkins `sandcorp-flow`)를 기다린다(docs/deployment.md 「PR 검사」). Jenkins PR 잡 `sandcorp-flow-pr`은 2026-11-09에 꺼졌다.
 - **로컬은 바꾼 부분과 관련된 시험만.** 시험이 실패하면 그 시험만 좁혀서(`scripts/test.sh tests/test_x.py::test_fn`, `-k`, 스펙 파일:줄) 다시 돌린다. 일부 단계만 보려면 `CHECK_ONLY="backend vitest" bash scripts/ci/check.sh`.
 - **모든 테스트는 Docker 컨테이너에서 실행합니다. 호스트에서 직접 `pytest`/`vitest`/`npm test`를 돌리지 마세요.** 호스트엔 DB(Postgres+pgvector)·Redis·fake-llm이 없어 결과를 신뢰할 수 없습니다.
-- **이미지 빌드에 ssh-agent가 필요하다**: backend 이미지는 비공개 `sandcorp-authkit`을 git+ssh로 받는다. `scripts/test.sh`(시험 이미지를 처음 빌드할 때)와 e2e의 `docker compose -f docker-compose.test.yml build`는 compose `ssh: [default]`로 내 ssh-agent를 넘기므로, sandcorp-auth를 읽을 수 있는 키를 먼저 `ssh-add`한다(`ssh-add -l`이 비면 빌드가 `Permission denied (publickey)`로 실패한다).
+- **이미지 빌드에 자격이 필요 없다**: backend 이미지는 `sandcorp-authkit`을 공개 저장소 sandcorp-auth에서 git+https로 받는다(#320). ssh-agent·`ssh-add`는 필요 없다.
 - **백엔드**: `bash scripts/test.sh` (전체) 또는 `bash scripts/test.sh tests/test_xxx.py[::test_fn]` (특정 대상). 이 스크립트가 `docker-compose.test.yml`로 필요한 인프라(db·redis·fake-llm)를 띄우고 종료 시 정리합니다. ollama는 기본으로 뜨지 않습니다(임베딩은 가짜). OCR은 테넌트 Vision Provider라 컨테이너가 없고 시험은 `transcribe_image` Fake입니다.
 - **프론트(admin/widget)**: Docker node 컨테이너에서 vitest 실행. 예) `docker compose -f docker-compose.dev.yml run --rm --no-deps admin sh -c "npm install && npm run test:run"`. (vitest는 jsdom+fetch mock이라 백엔드 인프라가 불필요하므로 `--no-deps`로 `api` 의존만 건너뛰는 것은 정상입니다.)
 - **백엔드에선 테스트가 요구하는 인프라(DB·Redis·fake-llm)를 건너뛰지 마세요.** 일부만 띄우고 돌리면(`--no-deps` 등) 통과처럼 보여도 인프라 의존 테스트가 조용히 실패·누락됩니다. 백엔드 검증은 항상 `scripts/test.sh`로 풀스택에서.

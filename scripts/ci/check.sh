@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PR 검사·배포 전 검사: 로컬 Docker 시험과 같은 것을 한 번에 돌린다(jenkins-shared #9).
-# Jenkins `sandcorp-flow-pr`(Jenkinsfile.pr, sandcorpPrCheck)가 PR 머지 결과로, `sandcorp-flow`(Jenkinsfile, sandcorpDeploy)가
-# 이미지 굽기와 나란히 부른다 — 배포 쪽은 PR 검사가 같은 트리를 통과시켰으면 건너뛴다. 로컬에서도 그대로 돈다.
+# GitHub Actions(.github/workflows/pr-check.yml)가 PR 머지 결과로 단계마다(CHECK_ONLY), Jenkins `sandcorp-flow`(Jenkinsfile, sandcorpDeploy)가
+# 이미지 굽기와 나란히 부른다 — 배포 쪽 재검사 생략은 Jenkins PR 상태(pr-merge)로 판정했는데 그 잡이 꺼져(2026-11-09) 이제 매번 돈다. 로컬에서도 그대로 돈다.
 #
 #   bash scripts/ci/check.sh            # 전부
 #   CHECK_ONLY="backend vitest" bash scripts/ci/check.sh   # 일부만(lint backend vitest openapi nginx e2e)
@@ -13,7 +13,7 @@
 # - 소스는 bind mount 하지 않고 이미지에 굽거나(tar로) 컨테이너에 넣는다 — home 노드는 Jenkins 컨테이너 안이라 작업 공간
 #   경로가 호스트와 달라 bind mount 가 빈 폴더가 된다. 그래서 compose 파일이 bind mount 를 쓰는 ⑤ nginx·⑥ e2e 는
 #   SANDCORP_BUILT_ON=home 에서 건너뛴다(로그에 남긴다). macos·로컬은 전부 돈다.
-# - 비공개 의존성(sandcorp-authkit)은 BuildKit ssh 로 받는다: GIT_SSH_KEY(Jenkins)가 있으면 임시 ssh-agent, 없으면 내 agent.
+# - sandcorp-authkit 은 공개 sandcorp-auth 에서 git+https 로 받는다(ssh 전달 불필요, #320).
 # bash 3.2(macos 노드)에서도 돈다.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -31,15 +31,9 @@ cleanup() {
   if [ -n "${nginx_pid:-}" ]; then kill "$nginx_pid" >/dev/null 2>&1 || true; fi
   rm -f "${nginx_log:-}"
   "${T[@]}" down -v --remove-orphans --rmi local >/dev/null 2>&1 || true
-  if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
-
-if [ -n "${GIT_SSH_KEY:-}" ]; then
-  eval "$(ssh-agent -s)" >/dev/null
-  ssh-add "$GIT_SSH_KEY" 2>/dev/null
-fi
 
 # node 컨테이너에서 admin·widget 시험. 소스는 tar 로 넣는다(node_modules 제외).
 # admin 시험은 /e2e/narrow-routes.json(e2e 라우트 목록)을 읽는다. $1 = admin|widget, $2 = 그 안에서 돌릴 명령

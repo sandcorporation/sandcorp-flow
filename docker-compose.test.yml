@@ -75,7 +75,6 @@ services:
   test:
     build:
       context: ./backend
-      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
       dockerfile: Dockerfile.test
     command: python -m pytest tests/ -v --tb=short
     environment:
@@ -104,7 +103,6 @@ services:
   api-e2e:
     build:
       context: ./backend
-      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
     command: >
       sh -c "python manage.py migrate --noinput &&
              python manage.py seed_e2e_operator --token-file /e2e-shared/operator_token &&
@@ -182,7 +180,6 @@ services:
   worker-e2e:
     build:
       context: ./backend
-      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
     command: celery -A config worker --loglevel=info
     environment: &worker-e2e-env
       DJANGO_SETTINGS_MODULE: config.settings.dev
@@ -209,7 +206,6 @@ services:
   chat-worker-e2e:
     build:
       context: ./backend
-      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
     command: taskiq worker config.taskiq_worker:broker --workers 1 --max-async-tasks 10
     environment: *worker-e2e-env
     volumes:
@@ -224,7 +220,6 @@ services:
   events-e2e:
     build:
       context: ./backend
-      ssh: [default]  # sandcorp-authkit(비공개 sandcorp-auth)를 git+ssh로 받는다
     command: python manage.py run_event_pipeline  # relay + 소비자 4개 한 프로세스(#290)
     environment: &event-pipeline-e2e-env
       DJANGO_SETTINGS_MODULE: config.settings.dev
@@ -270,6 +265,8 @@ services:
       NGINX_URL: http://nginx-e2e
       E2E_OPERATOR_TOKEN_FILE: /e2e-shared/operator_token
       E2E_SHARED_DIR: /e2e-shared
+      E2E_WORKERS: ${E2E_WORKERS:-4}  # Playwright 워커 수(playwright.config.js 기본 4). Actions 2 vCPU 실행기는 2
+      E2E_SHARD: ${E2E_SHARD:-}  # i/N 이면 N 조각 중 i번째만(playwright.config.js). 비면 전부
     volumes:
       - e2e-shared:/e2e-shared  # 초대 원문(invite_token)을 써서 수락 대역에 넘긴다(#56)
     depends_on:

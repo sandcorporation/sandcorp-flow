@@ -10,16 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     git \
-    openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-# sandcorp-authkit은 비공개 저장소(git+ssh)라 BuildKit ssh 전달(`--ssh default`)로 받는다.
-# known_hosts는 이 RUN 안에서만 쓰고 지운다 — 키는 소켓으로만 오고 레이어에 남지 않는다.
-RUN --mount=type=ssh mkdir -p -m 0700 /root/.ssh \
-    && ssh-keyscan -t ed25519 github.com > /root/.ssh/known_hosts 2>/dev/null \
-    && pip install --no-cache-dir -r requirements.txt \
-    && rm -rf /root/.ssh
+# sandcorp-authkit은 공개 저장소 sandcorp-auth에서 git+https로 받는다(인증 없음, #320).
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
