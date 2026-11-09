@@ -16,7 +16,7 @@ PR → Actions PR 검사(pr-check.yml) 전 잡 초록 → main 병합
    │
    ▼  GitHub Actions release.yml (on push main)
 [check]    pr-check.yml을 workflow_call로 — PR과 같은 잡 전부(migrate 검사만 PR 전용)
-[image]    needs check. image.yml — ubuntu-24.04-arm 네이티브, 이미지마다 matrix 잡 하나:
+[image]    check와 병렬(#347, check 산출물에 기대지 않는다). image.yml — ubuntu-24.04-arm 네이티브, 이미지마다 matrix 잡 하나:
            ghcr.io/sandcorporation/sandcorp-flow-{api,admin,widget}:<sha>, 캐시 :buildcache(레지스트리)
 [promote]  needs check·image. scripts/ci/promote.sh ff <sha> — production fast-forward만(강제 없음).
            production이 이미 더 새 판이면(늦게 끝난 옛 실행) 건너뜀
