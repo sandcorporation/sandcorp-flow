@@ -87,6 +87,7 @@ jobs:
             ${{ github.event_name == 'push' && 'test.cache-to=type=gha,scope=flow-test,mode=max' || '' }}
             fake-llm.cache-from=type=gha,scope=flow-fake-llm
             ${{ github.event_name == 'push' && 'fake-llm.cache-to=type=gha,scope=flow-fake-llm,mode=max' || '' }}
+      - run: echo "실행기 vCPU=$(nproc)"
       - run: CHECK_ONLY=backend bash scripts/ci/check.sh
 
   openapi:
@@ -117,17 +118,21 @@ jobs:
       - run: CHECK_ONLY=openapi bash scripts/ci/check.sh
 
   e2e:
-    name: ⑥ e2e(Playwright) ${{ matrix.shard }}
+    name: ⑥ e2e(Playwright) ${{ matrix.shard || 'all' }} w${{ matrix.workers }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        # 측정용: N=3·4, shard 마다 워커 1. 고른 N 만 남긴다
-        shard: ['1/3', '2/3', '3/3', '1/4', '2/4', '3/4', '4/4']
+        # 측정용(4 vCPU): shard 없이 워커 2·4, shard N=2 워커 2. 고른 조합만 남긴다
+        include:
+          - { shard: '', workers: 2 }
+          - { shard: '', workers: 4 }
+          - { shard: '1/2', workers: 2 }
+          - { shard: '2/2', workers: 2 }
     env:
       E2E_SHARD: ${{ matrix.shard }}
-      E2E_WORKERS: 1  # 비공개 저장소 실행기 2 vCPU에 4워커면 다수가 3초 한도를 넘었다(run 42553683765). 한도는 그대로
+      E2E_WORKERS: ${{ matrix.workers }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -150,16 +155,17 @@ jobs:
             test.cache-from=type=gha,scope=flow-test
             fake-llm.cache-from=type=gha,scope=flow-fake-llm
             api-e2e.cache-from=type=gha,scope=flow-backend
-            ${{ github.event_name == 'push' && startsWith(matrix.shard, '1/') && 'api-e2e.cache-to=type=gha,scope=flow-backend,mode=max' || '' }}
+            ${{ github.event_name == 'push' && (matrix.shard == '' || startsWith(matrix.shard, '1/')) && matrix.workers == 2 && 'api-e2e.cache-to=type=gha,scope=flow-backend,mode=max' || '' }}
             chat-worker-e2e.cache-from=type=gha,scope=flow-backend
             worker-e2e.cache-from=type=gha,scope=flow-backend
             events-e2e.cache-from=type=gha,scope=flow-backend
             admin-e2e.cache-from=type=gha,scope=flow-admin-e2e
-            ${{ github.event_name == 'push' && startsWith(matrix.shard, '1/') && 'admin-e2e.cache-to=type=gha,scope=flow-admin-e2e,mode=max' || '' }}
+            ${{ github.event_name == 'push' && (matrix.shard == '' || startsWith(matrix.shard, '1/')) && matrix.workers == 2 && 'admin-e2e.cache-to=type=gha,scope=flow-admin-e2e,mode=max' || '' }}
             widget-e2e.cache-from=type=gha,scope=flow-widget-e2e
-            ${{ github.event_name == 'push' && startsWith(matrix.shard, '1/') && 'widget-e2e.cache-to=type=gha,scope=flow-widget-e2e,mode=max' || '' }}
+            ${{ github.event_name == 'push' && (matrix.shard == '' || startsWith(matrix.shard, '1/')) && matrix.workers == 2 && 'widget-e2e.cache-to=type=gha,scope=flow-widget-e2e,mode=max' || '' }}
             e2e.cache-from=type=gha,scope=flow-e2e
-            ${{ github.event_name == 'push' && startsWith(matrix.shard, '1/') && 'e2e.cache-to=type=gha,scope=flow-e2e,mode=max' || '' }}
+            ${{ github.event_name == 'push' && (matrix.shard == '' || startsWith(matrix.shard, '1/')) && matrix.workers == 2 && 'e2e.cache-to=type=gha,scope=flow-e2e,mode=max' || '' }}
+      - run: echo "실행기 vCPU=$(nproc)"
       - run: CHECK_ONLY=e2e bash scripts/ci/check.sh
 
   build:
