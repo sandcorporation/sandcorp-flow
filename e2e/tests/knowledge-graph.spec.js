@@ -1,5 +1,6 @@
 const { test, expect, request } = require('@playwright/test')
 const { provisionTenant, openMemberSession } = require('./memberToken')
+const { expectDocumentReady } = require('./documents')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 const API_URL = process.env.API_URL || 'http://localhost:8000'
@@ -43,12 +44,7 @@ test.describe('Knowledge Graph 인스펙터', () => {
     const docId = (await upRes.json()).id
 
     // 비동기 그래프 인제스션이 끝날 때까지(status=ready) 대기
-    await expect.poll(async () => {
-      const docs = await (await api.get('/api/tenant/documents/', {
-        headers: { Authorization: `Bearer ${agentToken}` },
-      })).json()
-      return docs.find(d => d.id === docId)?.status
-    }, { timeout: 60_000, intervals: [100] }).toBe('ready') // 서버 비동기 작업이라 알릴 사건이 없다 — 상태를 다시 본다
+    await expectDocumentReady(api, agentToken, docId, { timeout: 60_000, intervals: [100] })
     await api.dispose()
 
     await openMemberSession(page, ADMIN_URL, tenant.token, 'tenant/graph') // 첫 화면을 거치지 않고 곧바로(#257)

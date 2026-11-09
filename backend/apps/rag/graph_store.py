@@ -99,10 +99,14 @@ class GraphStore:
         key = (kind, dim)
         if key in self._ensured:
             return
-        from django.db import connection
+        from django.db import connection, transaction
         t = f"kg_{kind}_vec_d{dim}"
         id_col = "unit_id" if kind == "text_unit" else "mention_id"
-        with connection.cursor() as cur:
+        # IF NOT EXISTS 는 동시성에 안전하지 않다 — 다른 세션이 아직 커밋하지 않은 같은 테이블을 못 보고 만들러 들어가
+        # 카탈로그 유일 인덱스(pg_type)에서 UniqueViolation 으로 죽는다(#339, 빈 DB 첫 색인이 겹칠 때).
+        # 테이블 이름별 트랜잭션 advisory lock 으로 DDL 을 줄 세운다 — 뒤 세션은 앞 세션 커밋 뒤에 테이블을 본다.
+        with transaction.atomic(), connection.cursor() as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", [t])
             cur.execute(
                 f"CREATE TABLE IF NOT EXISTS {t} ("
                 f"tenant_id text NOT NULL, {id_col} text NOT NULL, embedding vector({dim}), "
