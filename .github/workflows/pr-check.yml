@@ -1,19 +1,21 @@
 # PR 검사(GitHub 호스팅 Actions, #317·#320) — scripts/ci/check.sh 전 단계 + 파괴적 migrate 검사.
-# Jenkins `sandcorp-flow-pr` 가 하던 것과 같다(docs/deployment.md 「PR 검사」). sandcorp-authkit 은 공개 저장소에서 git+https 로 받는다.
+# main push 에서는 release.yml 이 불러 승격 전 검사로 쓴다(#340). Jenkins `sandcorp-flow-pr` 가 하던 것과 같다(docs/deployment.md 「PR 검사」). sandcorp-authkit 은 공개 저장소에서 git+https 로 받는다.
 # 보안: 공개 저장소라 남의 PR 코드가 돈다 — pull_request 만(pull_request_target 금지), GitHub 호스팅 실행기만,
 # 읽기 권한만, secrets 를 쓰지 않는다. 액션은 커밋 SHA 로 고정한다(옆 주석이 태그).
 name: PR 검사
 
 on:
   pull_request:
-  push:
-    branches: [main]
+  # main push에서는 release.yml이 workflow_call로 부른다(#340) — 통과해야 이미지·production 승격으로 간다.
+  # 그때 github.event_name은 부른 쪽의 push다.
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pr-check-${{ github.event.pull_request.number || github.ref }}
+  # PR은 번호마다 새 push가 옛 실행을 끊는다. main(workflow_call)은 커밋마다 따로 — 끊기면 그 sha의 승격 실행이 취소로 끝난다.
+  group: pr-check-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -70,7 +72,7 @@ jobs:
           persist-credentials: false
       # 빌드 캐시(gha): containerd 이미지 저장소를 켜면 기본 docker 드라이버도 type=gha 캐시를 쓴다(docker-container 빌더는
       # 맞혀도 이미지마다 레이어를 tarball 로 docker 에 보내 e2e 에서 194초가 들었다). bake 가 docker 의 빌드 캐시를 데우면
-      # check.sh 의 compose build 가 같은 데몬에서 맞힌다. 저장은 main push 에서만.
+      # check.sh 의 compose build 가 같은 데몬에서 맞힌다. 저장은 PR 이 아닌 실행(release 의 workflow_call = main push)에서만.
       - name: docker containerd 이미지 저장소 켜기
         run: |
           f=/etc/docker/daemon.json
@@ -84,9 +86,9 @@ jobs:
           targets: test,fake-llm
           set: |
             test.cache-from=type=gha,scope=flow-test
-            ${{ github.event_name == 'push' && 'test.cache-to=type=gha,scope=flow-test,mode=max' || '' }}
+            ${{ github.event_name != 'pull_request' && 'test.cache-to=type=gha,scope=flow-test,mode=max' || '' }}
             fake-llm.cache-from=type=gha,scope=flow-fake-llm
-            ${{ github.event_name == 'push' && 'fake-llm.cache-to=type=gha,scope=flow-fake-llm,mode=max' || '' }}
+            ${{ github.event_name != 'pull_request' && 'fake-llm.cache-to=type=gha,scope=flow-fake-llm,mode=max' || '' }}
       - run: echo "실행기 vCPU=$(nproc)"
       - run: CHECK_ONLY=backend bash scripts/ci/check.sh
 
@@ -100,7 +102,7 @@ jobs:
           persist-credentials: false
       # 빌드 캐시(gha): containerd 이미지 저장소를 켜면 기본 docker 드라이버도 type=gha 캐시를 쓴다(docker-container 빌더는
       # 맞혀도 이미지마다 레이어를 tarball 로 docker 에 보내 e2e 에서 194초가 들었다). bake 가 docker 의 빌드 캐시를 데우면
-      # check.sh 의 compose build 가 같은 데몬에서 맞힌다. 저장은 main push 에서만.
+      # check.sh 의 compose build 가 같은 데몬에서 맞힌다. 저장은 PR 이 아닌 실행(release 의 workflow_call = main push)에서만.
       - name: docker containerd 이미지 저장소 켜기
         run: |
           f=/etc/docker/daemon.json
@@ -136,7 +138,7 @@ jobs:
           persist-credentials: false
       # 빌드 캐시(gha): containerd 이미지 저장소를 켜면 기본 docker 드라이버도 type=gha 캐시를 쓴다(docker-container 빌더는
       # 맞혀도 이미지마다 레이어를 tarball 로 docker 에 보내 e2e 에서 194초가 들었다). bake 가 docker 의 빌드 캐시를 데우면
-      # check.sh 의 compose build 가 같은 데몬에서 맞힌다. 저장은 main push 에서만.
+      # check.sh 의 compose build 가 같은 데몬에서 맞힌다. 저장은 PR 이 아닌 실행(release 의 workflow_call = main push)에서만.
       - name: docker containerd 이미지 저장소 켜기
         run: |
           f=/etc/docker/daemon.json
@@ -152,13 +154,13 @@ jobs:
             test.cache-from=type=gha,scope=flow-test
             fake-llm.cache-from=type=gha,scope=flow-fake-llm
             api-e2e.cache-from=type=gha,scope=flow-backend
-            ${{ github.event_name == 'push' && matrix.shard == '1/2' && 'api-e2e.cache-to=type=gha,scope=flow-backend,mode=max' || '' }}
+            ${{ github.event_name != 'pull_request' && matrix.shard == '1/2' && 'api-e2e.cache-to=type=gha,scope=flow-backend,mode=max' || '' }}
             admin-e2e.cache-from=type=gha,scope=flow-admin-e2e
-            ${{ github.event_name == 'push' && matrix.shard == '1/2' && 'admin-e2e.cache-to=type=gha,scope=flow-admin-e2e,mode=max' || '' }}
+            ${{ github.event_name != 'pull_request' && matrix.shard == '1/2' && 'admin-e2e.cache-to=type=gha,scope=flow-admin-e2e,mode=max' || '' }}
             widget-e2e.cache-from=type=gha,scope=flow-widget-e2e
-            ${{ github.event_name == 'push' && matrix.shard == '1/2' && 'widget-e2e.cache-to=type=gha,scope=flow-widget-e2e,mode=max' || '' }}
+            ${{ github.event_name != 'pull_request' && matrix.shard == '1/2' && 'widget-e2e.cache-to=type=gha,scope=flow-widget-e2e,mode=max' || '' }}
             e2e.cache-from=type=gha,scope=flow-e2e
-            ${{ github.event_name == 'push' && matrix.shard == '1/2' && 'e2e.cache-to=type=gha,scope=flow-e2e,mode=max' || '' }}
+            ${{ github.event_name != 'pull_request' && matrix.shard == '1/2' && 'e2e.cache-to=type=gha,scope=flow-e2e,mode=max' || '' }}
       - run: echo "실행기 vCPU=$(nproc)"
       - run: CHECK_ONLY=e2e bash scripts/ci/check.sh
 

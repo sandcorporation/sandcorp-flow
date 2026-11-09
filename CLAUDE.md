@@ -17,7 +17,7 @@
 
 # 테스트 실행 (무조건 Docker)
 
-- **PR 검사에 맡긴다.** 시험 묶음 전체(`bash scripts/ci/check.sh`, 전체 `scripts/test.sh`·e2e 전체)는 로컬에서 돌리지 않는다 — PR을 열면 GitHub Actions 워크플로 `.github/workflows/pr-check.yml`이 PR 머지 결과로 `scripts/ci/check.sh`의 단계(lint·deploy.sh 시험·pytest·vitest·typecheck·OpenAPI 드리프트·nginx·e2e)와 파괴적 migrate 검사·vite build를 잡마다 나란히 돌린다. `gh pr checks <PR> --watch`로 기다리고 **전 잡 초록일 때만** 병합하며, 병합 뒤에는 `wait-deploy.py --job sandcorp-flow --pr <PR>`로 배포(Jenkins `sandcorp-flow`)를 기다린다(docs/deployment.md 「PR 검사」). Jenkins PR 잡 `sandcorp-flow-pr`은 2026-11-09에 꺼졌다.
+- **PR 검사에 맡긴다.** 시험 묶음 전체(`bash scripts/ci/check.sh`, 전체 `scripts/test.sh`·e2e 전체)는 로컬에서 돌리지 않는다 — PR을 열면 GitHub Actions 워크플로 `.github/workflows/pr-check.yml`이 PR 머지 결과로 `scripts/ci/check.sh`의 단계(lint·deploy.sh 시험·pytest·vitest·typecheck·OpenAPI 드리프트·nginx·e2e)와 파괴적 migrate 검사·vite build를 잡마다 나란히 돌린다. `gh pr checks <PR> --watch`로 기다리고 **전 잡 초록일 때만** 병합하며, 병합 뒤에는 release.yml(검사→이미지→`production` 승격)을 거쳐 Jenkins `sandcorp-flow`가 production을 배포하므로 `wait-deploy.py --job sandcorp-flow --pr <PR> --start-timeout 30`으로 기다린다(승격까지 10분 남짓이라 기본 10분이면 NO_BUILD로 끝날 수 있다. release가 깨지면 배포가 없다 — `gh run list --workflow release.yml -L 3`, docs/deployment.md 「전체 흐름」·「PR 검사」). Jenkins PR 잡 `sandcorp-flow-pr`은 2026-11-09에 꺼졌다.
 - **로컬은 바꾼 부분과 관련된 시험만.** 시험이 실패하면 그 시험만 좁혀서(`scripts/test.sh tests/test_x.py::test_fn`, `-k`, 스펙 파일:줄) 다시 돌린다. 일부 단계만 보려면 `CHECK_ONLY="backend vitest" bash scripts/ci/check.sh`.
 - **모든 테스트는 Docker 컨테이너에서 실행합니다. 호스트에서 직접 `pytest`/`vitest`/`npm test`를 돌리지 마세요.** 호스트엔 DB(Postgres+pgvector)·Redis·fake-llm이 없어 결과를 신뢰할 수 없습니다.
 - **이미지 빌드에 자격이 필요 없다**: backend 이미지는 `sandcorp-authkit`을 공개 저장소 sandcorp-auth에서 git+https로 받는다(#320). ssh-agent·`ssh-add`는 필요 없다.
