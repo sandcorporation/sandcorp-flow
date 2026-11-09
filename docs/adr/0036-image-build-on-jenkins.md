@@ -28,7 +28,7 @@ pull·교체만 한다.
   (`scripts/ci/build-images.sh`) — mac은 네이티브라 빠르고, 실행기가 하나라 나눠도 병렬이 되지 않는다.
 - **태그·캐시는 그대로**: `ghcr.io/sandcorporation/sandcorp-flow-<image>:<sha>`와 `:latest`, 캐시 `:buildcache`(registry,
   `mode=max`). oracle의 compose·`deploy.sh`는 바꾸지 않는다.
-- **자격은 기존 것을 다시 쓴다**: ghcr 쓰기 `ghcr-push-token`, 비공개 sandcorp-auth 읽기 SSH `github-farrar142`(portfolio가
+- **자격은 기존 것을 다시 쓴다**: ghcr 쓰기 `ghcr-push-token`, 비공개 sandcorp-auth 읽기 SSH `<github-ssh-credentials-id>`(portfolio가
   sandcorp-authkit을 받는 것과 같은 키, api 빌드에만 BuildKit `--ssh default`), 알림 `discord-deploy-webhook`. GitHub
   secret `AUTHKIT_SSH_KEY`는 더 쓰지 않는다.
 - **롤백**: `release` 되감기 대신 파라미터 `ROLLBACK_SHA` — 빌드를 건너뛰고 그 sha 이미지로 배포 단계만 돈다.

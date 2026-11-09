@@ -23,7 +23,7 @@
       <userRemoteConfigs>
         <hudson.plugins.git.UserRemoteConfig>
           <url>git@github.com:sandcorporation/sandcorp-flow.git</url>
-          <credentialsId>github-farrar142</credentialsId>
+          <credentialsId>&lt;github-ssh-credentials-id&gt;</credentialsId>
         </hudson.plugins.git.UserRemoteConfig>
       </userRemoteConfigs>
       <branches>
