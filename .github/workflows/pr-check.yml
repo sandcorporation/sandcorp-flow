@@ -1,5 +1,5 @@
-# PR 검사(GitHub 호스팅 Actions, #317) — scripts/ci/check.sh 의 단계 중 비공개 sandcorp-auth 없이 되는 것만.
-# backend pytest·OpenAPI 드리프트·e2e·파괴적 migrate 검사는 아직 Jenkins `sandcorp-flow-pr` 에 남는다(docs/deployment.md 「PR 검사」).
+# PR 검사(GitHub 호스팅 Actions, #317·#320) — scripts/ci/check.sh 전 단계 + 파괴적 migrate 검사.
+# Jenkins `sandcorp-flow-pr` 가 하던 것과 같다(docs/deployment.md 「PR 검사」). sandcorp-authkit 은 공개 저장소에서 git+https 로 받는다.
 # 보안: 공개 저장소라 남의 PR 코드가 돈다 — pull_request 만(pull_request_target 금지), GitHub 호스팅 실행기만,
 # 읽기 권한만, secrets 를 쓰지 않는다. 액션은 커밋 SHA 로 고정한다(옆 주석이 태그).
 name: PR 검사
@@ -46,6 +46,49 @@ jobs:
         with:
           persist-credentials: false
       - run: CHECK_ONLY=nginx bash scripts/ci/check.sh
+
+  migrate:
+    name: 파괴적 migrate 검사
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      # pull_request 는 머지 커밋을 받는다 — 첫 부모가 기준 브랜치다.
+      - run: bash scripts/ci/migrate-guard.sh HEAD^1
+
+  backend:
+    name: ② 백엔드 pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: CHECK_ONLY=backend bash scripts/ci/check.sh
+
+  openapi:
+    name: ④ OpenAPI·orval 드리프트
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: CHECK_ONLY=openapi bash scripts/ci/check.sh
+
+  e2e:
+    name: ⑥ e2e(Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: CHECK_ONLY=e2e bash scripts/ci/check.sh
 
   build:
     name: vite build (${{ matrix.app }})
