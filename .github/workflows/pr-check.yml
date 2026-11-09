@@ -68,6 +68,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # 빌드 캐시(gha): 이 단계가 buildx 빌더를 캐시로 데우면 check.sh 의 compose build 가 같은 빌더에서 캐시를 맞힌다. 저장은 main push 에서만
+      - uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
+        with:
+          source: .
+          files: docker-compose.test.yml
+          targets: test,fake-llm
+          set: |
+            test.cache-from=type=gha,scope=flow-test
+            ${{ github.event_name == 'push' && 'test.cache-to=type=gha,scope=flow-test,mode=max' || '' }}
+            fake-llm.cache-from=type=gha,scope=flow-fake-llm
+            ${{ github.event_name == 'push' && 'fake-llm.cache-to=type=gha,scope=flow-fake-llm,mode=max' || '' }}
       - run: CHECK_ONLY=backend bash scripts/ci/check.sh
 
   openapi:
@@ -78,6 +90,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # 빌드 캐시(gha): 이 단계가 buildx 빌더를 캐시로 데우면 check.sh 의 compose build 가 같은 빌더에서 캐시를 맞힌다. 저장은 main push 에서만
+      - uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
+        with:
+          source: .
+          files: docker-compose.test.yml
+          targets: test,fake-llm
+          set: |
+            test.cache-from=type=gha,scope=flow-test
+            fake-llm.cache-from=type=gha,scope=flow-fake-llm
       - run: CHECK_ONLY=openapi bash scripts/ci/check.sh
 
   e2e:
@@ -90,6 +112,27 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # 빌드 캐시(gha): 이 단계가 buildx 빌더를 캐시로 데우면 check.sh 의 compose build 가 같은 빌더에서 캐시를 맞힌다. 저장은 main push 에서만
+      - uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
+        with:
+          source: .
+          files: docker-compose.test.yml
+          targets: test,fake-llm,api-e2e,chat-worker-e2e,worker-e2e,events-e2e,admin-e2e,widget-e2e,e2e
+          set: |
+            test.cache-from=type=gha,scope=flow-test
+            fake-llm.cache-from=type=gha,scope=flow-fake-llm
+            api-e2e.cache-from=type=gha,scope=flow-backend
+            ${{ github.event_name == 'push' && 'api-e2e.cache-to=type=gha,scope=flow-backend,mode=max' || '' }}
+            chat-worker-e2e.cache-from=type=gha,scope=flow-backend
+            worker-e2e.cache-from=type=gha,scope=flow-backend
+            events-e2e.cache-from=type=gha,scope=flow-backend
+            admin-e2e.cache-from=type=gha,scope=flow-admin-e2e
+            ${{ github.event_name == 'push' && 'admin-e2e.cache-to=type=gha,scope=flow-admin-e2e,mode=max' || '' }}
+            widget-e2e.cache-from=type=gha,scope=flow-widget-e2e
+            ${{ github.event_name == 'push' && 'widget-e2e.cache-to=type=gha,scope=flow-widget-e2e,mode=max' || '' }}
+            e2e.cache-from=type=gha,scope=flow-e2e
+            ${{ github.event_name == 'push' && 'e2e.cache-to=type=gha,scope=flow-e2e,mode=max' || '' }}
       - run: CHECK_ONLY=e2e bash scripts/ci/check.sh
 
   build:
