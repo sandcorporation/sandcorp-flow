@@ -45,11 +45,12 @@ OpenAPI·orval 드리프트 → e2e, 그리고 nginx 계약 시험(기다림이 
 home 노드는 Jenkins 컨테이너 안이라 bind mount가 맞지 않아 nginx·e2e를 건너뛴다(로그에 남는다). 로컬에서 `bash scripts/ci/check.sh`,
 일부만 `CHECK_ONLY="backend vitest" bash scripts/ci/check.sh`.
 
-**GitHub Actions**([.github/workflows/pr-check.yml](../.github/workflows/pr-check.yml), #317)가 같은 PR에서 비공개 `sandcorp-auth` 없이 되는 단계를
-GitHub 호스팅 실행기로 나란히 돌린다: ① lint·deploy.sh·runtime-config 시험(`CHECK_ONLY=lint`), ③ admin·widget vitest·widget typecheck(`CHECK_ONLY=vitest`),
-⑤ nginx 계약 시험(`CHECK_ONLY=nginx`), admin·widget `vite build`. 트리거는 `pull_request`·main push뿐(`pull_request_target` 금지),
-권한 `contents: read`, secrets 없음, 액션은 커밋 SHA 고정이다. **아직 Jenkins에만 있는 단계**: ② 백엔드 pytest·④ OpenAPI 드리프트·⑥ e2e·파괴적 migrate 검사
-(backend 이미지가 비공개 `sandcorp-auth`를 git+ssh로 받아야 해서 — sandcorp-auth 공개 뒤 옮긴다). 병합은 Actions 초록과 Jenkins `continuous-integration/jenkins/pr-merge` SUCCESS 둘 다.
+**GitHub Actions**([.github/workflows/pr-check.yml](../.github/workflows/pr-check.yml), #317·#320)가 같은 PR에서 위 단계 전부를
+GitHub 호스팅 실행기로 잡마다 나란히 돌린다: ① lint·deploy.sh·runtime-config(`CHECK_ONLY=lint`) · ② backend pytest(`backend`) · ③ vitest·typecheck(`vitest`) ·
+④ OpenAPI 드리프트(`openapi`) · ⑤ nginx(`nginx`) · ⑥ e2e(`e2e`) · 파괴적 migrate 검사([scripts/ci/migrate-guard.sh](../scripts/ci/migrate-guard.sh) — 비공개 jenkins-shared 것의 사본)
+· admin·widget `vite build`. 트리거는 `pull_request`·main push뿐(`pull_request_target` 금지), 권한 `contents: read`, secrets 없음, 액션은 커밋 SHA 고정이다.
+`sandcorp-authkit`은 공개 sandcorp-auth에서 git+https로 받으므로 자격이 필요 없다. Jenkins `sandcorp-flow-pr`은 저장소 공개 전환 뒤 끌 때까지 함께 돈다 —
+그동안 병합은 Actions 초록과 Jenkins `continuous-integration/jenkins/pr-merge` SUCCESS 둘 다.
 - A1은 **arm64·CPU 전용** — ollama·paddle 없음(임베딩·OCR은 per-Tenant Provider / Vision OCR).
 
 ### 잡 파라미터
@@ -132,9 +133,8 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
 - **빌드 노드(macos·built-in)**: docker CLI + buildx. 라이브러리의 `build-image.sh`가 `docker-container` 빌더 `sandcorp-flow-images`(Jenkinsfile `builder`)를 처음 한 번 만든다.
   macos는 실행기가 하나라 PR 검사와 배포가 겹치면 뒤의 것이 3분 기다린 뒤 home으로 간다.
   home(built-in, x86)은 QEMU arm64 에뮬레이션이 등록돼 있어야 한다(portfolio·news와 같은 노드).
-- **자격**(이름만, 모두 기존 것을 다시 쓴다): ghcr 쓰기 `ghcr-push-token`(Secret text), 비공개 sandcorp-auth 읽기 SSH
-  `github-farrar142`(빌드·검사 때 임시 ssh-agent에 넣어 BuildKit `--ssh default`로 넘긴다 — `backend/requirements.txt`의
-  `sandcorp-authkit`, #282), 알림 `discord-deploy-webhook`. oracle은 호스트 docker의 ghcr **읽기** 로그인을 쓴다.
+- **자격**(이름만, 모두 기존 것을 다시 쓴다): ghcr 쓰기 `ghcr-push-token`(Secret text), 알림 `discord-deploy-webhook`. oracle은 호스트 docker의 ghcr **읽기** 로그인을 쓴다.
+  `sandcorp-authkit`은 공개 sandcorp-auth에서 git+https로 받아(#320) SSH 자격이 필요 없다(라이브러리가 `--ssh default`를 넘겨도 쓰지 않는다).
 - **GHCR login**: Jenkins 컨테이너 안(빌드 실행 유저)에서 1회. 컨테이너를 자주 재생성하면 Execute
   shell 맨 앞에서 Credential로 매번 login하는 게 견고: `echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USER" --password-stdin`.
 

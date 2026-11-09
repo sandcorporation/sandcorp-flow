@@ -31,6 +31,7 @@ pull·교체만 한다.
 - **자격은 기존 것을 다시 쓴다**: ghcr 쓰기 `ghcr-push-token`, 비공개 sandcorp-auth 읽기 SSH `github-farrar142`(portfolio가
   sandcorp-authkit을 받는 것과 같은 키, api 빌드에만 BuildKit `--ssh default`), 알림 `discord-deploy-webhook`. GitHub
   secret `AUTHKIT_SSH_KEY`는 더 쓰지 않는다.
+  (2026-11-09, #320: sandcorp-auth가 공개돼 authkit을 git+https로 받는다 — 이 SSH 키·`--ssh default`는 더 필요 없다.)
 - **롤백**: `release` 되감기 대신 파라미터 `ROLLBACK_SHA` — 빌드를 건너뛰고 그 sha 이미지로 배포 단계만 돈다.
 
 ## Considered Options
