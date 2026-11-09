@@ -8,7 +8,11 @@ FIX=$(mktemp -d)
 IMG=nginx:1.27-alpine
 PORT=${NGINX_TEST_PORT:-18297}
 FAILS=0
-cleanup() { docker rm -f nginx-metrics-test >/dev/null 2>&1; docker run --rm -v "$FIX:/w" alpine rm -rf /w/widget /w/admin >/dev/null 2>&1; rmdir "$FIX" 2>/dev/null; }
+# 사용자 정의 네트워크에 띄운다 — conf 의 resolver 127.0.0.11(도커 내장 DNS)은 기본 bridge 에 없어, api 로 가는 요청
+# (/api/·/chatbot/ 의 정책 하위 요청)이 resolver_timeout 30초를 기다렸다(#331, 한 판 210초). 여기서는 api 가 없어
+# 이름 해석이 곧바로 실패한다 — 운영과 같은 경로(502, 정책은 fail-open)를 기다림 없이 탄다.
+NET=nginx-metrics-net
+cleanup() { docker rm -f nginx-metrics-test >/dev/null 2>&1; docker network rm "$NET" >/dev/null 2>&1; docker run --rm -v "$FIX:/w" alpine rm -rf /w/widget /w/admin >/dev/null 2>&1; rmdir "$FIX" 2>/dev/null; }
 trap cleanup EXIT
 
 mkdir -p "$FIX/widget/flow" "$FIX/admin"
@@ -17,11 +21,12 @@ for f in landing privacy terms index; do echo "$page" > "$FIX/widget/$f.html"; d
 echo "$page" > "$FIX/admin/index.html"
 echo '{"name":"Flow"}' > "$FIX/widget/flow/site.webmanifest"
 chmod -R a+rX "$FIX"
+docker network rm "$NET" >/dev/null 2>&1; docker network create "$NET" >/dev/null
 
 start() { # $1=URL $2=KEY $3=TRY_EMBED_ORIGINS
   docker rm -f nginx-metrics-test >/dev/null 2>&1
   # compose 와 같게: 변수는 늘 정의(비어 있을 수 있음), 키 기본값은 flow.
-  docker run -d --name nginx-metrics-test -p "127.0.0.1:$PORT:80" \
+  docker run -d --name nginx-metrics-test --network "$NET" -p "127.0.0.1:$PORT:80" \
     -e NGINX_ENVSUBST_FILTER='^(METRICS_|TRY_EMBED_)' -e "TRY_EMBED_ORIGINS=${3:-}" -e "METRICS_SNIPPET_URL=${1:-}" -e "METRICS_SITE_KEY=${2:-flow}" \
     -v "$PWD/backend/nginx/nginx.oracle.conf:/etc/nginx/nginx.conf:ro" \
     -v "$PWD/backend/nginx/flow-metrics.conf.template:/etc/nginx/templates/flow-metrics.conf.template:ro" \
