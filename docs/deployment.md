@@ -44,6 +44,12 @@ git push main
 OpenAPI·orval 드리프트 → e2e, 그리고 nginx 계약 시험(기다림이 대부분이라 pytest~드리프트와 나란히). PR 검사 한 판 약 8분(macos, 2026-11-02). compose 프로젝트를 실행마다 따로(`flow-check-…`) 띄우고 끝나면 지운다.
 home 노드는 Jenkins 컨테이너 안이라 bind mount가 맞지 않아 nginx·e2e를 건너뛴다(로그에 남는다). 로컬에서 `bash scripts/ci/check.sh`,
 일부만 `CHECK_ONLY="backend vitest" bash scripts/ci/check.sh`.
+
+**GitHub Actions**([.github/workflows/pr-check.yml](../.github/workflows/pr-check.yml), #317)가 같은 PR에서 비공개 `sandcorp-auth` 없이 되는 단계를
+GitHub 호스팅 실행기로 나란히 돌린다: ① lint·deploy.sh·runtime-config 시험(`CHECK_ONLY=lint`), ③ admin·widget vitest·widget typecheck(`CHECK_ONLY=vitest`),
+⑤ nginx 계약 시험(`CHECK_ONLY=nginx`), admin·widget `vite build`. 트리거는 `pull_request`·main push뿐(`pull_request_target` 금지),
+권한 `contents: read`, secrets 없음, 액션은 커밋 SHA 고정이다. **아직 Jenkins에만 있는 단계**: ② 백엔드 pytest·④ OpenAPI 드리프트·⑥ e2e·파괴적 migrate 검사
+(backend 이미지가 비공개 `sandcorp-auth`를 git+ssh로 받아야 해서 — sandcorp-auth 공개 뒤 옮긴다). 병합은 Actions 초록과 Jenkins `continuous-integration/jenkins/pr-merge` SUCCESS 둘 다.
 - A1은 **arm64·CPU 전용** — ollama·paddle 없음(임베딩·OCR은 per-Tenant Provider / Vision OCR).
 
 ### 잡 파라미터
