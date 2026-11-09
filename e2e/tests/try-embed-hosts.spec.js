@@ -42,9 +42,10 @@ async function openParent(page, { hello = true } = {}) {
 const iframeHeight = (page) => page.evaluate(() => document.getElementById('flow-try').getBoundingClientRect().height)
 const sessionOf = (frame) => frame.evaluate(async () => (await fetch('/api/try/session/')).json())
 
-test('①-가 iframe 안 고쳐 보기: 곧바로 편집기(세션 없음) → 노드 바꾸기(세션 생김) → iframe 새로고침 뒤 같은 세션·고친 설정', async ({ page }) => {
+// ①-가 를 두 시험으로 나눈다(#343) — 한 시험에서 편집기를 두 번 띄우면 느린 실행기에서 3초 한도를 넘었다.
+test('①-가 iframe 안 고쳐 보기: 곧바로 편집기(세션 없음) → 노드 바꾸기(세션 생김)', async ({ page }) => {
   const frame = await openParent(page)
-  await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
+  await expect(frame.locator('.react-flow__node').first()).toBeVisible()
   await expect(frame.getByRole('banner')).toHaveCount(0)
   expect(await sessionOf(page.frame({ url: /flow\.flowtest\.test/ }))).toBeNull() // 방문만으로는 세션을 만들지 않는다(#195)
 
@@ -57,13 +58,31 @@ test('①-가 iframe 안 고쳐 보기: 곧바로 편집기(세션 없음) → �
   await cfg.fill(JSON.stringify(parsed))
   await aside.getByRole('button', { name: '설정 적용' }).click()
   await expect(frame.getByText('초안 저장됨')).toBeVisible()
-  const before = await sessionOf(page.frame({ url: /flow\.flowtest\.test/ }))
+  const made = await sessionOf(page.frame({ url: /flow\.flowtest\.test/ }))
+  expect(made?.flow_id).toBeTruthy()
+  expect(made?.template).toBe('sandcorp_home')
+})
+
+test('①-가\' iframe 안에서 고친 세션: iframe 새로고침 뒤 같은 세션·고친 설정', async ({ page }) => {
+  // 앞 단계(편집기에서 고쳐 세션 만들기)는 ①-가 가 화면으로 본다 — 여기선 iframe 안에서 같은 쓰기 API 로 만든다(쿠키는 iframe 의 것)
+  await openParent(page)
+  const inner = () => page.frame({ url: /flow\.flowtest\.test/ })
+  await expect.poll(() => inner()?.url() ?? '').toContain('/admin-ui/try')
+  const before = await inner().evaluate(async () => {
+    const graph = (await (await fetch('/api/try/templates/sandcorp_home/')).json()).graph
+    const general = graph.nodes.find((n) => n.id === 'general')
+    general.config = { ...general.config, instructions: '항상 한 문장으로 답한다. (임베드에서 고침)' }
+    const res = await fetch('/api/try/sessions/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template: 'sandcorp_home', graph }) })
+    return res.json()
+  })
   expect(before?.flow_id).toBeTruthy()
 
   // iframe 만 새로고침 — 같은 세션, 고친 설정이 남는다
-  await page.frame({ url: /flow\.flowtest\.test/ }).evaluate(() => location.reload())
-  await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
-  await expect.poll(async () => (await sessionOf(page.frame({ url: /flow\.flowtest\.test/ })).catch(() => null))?.flow_id).toBe(before.flow_id)
+  await inner().evaluate(() => location.reload())
+  const frame = page.frameLocator('#flow-try')
+  await expect(frame.locator('.react-flow__node').first()).toBeVisible()
+  await expect.poll(async () => (await sessionOf(inner()).catch(() => null))?.flow_id).toBe(before.flow_id)
+  const aside = frame.locator('aside[aria-label="노드 설정"]')
   await frame.locator('[data-node-id="general"]').click()
   await aside.getByRole('tab', { name: '고급' }).click()
   await expect(aside.locator('#node-config')).toHaveValue(/임베드에서 고침/)
@@ -71,7 +90,7 @@ test('①-가 iframe 안 고쳐 보기: 곧바로 편집기(세션 없음) → �
 
 test('①-나 iframe 안 시험 대화: 한 턴을 보내면 답이 온다', async ({ page }) => {
   const frame = await openParent(page)
-  await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
+  await expect(frame.locator('.react-flow__node').first()).toBeVisible()
   const aside = frame.locator('aside[aria-label="노드 설정"]')
   await frame.locator('[data-node-id="general"]').click()
   await aside.getByRole('tab', { name: '시험 대화' }).click()
@@ -86,7 +105,7 @@ test('② 세션 없는 iframe 에서 「이 흐름으로 가입」: 새 탭이 
   await context.route(/\/api\/auth\/authorize\/member/, (route) =>
     route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>auth stub</title>' }))
   const frame = await openParent(page)
-  await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
+  await expect(frame.locator('.react-flow__node').first()).toBeVisible()
   const inFrame = () => sessionOf(page.frame({ url: /flow\.flowtest\.test/ }))
   expect(await inFrame()).toBeNull() // 아무것도 고치지 않았다 — 세션 없음(#195)
   const link = frame.getByRole('link', { name: '이 흐름으로 가입' })
@@ -108,7 +127,7 @@ test('② 세션 없는 iframe 에서 「이 흐름으로 가입」: 새 탭이 
 
 test('③ 부모가 hello 뒤 height 를 받아 iframe 높이가 바뀐다', async ({ page }) => {
   const frame = await openParent(page)
-  await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
+  await expect(frame.locator('.react-flow__node').first()).toBeVisible()
   expect(await iframeHeight(page)).not.toBe(300)
   const heights = await page.evaluate(() => window.__heights)
   expect(heights.length).toBeGreaterThan(0)
@@ -117,7 +136,7 @@ test('③ 부모가 hello 뒤 height 를 받아 iframe 높이가 바뀐다', asy
 
 test('③\' hello 를 안 보내면 높이는 오지 않고 iframe 은 처음 높이 그대로', async ({ page }) => {
   const frame = await openParent(page, { hello: false })
-  await expect(frame.locator('.react-flow__node').first()).toBeVisible({ timeout: 30_000 })
+  await expect(frame.locator('.react-flow__node').first()).toBeVisible()
   await settled(page.frame({ url: /flow\.flowtest\.test/ })) // iframe 안 화면이 가라앉은 뒤에도 높이 메시지가 없어야 한다
   await settled(page)
   expect(await page.evaluate(() => window.__heights.length)).toBe(0)

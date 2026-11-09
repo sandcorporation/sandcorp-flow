@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test')
 const { openOperatorSession } = require('./operatorToken')
-const { dropInvite } = require('./memberToken')
+const { dropOwnerInvite } = require('./memberToken')
 
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5174'
 
@@ -44,7 +44,7 @@ test.describe('Operator 플로우', () => {
     await row.getByRole('button', { name: 'Admin 초대 링크 만들기' }).click()
     const url = await page.locator('code', { hasText: 'invite=' }).last().innerText()
     const raw = new URL(url).searchParams.get('invite')
-    dropInvite(raw)
+    dropOwnerInvite(raw)
 
     await expect(async () => {
       await page.reload()

@@ -20,9 +20,29 @@ async function loginAsTenantAgent(page, tenant) {
 test.describe('Document Chunk Inspector', () => {
   let tenant
 
+  let contentDoc, toggleDoc
+
+  // ready 문서 둘(청크 보기·청크 닫기)은 화면이 아니라 API 로 미리 만든다(#343) — 색인은 서버 비동기 작업이라
+  // 시험 본문에서 ready 를 기다리면 느린 실행기에서 3초 한도를 넘었다. beforeAll 은 워커마다 돈다(fullyParallel).
   test.beforeAll(async () => {
     const ctx = await setup()
     tenant = ctx.tenant
+    const api = await request.newContext({ baseURL: API_URL })
+    const ts = Date.now()
+    const upload = async (name, text) => {
+      const res = await api.post('/api/tenant/documents/', {
+        headers: { Authorization: `Bearer ${tenant.token}` },
+        multipart: { file: { name, mimeType: 'text/plain', buffer: Buffer.from(text) } },
+      })
+      const id = (await res.json()).id
+      return { id, name, text }
+    }
+    ;[contentDoc, toggleDoc] = await Promise.all([
+      upload(`chunk-content-${ts}.txt`, 'Expression pedal A controls volume in FCB1010 presets.'),
+      upload(`chunk-toggle-${ts}.txt`, `SYSEX-${ts} dump sends entire FCB1010 memory over MIDI.`),
+    ])
+    await Promise.all([contentDoc, toggleDoc].map((d) => expectDocumentReady(api, tenant.token, d.id)))
+    await api.dispose()
   })
 
   // ── Tracer Bullet ─────────────────────────────────────────────────────────
@@ -50,27 +70,8 @@ test.describe('Document Chunk Inspector', () => {
 
   // ── 청크 패널 열기 ────────────────────────────────────────────────────────
   test('ready 문서에서 "청크 보기" 클릭 시 청크 내용이 표시된다', async ({ page }) => {
-    const api = await request.newContext({ baseURL: API_URL })
-    const agentToken = tenant.token
-    const ts = Date.now()
-    const upload = await api.post('/api/tenant/documents/', {
-      headers: { Authorization: `Bearer ${agentToken}` },
-      multipart: {
-        file: {
-          name: `chunk-content-${ts}.txt`,
-          mimeType: 'text/plain',
-          buffer: Buffer.from('Expression pedal A controls volume in FCB1010 presets.'),
-        },
-      },
-    })
-    // 색인은 서버 비동기 작업이라 알릴 사건이 없다 — API 로 ready 를 다시 보고, 화면은 ready 인 채로 연다
-    // (화면 목록은 3초 주기로 새로고침해 3초 한도 안에 ready 를 기다릴 수 없다, #257).
-    const docId = (await upload.json()).id
-    await expectDocumentReady(api, tenant.token, docId)
-    await api.dispose()
-
     await loginAsTenantAgent(page, tenant)
-    const docRow = page.locator('tr', { has: page.locator(`text=chunk-content-${ts}.txt`) })
+    const docRow = page.locator('tr', { has: page.locator(`text=${contentDoc.name}`) })
     await expect(docRow).toBeVisible({ timeout: 10000 })
     await expect(docRow.locator('text=ready')).toBeVisible()
 
@@ -82,33 +83,14 @@ test.describe('Document Chunk Inspector', () => {
 
   // ── 토글 닫기 ─────────────────────────────────────────────────────────────
   test('"청크 닫기" 클릭 시 패널이 사라진다', async ({ page }) => {
-    const api = await request.newContext({ baseURL: API_URL })
-    const agentToken = tenant.token
-    const ts = Date.now()
-    const upload = await api.post('/api/tenant/documents/', {
-      headers: { Authorization: `Bearer ${agentToken}` },
-      multipart: {
-        file: {
-          name: `chunk-toggle-${ts}.txt`,
-          mimeType: 'text/plain',
-          buffer: Buffer.from(`SYSEX-${ts} dump sends entire FCB1010 memory over MIDI.`),
-        },
-      },
-    })
-    // 색인은 서버 비동기 작업이라 알릴 사건이 없다 — API 로 ready 를 다시 보고, 화면은 ready 인 채로 연다
-    // (화면 목록은 3초 주기로 새로고침해 3초 한도 안에 ready 를 기다릴 수 없다, #257).
-    const docId = (await upload.json()).id
-    await expectDocumentReady(api, tenant.token, docId)
-    await api.dispose()
-
     await loginAsTenantAgent(page, tenant)
-    const docRow = page.locator('tr', { has: page.locator(`text=chunk-toggle-${ts}.txt`) })
+    const docRow = page.locator('tr', { has: page.locator(`text=${toggleDoc.name}`) })
     await expect(docRow).toBeVisible({ timeout: 10000 })
     await expect(docRow.locator('text=ready')).toBeVisible()
 
     await docRow.locator('button:has-text("청크 보기")').click()
     await expect(page.locator('[data-testid="chunk-item"]').first()).toBeVisible({ timeout: 10000 })
-    await expect(page.locator('[data-testid="chunk-content"]').first()).toContainText(`SYSEX-${ts}`)
+    await expect(page.locator('[data-testid="chunk-content"]').first()).toContainText(toggleDoc.text.split(' ')[0])
 
     await docRow.locator('button:has-text("청크 닫기")').click()
     await expect(page.locator('[data-testid="chunk-item"]')).not.toBeVisible({ timeout: 3000 })

@@ -23,6 +23,9 @@ async function waitAccepted(api) {
 // 고객 로그인은 sandcorp-auth 콜백뿐이다(#40). 실제 sandcorp-auth를 부를 수 없으므로 로그인 직후 상태를
 // 시드(seed_e2e_member)로 만들고, 초대 수락은 콜백의 accept_invite를 부르는 대역에 초대 원문을 넘겨 대신한다.
 test.describe('팀원 탭 — 초대 링크 → 수락 → 목록 (#56)', () => {
+  // 두 시험은 같은 시드 조직·초대받은 사람·수락 대역을 쓴다(둘째가 그 사람을 내보낸다) — 워커에 흩어 나란히 돌면
+  // 첫째가 목록·세션을 보는 사이 둘째가 내보내 흔들렸다(#343). 이 묶음만 한 워커에서 차례로 돈다(실패해도 다음은 돈다).
+  test.describe.configure({ mode: 'default' })
   test('Admin이 초대 링크를 만들면 수락한 사람이 목록에 보이고, 새로고침해도 유지된다', async ({ page }) => {
     await openMemberSession(page, ADMIN_URL, memberToken(), 'tenant/agents')
 

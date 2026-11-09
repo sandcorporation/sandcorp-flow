@@ -24,7 +24,9 @@ module.exports = defineConfig({
   use: {
     headless: true,
     baseURL: ADMIN_URL,
-    video: 'retain-on-failure',
+    // 영상은 기본으로 끈다 — retain-on-failure 도 모든 시험을 녹화(인코딩)한 뒤 버려서 4 vCPU 실행기에서 CPU 를 먹고,
+    // CI 는 test-results 를 올리지 않아 아무도 보지 않았다(#343). 실패를 영상으로 볼 때만 E2E_VIDEO=retain-on-failure.
+    video: process.env.E2E_VIDEO || 'off',
   },
   projects: [
     { name: 'chromium', use: { browserName: 'chromium' } },
