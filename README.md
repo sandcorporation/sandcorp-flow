@@ -281,9 +281,10 @@ Operator 비밀번호 로그인은 없다(#21). 관리 화면 Operator 로그인
 
 ## 프로덕션 배포
 
-실서버(**oracle A1**, arm64·CPU 전용)는 **무중단 롤링**으로 배포한다 — main push를 Jenkins 잡
-`sandcorp-flow`(Jenkinsfile)가 받아 mac(못 잡으면 home)에서 arm64 이미지 3개를 굽고 GHCR에 올린 뒤, 같은 잡이
-oracle에서 `docker rollout`으로 교체한다(ADR-0036). 파이프라인은 공용 Jenkins 라이브러리 `sandcorpDeploy`(배포 전 검사·헬스 실패 시 직전 이미지로 자동 롤백)이고,
+실서버(**oracle A1**, arm64·CPU 전용)는 **무중단 롤링**으로 배포한다 — main 병합을 GitHub Actions `release.yml`이 받아
+PR 검사를 다시 돌리고 arm64 이미지 3개를 GitHub 호스팅 arm64 실행기에서 구워 GHCR에 올린 뒤 `production` 브랜치를 그 커밋으로 승격하면,
+Jenkins 잡 `sandcorp-flow`(Jenkinsfile)가 production push를 받아 oracle에서 `docker rollout`으로 교체한다(#340, ADR-0037). Jenkins 파이프라인은 공용 라이브러리 `sandcorpDeploy`(`deployFrom: 'production'`, 헬스 실패 시 직전 이미지로 자동 롤백)이고,
+되돌리기는 main에 revert PR(급하면 Jenkins `ROLLBACK_SHA`)이다.
 PR은 GitHub Actions `.github/workflows/pr-check.yml`이 `scripts/ci/check.sh`의 단계(로컬 Docker 시험 전부)·파괴적 migrate 검사·vite build를 잡마다 돌린다 — 전 잡 초록일 때 병합한다(`gh pr checks <PR> --watch`). NPM(Nginx Proxy Manager)이 공개 TLS를 종단한다. 운영 주소는 `https://flow.sandcorp.co.kr`,
 배포 경로는 Jenkins 잡 `sandcorp-flow`의 워크스페이스(호스트 `/var/jenkins_home/workspace/sandcorp-flow`), compose 프로젝트는 `sandcorp-flow-prod`다. 이 스택은 공유 박스에서
 도므로 서비스마다 메모리 상한을 둔다(합계 약 3.2G, 표는 deployment.md). 서버 쪽 설정(DNS·NPM·Jenkins

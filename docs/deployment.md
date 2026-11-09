@@ -1,25 +1,28 @@
 # 배포 (oracle A1 무중단 롤링) — flow.sandcorp.co.kr
 
-실서버 **oracle**(Ampere A1, arm64, GPU 없음)에 무중단으로 배포하는 런북. main push 하나를 Jenkins 잡
-`sandcorp-flow`([Jenkinsfile](../Jenkinsfile))가 받아 **이미지는 oracle 밖(mac, 대체 home)에서 굽고 oracle은 pull·교체만**
-한다. 파이프라인은 공용 Jenkins 라이브러리 `sandcorp`(sandcorporation/jenkins-shared)의 `sandcorpDeploy`이고 이 저장소
+실서버 **oracle**(Ampere A1, arm64, GPU 없음)에 무중단으로 배포하는 런북. main 병합을 GitHub Actions `release.yml`이 검사하고 **이미지를 굽고(arm64 실행기)
+`production` 브랜치로 승격**하면, Jenkins 잡 `sandcorp-flow`([Jenkinsfile](../Jenkinsfile))가 production push를 받아 **oracle에서 pull·교체만**
+한다(#340, [ADR-0037](./adr/0037-actions-image-build-production-promote.md)). 파이프라인은 공용 Jenkins 라이브러리 `sandcorp`(sandcorporation/jenkins-shared)의 `sandcorpDeploy`이고 이 저장소
 Jenkinsfile은 값만 넘긴다(jenkins-shared #9). PR은 GitHub Actions([.github/workflows/pr-check.yml](../.github/workflows/pr-check.yml))가 검사한다(아래 「PR 검사」). 설계 근거는 [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md)(무중단 롤링)와
 [ADR-0036](./adr/0036-image-build-on-jenkins.md)(빌드를 Jenkins로, #293).
 
 ## 전체 흐름
 
+운영 = **`production` 브랜치 머리**(#340, ADR-0037). main은 검사·이미지가 통과한 커밋만 production으로 앞으로(fast-forward) 옮기고,
+Jenkins는 production만 배포한다.
+
 ```
-git push main
+PR → Actions PR 검사(pr-check.yml) 전 잡 초록 → main 병합
    │
-   ▼  GitHub 웹훅 → Jenkins 잡 sandcorp-flow (Jenkinsfile → 라이브러리 sandcorpDeploy)
-[배포할 커밋 확인]  built-in: main sha가 직전 성공 빌드와 같으면 NOT_BUILT(작업 브랜치 push·중복) — 알림 없음
-                    PR 검사가 이 트리를 통과시켰으면 배포 전 검사 생략(상태 continuous-integration/jenkins/pr-merge로 판정 —
-                    Jenkins PR 잡이 꺼져(2026-11-09) 이 상태가 없으니 이제 매번 검사한다)
-[이미지 빌드]  macos(M4, arm64 네이티브) — 3분(MAC_WAIT_SECONDS) 안에 실행기를 못 잡으면 home(built-in, QEMU)
-               검사(scripts/ci/check.sh, 생략이 아니면)와 굽기를 나란히: api·admin·widget 차례로 buildx → GHCR
-               ghcr.io/sandcorporation/sandcorp-flow-{api,admin,widget}:<sha>, 캐시 :buildcache
-   │  (검사와 셋 다 성공해야 다음 단계 — 이미지가 다 올라가기 전에 배포가 돌지 않는다)
-   ▼
+   ▼  GitHub Actions release.yml (on push main)
+[check]    pr-check.yml을 workflow_call로 — PR과 같은 잡 전부(migrate 검사만 PR 전용)
+[image]    needs check. image.yml — ubuntu-24.04-arm 네이티브, 이미지마다 matrix 잡 하나:
+           ghcr.io/sandcorporation/sandcorp-flow-{api,admin,widget}:<sha>, 캐시 :buildcache(레지스트리)
+[promote]  needs check·image. scripts/ci/promote.sh ff <sha> — production fast-forward만(강제 없음).
+           production이 이미 더 새 판이면(늦게 끝난 옛 실행) 건너뜀
+   │
+   ▼  production push 웹훅 → Jenkins 잡 sandcorp-flow (Jenkinsfile → 라이브러리 sandcorpDeploy deployFrom: 'production')
+[이미지 확인]  굽지도 검사하지도 않는다. 세 이미지 <sha>가 GHCR에 보이는지 짧게 확인(waitForGhcrImage)
 [배포 on oracle]  같은 잡 워크스페이스에서 scripts/deploy.sh(SANDCORP_IMAGE_SHA=<sha>)
                   실패하면 직전 성공 sha로 같은 스크립트를 SANDCORP_ROLLBACK=1(migrate 건너뜀)로 한 번 더 — 자동 롤백
    │
@@ -27,41 +30,45 @@ git push main
 [NPM] 공개 443/TLS → <A1 호스트>:${NGINX_PORT} → 우리 nginx → api / SPA
 ```
 
-- **빌드(mac/home)와 런타임(A1)을 완전 분리** — A1은 pull만, 빌드 절대 안 함.
-- 노드를 **못 잡았을 때만** home으로 넘어간다. mac에서 빌드가 실패하면 그대로 실패로 끝낸다.
-- 빌드 노드는 콘솔(`== 빌드 노드: macos (...)`), 빌드 설명(`<sha12> · 빌드 macos · oracle pull`), 디스코드 알림(`[Flow]`)에 남는다.
-- 이미지 태그 = **git SHA**(불변 핀). `:latest`는 더 올리지 않는다(라이브러리 전환, #9) — 운영 compose는 `IMAGE_TAG`로 고정하니,
-  oracle에서 compose를 손으로 부를 때도 `IMAGE_TAG=<sha>`를 준다(안 주면 옛 `:latest`를 받는다). 롤백 = 파라미터 `ROLLBACK_SHA`(아래 「운영」).
+- **빌드(Actions)와 런타임(A1)을 완전 분리** — A1은 pull만, 빌드 절대 안 함. Jenkins 노드(mac·home)도 평소엔 굽지 않는다.
+- release 권한: 워크플로 기본 없음, check `contents: read`, image `packages: write`(이 잡만, GITHUB_TOKEN), promote `contents: write`(이 잡만).
+  `GITHUB_TOKEN`의 production push는 다른 워크플로를 깨우지 않고, 저장소 웹훅(Jenkins)만 깨운다. secrets는 쓰지 않는다.
+- main의 PR 검사 캐시(gha)는 release의 check(workflow_call, `github.event_name`은 부른 쪽의 `push`)가 저장한다 — PR은 복원만 한다.
+- 이미지 태그 = **git SHA**(불변 핀). `:latest`는 더 올리지 않는다 — 운영 compose는 `IMAGE_TAG`로 셋을 고정하니,
+  oracle에서 compose를 손으로 부를 때도 `IMAGE_TAG=<sha>`를 준다(안 주면 옛 `:latest`를 받는다).
 - 자동 롤백: 배포 스크립트가 실패하면(롤링·스모크) 직전 성공 빌드의 sha 이미지로 되돌린다. migrate는 되돌리지 않는다 —
   파괴적 migrate(열·표 지우기·바꾸기, null 불가 새 열에 `db_default` 없음)는 PR 검사가 막는다(jenkins-shared README).
-- 작업 규칙: PR은 `gh pr checks <PR> --watch`로 Actions 전 잡이 초록일 때만 병합하고, 병합 뒤
-  `wait-deploy.py --job sandcorp-flow --pr <PR>`로 배포를 기다린다.
+- **작업 규칙**: PR은 `gh pr checks <PR> --watch`로 Actions 전 잡이 초록일 때만 병합한다. 병합 뒤 release가 검사·굽기·승격을 마치고(10분 남짓)
+  Jenkins가 배포하므로 `wait-deploy.py --job sandcorp-flow --pr <PR> --start-timeout 30`으로 기다린다(Jenkins는 병합 시각 뒤 첫 빌드 = production push 빌드,
+  GitHub 길은 병합 커밋의 `deploy` 상태 — production 머리가 병합 sha와 같으니 둘 다 맞는다. 기본 10분이면 승격 전에 NO_BUILD로 끝날 수 있다).
+  release가 깨졌으면 배포는 일어나지 않는다 — `gh run list --workflow release.yml -L 3`으로 본다.
 
 ### PR 검사
 
-GitHub Actions 워크플로 [.github/workflows/pr-check.yml](../.github/workflows/pr-check.yml)(#317·#320)이 PR 열기·push마다(그리고 main push에)
-GitHub 호스팅 실행기에서 PR 머지 결과로 잡을 나란히 돌린다: ① lint·deploy.sh·runtime-config(`CHECK_ONLY=lint`) · ② backend pytest(`backend`) ·
+GitHub Actions 워크플로 [.github/workflows/pr-check.yml](../.github/workflows/pr-check.yml)(#317·#320)이 PR 열기·push마다(그리고 main push에는 release.yml이 workflow_call로 불러)
+GitHub 호스팅 실행기에서 PR 머지 결과로 잡을 나란히 돌린다: ① lint·deploy.sh·runtime-config·promote.sh(`CHECK_ONLY=lint`) · ② backend pytest(`backend`) ·
 ③ admin·widget vitest·widget typecheck(`vitest`) · ④ OpenAPI·orval 드리프트(`openapi`) · ⑤ nginx 계약 시험(`nginx`) · ⑥ e2e(`e2e`) ·
 파괴적 migrate 검사([scripts/ci/migrate-guard.sh](../scripts/ci/migrate-guard.sh) — 비공개 jenkins-shared 것의 사본) · admin·widget `vite build`.
 각 잡은 `scripts/ci/check.sh`를 `CHECK_ONLY`로 부르고, compose 프로젝트를 실행마다 따로(`flow-check-…`) 띄우고 끝나면 지운다.
-backend·openapi·e2e 잡은 이미지 레이어를 buildx 빌드 캐시 `type=gha`(이미지별 scope `flow-*`, `mode=max`)로 받는다 — 실행기 docker에 containerd 이미지 저장소를 켜고(기본 docker 드라이버가 gha 캐시를 쓰게), `docker/bake-action`이 `docker-compose.test.yml`을 읽어 데몬의 빌드 캐시를 데우면 `check.sh`의 `compose build`가 같은 데몬에서 맞힌다. e2e의 backend 서비스 넷(api·worker·chat-worker·events)은 api-e2e가 구운 이미지 하나(`E2E_BACKEND_IMAGE`, `check.sh`가 실행마다 이름을 주고 끝에 지운다)를 함께 쓴다(#332). 캐시 저장은 main push 실행에서만, PR은 main 캐시를 복원만 한다. 첫 저장(main run 42560000966) 뒤 저장소 캐시 합계는 약 2.0GB다(한도 10GB). `gh cache list`·`gh api repos/{owner}/{repo}/actions/cache/usage`로 본다.
+backend·openapi·e2e 잡은 이미지 레이어를 buildx 빌드 캐시 `type=gha`(이미지별 scope `flow-*`, `mode=max`)로 받는다 — 실행기 docker에 containerd 이미지 저장소를 켜고(기본 docker 드라이버가 gha 캐시를 쓰게), `docker/bake-action`이 `docker-compose.test.yml`을 읽어 데몬의 빌드 캐시를 데우면 `check.sh`의 `compose build`가 같은 데몬에서 맞힌다. e2e의 backend 서비스 넷(api·worker·chat-worker·events)은 api-e2e가 구운 이미지 하나(`E2E_BACKEND_IMAGE`, `check.sh`가 실행마다 이름을 주고 끝에 지운다)를 함께 쓴다(#332). 캐시 저장은 PR이 아닌 실행(release의 workflow_call = main push)에서만, PR은 main 캐시를 복원만 한다. 첫 저장(main run 42560000966) 뒤 저장소 캐시 합계는 약 2.0GB다(한도 10GB). `gh cache list`·`gh api repos/{owner}/{repo}/actions/cache/usage`로 본다.
 ⑥ e2e 잡은 Playwright `--shard`(`E2E_SHARD=i/2`, `e2e/playwright.config.js`)로 실행기 2대에 나눠 돌리고 워커는 `E2E_WORKERS: 2`다 — 4 vCPU 실행기 실측에서 나누지 않은 워커 2는 잡 341초, 워커 4는 3초 한도 초과 40건, 2조각·워커 2는 287초·259초로 초과가 없었다. 시험 한도는 그대로다. 조각은 파일이 아니라 시험 단위로 나눈다(`fullyParallel: true`, #333) — 파일 단위일 때는 137건/70건(잡 3:43/2:22)으로 기울었고, 시험 단위로 104/103건(2:59/2:27)이 됐다. 3조각(69/69/69건)은 e2e 잡이 2:09~2:45로 줄지만 벽시계는 ② backend pytest(약 3분)가 정해 2조각과 같아서 2조각을 둔다. 리포터는 `list`라 잡 로그에 시험마다 걸린 시간이 찍힌다(2초 넘는 시험 찾기).
-트리거는 `pull_request`·main push뿐(`pull_request_target` 금지), 권한 `contents: read`, secrets 없음, 액션은 커밋 SHA 고정이다.
+트리거는 `pull_request`·`workflow_call`(release)뿐(`pull_request_target` 금지), 권한 `contents: read`, secrets 없음, 액션은 커밋 SHA 고정이다.
 `sandcorp-authkit`은 공개 sandcorp-auth에서 git+https로 받으므로 자격이 필요 없다. 병합 조건은 **전 잡 초록**(`gh pr checks <PR> --watch`).
 로컬에서 `bash scripts/ci/check.sh`, 일부만 `CHECK_ONLY="backend vitest" bash scripts/ci/check.sh`.
 - Jenkins 멀티브랜치 잡 `sandcorp-flow-pr`([Jenkinsfile.pr](../Jenkinsfile.pr), 설정 사본 [docs/ops/jenkins-sandcorp-flow-pr.config.xml](./ops/jenkins-sandcorp-flow-pr.config.xml))은
-  2026-11-09에 꺼졌다(Actions로 대체). 파일은 기록으로 남긴다. 배포 잡 `sandcorp-flow`의 배포 전 검사는 그대로 `check.sh`를 부른다.
+  2026-11-09에 꺼졌다(Actions로 대체). 파일은 기록으로 남긴다. 배포 잡 `sandcorp-flow`는 검사하지 않는다(release의 check가 한다, #340).
 - A1은 **arm64·CPU 전용** — ollama·paddle 없음(임베딩·OCR은 per-Tenant Provider / Vision OCR).
 
 ### 잡 파라미터
 
 | 이름 | 기본 | 뜻 |
 |---|---|---|
-| `BUILDER` | `auto` | `auto` / `macos` / `home` — 시험용으로 빌드 노드를 강제 |
-| `MAC_WAIT_SECONDS` | `180` | auto에서 macos 실행기를 기다리는 시간(초). 넘으면 home |
-| `ROLLBACK_SHA` | 빈 값 | 채우면 빌드 없이 그 커밋의 이미지로 되돌린다(이미 배포한 sha여도 다시 배포) |
+| `BUILD_ON` | `actions` | `actions` = Actions가 구워 승격한 이미지를 받아 배포. `jenkins` = **비상 길**: Actions가 못 구울 때 Jenkins 노드(macos, 못 잡으면 home)에서 Jenkinsfile `images`를 라이브러리 `build-image.sh`로 굽고 배포(검사 없음) |
+| `BUILDER` | `auto` | `BUILD_ON=jenkins`일 때 빌드 노드: `auto` / `macos` / `home` |
+| `MAC_WAIT_SECONDS` | `180` | `BUILD_ON=jenkins`·auto에서 macos 실행기를 기다리는 시간(초). 넘으면 home |
+| `ROLLBACK_SHA` | 빈 값 | 채우면 빌드 없이 그 커밋의 이미지로 배포(이미 배포한 sha여도 다시). production은 그대로 |
 
-파라미터·트리거는 라이브러리가 정한다.
+파라미터·트리거는 라이브러리가 정한다(jenkins-shared README 「승격 브랜치에서 배포」).
 
 ## 무중단 메커니즘
 
@@ -127,11 +134,11 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
   확인은 `docker rollout --help | grep 'Rollout new Compose'` — 플러그인이 없으면 `docker rollout --help`가 docker 일반 도움말을 **exit 0**으로 내서
   「있음」으로 오판한다(첫 배포 build 2가 이걸로 롤링 단계에서 실패). `scripts/deploy.sh`도 시작할 때 같은 grep으로 확인하고 없으면 migrate 전에 멈춘다.
 - **Job `sandcorp-flow`(파이프라인)**: 설정은 [docs/ops/jenkins-sandcorp-flow.config.xml](./ops/jenkins-sandcorp-flow.config.xml).
-  - Pipeline script from SCM: `git@github.com:sandcorporation/sandcorp-flow.git`(자격 `<github-ssh-credentials-id>`), 브랜치 `*/main`, Script Path `Jenkinsfile`.
+  - Pipeline script from SCM: `git@github.com:sandcorporation/sandcorp-flow.git`(자격 `<github-ssh-credentials-id>`), 브랜치 `*/production`(#340 전에는 `*/main`), Script Path `Jenkinsfile`.
   - 트리거(GitHub hook)·동시 실행 금지·파라미터는 라이브러리 `sandcorpDeploy`가 정한다.
   - **Manage Jenkins → Security → Git Host Key Verification → "Accept first connection"**.
   - 배포 단계는 `oracle` 노드의 잡 워크스페이스에서 돈다. 파이프라인의 `checkout scm`은 추적 파일만 바꾸므로 `.env`·`media`는 그대로다.
-- **빌드 노드(macos·built-in)**: docker CLI + buildx. 라이브러리의 `build-image.sh`가 `docker-container` 빌더 `sandcorp-flow-images`(Jenkinsfile `builder`)를 처음 한 번 만든다.
+- **빌드 노드(macos·built-in)** — `BUILD_ON=jenkins` 비상 길에서만: docker CLI + buildx. 라이브러리의 `build-image.sh`가 `docker-container` 빌더 `sandcorp-flow-images`(Jenkinsfile `builder`)를 처음 한 번 만든다.
   macos는 실행기가 하나라 PR 검사와 배포가 겹치면 뒤의 것이 3분 기다린 뒤 home으로 간다.
   home(built-in, x86)은 QEMU arm64 에뮬레이션이 등록돼 있어야 한다(portfolio·news와 같은 노드).
 - **자격**(이름만, 모두 기존 것을 다시 쓴다): ghcr 쓰기 `ghcr-push-token`(Secret text), 알림 `discord-deploy-webhook`. oracle은 호스트 docker의 ghcr **읽기** 로그인을 쓴다.
@@ -151,7 +158,9 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
   ```
 
 ### GitHub
-- GitHub Actions 워크플로는 없다(#293에서 `build-images.yml`을 지웠다). 빌드·배포 자격은 모두 Jenkins에 있다.
+- Actions 워크플로: `pr-check.yml`(PR 검사), `release.yml`(main push → 검사·이미지·승격), `image.yml`(release가 부른다, 수동 실행 가능). 모두 GitHub 호스팅 실행기, secrets 없음(GITHUB_TOKEN만).
+- GHCR 패키지 `sandcorp-flow-{api,admin,widget}`은 Actions(GITHUB_TOKEN)가 만들고 저장소에 연결된다 — Jenkins 개인 토큰이 먼저 만든 패키지면 `permission_denied`라 지우고 다시 만든다(#340 첫 실행).
+- `production` 브랜치: ruleset으로 강제 push·삭제 금지. Actions promote 잡만 fast-forward한다(사람은 push하지 않는다).
 - 웹훅 `https://<jenkins-host>/github-webhook/`(push)만 있으면 된다.
 - A1 pull용 **classic PAT**(`read:packages`)만 A1의 `docker login`에 사용(org면 SSO authorize).
 
@@ -230,8 +239,10 @@ relay·bridge 5개는 #290에서 `events` 하나로 합쳤다(그룹을 다시 �
 
 ## 배포 / 롤백
 
-- **배포**: `main`에 push → 자동(Jenkins 잡 `sandcorp-flow`가 빌드→배포). 이미 배포한 main sha는 다시 돌지 않는다(NOT_BUILT) — 같은 sha를 강제로 다시 배포하려면 아래 롤백처럼 `ROLLBACK_SHA=<그 sha>`. 배포까지 갔다 실패한 sha는 「Build Now」가 다시 시도한다.
-- **롤백**: Jenkins `sandcorp-flow`를 「Build with Parameters」로 `ROLLBACK_SHA=<되돌릴 커밋 sha 40자>`를 넣고 돌린다. 빌드 단계는 건너뛰고 oracle이 그 sha 이미지를 pull해 같은 migrate·교체 절차를 밟는다(배포 스크립트·compose는 지금 main 것, 배포 전 검사 없음). migrate는 앞으로만 가므로 되돌리는 코드가 새 스키마를 못 읽으면 DB를 따로 되돌려야 한다.
+- **배포**: `main`에 병합 → release.yml이 검사·이미지·승격 → production push → Jenkins `sandcorp-flow`가 배포. 이미 배포한 sha는 다시 돌지 않는다(NOT_BUILT) — 같은 sha를 강제로 다시 배포하려면 `ROLLBACK_SHA=<그 sha>`. 배포까지 갔다 실패한 sha는 「Build Now」가 다시 시도한다.
+- release가 실패하면(검사·굽기) production은 그대로고 배포도 없다. 고친 PR을 병합하면 그 sha로 승격된다. GitHub 장애 등으로 굽기만 막혔으면 실패한 잡만 다시(`gh run rerun <id> --failed`), Actions 자체를 못 쓰면 Jenkins `BUILD_ON=jenkins`(production 머리를 Jenkins에서 굽고 배포).
+- **되돌리기(정석)**: main에 **revert PR** → 병합하면 release가 그 커밋을 승격·배포한다. production은 앞으로만 간다 — 옛 sha로 강제로 옮기는 워크플로는 두지 않는다(ruleset이 강제 push를 막고, 조직 ruleset은 Actions를 bypass로 받지 않는다).
+- **되돌리기(급할 때)**: Jenkins `sandcorp-flow`를 「Build with Parameters」로 `ROLLBACK_SHA=<되돌릴 커밋 sha 40자>`. 빌드 없이 oracle이 그 sha 이미지를 pull해 같은 migrate·교체 절차를 밟는다(배포 스크립트·compose는 지금 production 것, 검사 없음). production은 그대로라 다음 승격이 다시 앞으로 간다 — 곧이어 revert PR로 main도 맞춘다. migrate는 앞으로만 가므로 되돌리는 코드가 새 스키마를 못 읽으면 DB를 따로 되돌려야 한다.
   - ⚠️ expand/contract라 **마이그레이션 역방향이 불가**할 수 있음 — 파괴적 스키마 변경은 애초에 금지(롤백 가능성 보존).
 
 ## 트러블슈팅
@@ -306,7 +317,7 @@ docker compose -f docker-compose.langfuse.yml --env-file langfuse.env up -d
 3. [x] **운영 `.env` 필수 키**(16개 투입, `NGINX_PORT=18095`)(이름만): `DJANGO_SETTINGS_MODULE=config.settings.prod`, `SECRET_KEY`(생성 후 **영구 고정**), `ALLOWED_HOSTS`(`flow.sandcorp.co.kr,127.0.0.1,localhost`), `CSRF_TRUSTED_ORIGINS`(`https://flow.sandcorp.co.kr`), `DB_HOST`·`DB_PORT`·`DB_NAME=sandcorp_flow`·`DB_USER`·`DB_PASSWORD`, `REDIS_URL`, `EVENTS_TOPIC`, `NGINX_PORT`. `AUTH_OWNER_SUB=farrar142`(#20). `AUTH_CLIENT_ID`·`AUTH_CLIENT_SECRET`·`AUTH_REDIRECT_URI`·`AUTH_WEBHOOK_SECRET`(#21, 7번). 플랫폼 키·체험 한도 이름은 10번.
 4. [x] **NGINX_PORT 정하기**(18095): 박스에서 비어 있는 호스트 포트(`ss -ltn`)를 골라 `.env`에 쓴다. Oracle 보안목록에는 열지 않는다.
 5. [x] **NPM**(NPMplus 호스트 19·인증서 27, `flow.sandcorp.co.kr` → `172.17.0.1:18095`): Proxy Host `flow.sandcorp.co.kr` → Forward `<A1 호스트>:<NGINX_PORT>`(http), Websockets 켬, SSL Let's Encrypt + Force SSL, Advanced 칸에 `proxy_buffering off; proxy_request_buffering off; proxy_read_timeout 3600s;`(SSE).
-6. [x] **Jenkins 잡** `sandcorp-flow`: 위 「Jenkins」 절의 파이프라인 잡(SCM `git@github.com:sandcorporation/sandcorp-flow.git`, 브랜치 `*/main`, Script Path `Jenkinsfile` — [config.xml](./ops/jenkins-sandcorp-flow.config.xml)). #293 전까지는 `*/release` 브랜치 freestyle 잡이었다. 저장소 쪽 GitHub 웹훅(Settings → Webhooks)에 Jenkins `/github-webhook/` 주소, 이벤트는 push.
+6. [x] **Jenkins 잡** `sandcorp-flow`: 위 「Jenkins」 절의 파이프라인 잡(SCM `git@github.com:sandcorporation/sandcorp-flow.git`, 브랜치 `*/main`(#340부터 `*/production`), Script Path `Jenkinsfile` — [config.xml](./ops/jenkins-sandcorp-flow.config.xml)). #293 전까지는 `*/release` 브랜치 freestyle 잡이었다. 저장소 쪽 GitHub 웹훅(Settings → Webhooks)에 Jenkins `/github-webhook/` 주소, 이벤트는 push.
 7. **sandcorp-auth 등록**(ADR-0028):
    - [x] **리소스**(auth 리소스 id 6): sandcorp-auth에 Flow 리소스 `https://flow.sandcorp.co.kr/api`(스코프 `admin`·`login`)가 등록돼 있는지 확인한다. 토큰의 `aud`가 이 값과 정확히 같아야 한다(끝 `/` 없음).
    - [ ] **운영 `.env`**(#20): `AUTH_OWNER_SUB=farrar142`(대표 username). `AUTH_ISSUER`(기본 `https://auth.sandcorp.co.kr`)·`AUTH_JWKS_URL`(기본 `<AUTH_ISSUER>/.well-known/jwks.json`)·`AUTH_RESOURCE`(기본 `https://flow.sandcorp.co.kr/api`)는 기본값이면 적지 않는다. `AUTH_OWNER_SUB`가 비면 대표 토큰이 모두 401이다.

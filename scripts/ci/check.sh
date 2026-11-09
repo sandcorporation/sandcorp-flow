@@ -52,6 +52,7 @@ if want lint; then
   bash scripts/lint-fixed-waits.sh
   bash scripts/test-deploy.sh
   bash scripts/test-runtime-config.sh
+  bash scripts/ci/promote_test.sh
   lap ①
 fi
 

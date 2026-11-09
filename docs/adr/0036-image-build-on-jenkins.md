@@ -3,6 +3,8 @@
 > 갱신(2026-11-02, jenkins-shared #9): 파이프라인을 공용 라이브러리 `sandcorpDeploy`로 옮겼다. `scripts/ci/build-images.sh`는 없어지고
 > 라이브러리 `build-image.sh`가 이미지마다 굽는다. `:latest`는 더 올리지 않는다(캐시 `:buildcache`·sha 태그는 그대로). 지금 흐름은 [deployment.md](../deployment.md).
 
+> 대체(2026-11-09, #340): 이미지는 GitHub Actions(`image.yml`, arm64 호스팅 실행기)가 굽고 Jenkins는 `production` 브랜치만 배포한다 — [ADR-0037](0037-actions-image-build-production-promote.md). Jenkins 굽기는 비상 길(`BUILD_ON=jenkins`)로만 남는다.
+
 ## Status
 Accepted (2026-11-02, #293). [ADR-0015](0015-oracle-zero-downtime-rolling-deploy.md)의 빌드·트리거 부분(Q6·Q7)을 대체한다.
 
