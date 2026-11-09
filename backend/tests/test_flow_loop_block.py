@@ -28,12 +28,16 @@ from tests.test_flow_node_events import _alines, _apost, _classify, _graph
 
 LOOP_LAG_LIMIT = 0.2
 EMBED_DELAY = 0.8
+GATE_TIMEOUT = 10.0
+"""관문(``gate``)을 쥔 수신부 스레드가 시험이 풀지 못하고 끝나도 남지 않게 하는 안전 한도."""
 
 
 @dataclass
 class SlowEmbeddings:
     delay: float = EMBED_DELAY
     calls: list[float] = field(default_factory=list)
+    gate: threading.Event | None = None
+    """있으면 ``delay`` 대신 이 사건이 설 때까지 답을 붙잡는다(시험이 풀어 준다, #345)."""
 
 
 @pytest.fixture
@@ -45,7 +49,10 @@ def slow_embeddings(settings) -> Iterator[SlowEmbeddings]:
         def do_POST(self) -> None:  # noqa: N802 — http.server 관례
             body = json.loads(self.rfile.read(int(self.headers.get("content-length", "0"))) or b"{}")
             state.calls.append(time.monotonic())
-            time.sleep(state.delay)
+            if state.gate is not None:
+                state.gate.wait(GATE_TIMEOUT)
+            else:
+                time.sleep(state.delay)
             texts = body.get("input") or [""]
             payload = json.dumps({
                 "object": "list", "model": body.get("model", "slow"),

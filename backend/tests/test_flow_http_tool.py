@@ -50,6 +50,8 @@ class Hit:
 @dataclass
 class Hits:
     items: list[Hit] = field(default_factory=list)
+    gate: threading.Event | None = None
+    """있으면 ``/slow``가 1.5초 대신 이 사건이 설 때까지 답을 붙잡는다(시험이 풀어 준다, #345)."""
 
     def hosts(self) -> list[str]:
         return [h.host for h in self.items]
@@ -86,7 +88,10 @@ def _handler(hits: Hits) -> type[BaseHTTPRequestHandler]:
                 q = parse_qs(parts.query)
                 self._send(int(q.get("code", ["302"])[0]), b"", "text/plain", {"Location": q["to"][0]})
             elif parts.path == "/slow":
-                time.sleep(1.5)
+                if hits.gate is not None:
+                    hits.gate.wait(10.0)  # 시험이 풀지 못하고 끝나도 스레드가 남지 않게
+                else:
+                    time.sleep(1.5)
                 self._send(200, b"{}")
             elif parts.path == "/big":
                 self._send(200, json.dumps({"pad": "x" * (300 * 1024)}).encode())
