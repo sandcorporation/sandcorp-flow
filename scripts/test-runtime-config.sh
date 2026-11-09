@@ -25,21 +25,27 @@ echo 'js' > "$work/dist/assets/a.js"
 
 run() { env -i PATH="$PATH" RUNTIME_DIST="$work/dist" "$@" sh "$root/admin/runtime-config.sh" "$work/out"; }
 
-run SENTRY_DSN='https://pub@glitchtip.example/3' SENTRY_RELEASE='0123456789abcdef0123456789abcdef01234567'
+run SENTRY_DSN='https://pub@glitchtip.example/3' SENTRY_RELEASE='0123456789abcdef0123456789abcdef01234567' LANDING_TEL='02-0000-0000'
 check "산출물 복사" "js" "$(cat "$work/out/assets/a.js")"
 check "값이 들어감" \
-  'window.__FLOW_RUNTIME__ = {"sentryDsn": "https://pub@glitchtip.example/3", "sentryRelease": "0123456789abcdef0123456789abcdef01234567"}' \
+  'window.__FLOW_RUNTIME__ = {"sentryDsn": "https://pub@glitchtip.example/3", "sentryRelease": "0123456789abcdef0123456789abcdef01234567", "landingTel": "02-0000-0000"}' \
   "$(cat "$work/out/runtime-config.js")"
 
 run
 check "env 없으면 빈 값(SDK 꺼짐)" \
-  'window.__FLOW_RUNTIME__ = {"sentryDsn": "", "sentryRelease": ""}' \
+  'window.__FLOW_RUNTIME__ = {"sentryDsn": "", "sentryRelease": "", "landingTel": ""}' \
   "$(cat "$work/out/runtime-config.js")"
 
 run SENTRY_DSN="a\"b\\c
 d"
 check "따옴표·역슬래시 이스케이프, 줄바꿈 버림" \
-  'window.__FLOW_RUNTIME__ = {"sentryDsn": "a\"b\\cd", "sentryRelease": ""}' \
+  'window.__FLOW_RUNTIME__ = {"sentryDsn": "a\"b\\cd", "sentryRelease": "", "landingTel": ""}' \
+  "$(cat "$work/out/runtime-config.js")"
+
+run LANDING_TEL="02\"0\\0
+0"
+check "LANDING_TEL 따옴표·역슬래시 이스케이프, 줄바꿈 버림" \
+  'window.__FLOW_RUNTIME__ = {"sentryDsn": "", "sentryRelease": "", "landingTel": "02\"0\\00"}' \
   "$(cat "$work/out/runtime-config.js")"
 
 exit "$fail"

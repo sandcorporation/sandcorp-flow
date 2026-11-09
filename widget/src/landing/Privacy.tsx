@@ -1,10 +1,11 @@
 import SiteFooter from './SiteFooter'
 import FlowMark from './FlowMark'
 import ThemeToggle from './ThemeToggle'
-import { BUSINESS } from './business'
+import { BUSINESS, landingTel } from './business'
 
 // 개인정보처리방침 — 표준 템플릿(개인정보보호법 기준)에 플랫폼 특성을 반영. 시행 전 법률 검토 권장.
 export default function Privacy() {
+  const tel = landingTel()
   return (
     <div className="landing">
       <header className="doc-header">
@@ -50,7 +51,7 @@ export default function Privacy() {
         <p>처리 목적이 달성되면 지체 없이 파기합니다. 전자적 파일은 복구 불가능한 방법으로 삭제합니다.</p>
 
         <h2>8. 개인정보 보호책임자</h2>
-        <p>성명: {BUSINESS.privacyOfficer} · 이메일: {BUSINESS.email} · 전화: {BUSINESS.tel}</p>
+        <p>성명: {BUSINESS.privacyOfficer} · 이메일: {BUSINESS.email}{tel && ` · 전화: ${tel}`}</p>
 
         <h2>9. 처리방침의 변경</h2>
         <p>본 방침은 법령·서비스 변경에 따라 개정될 수 있으며, 변경 시 본 페이지를 통해 공지합니다.</p>

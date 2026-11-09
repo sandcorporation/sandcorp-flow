@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import SiteFooter from './SiteFooter'
 import Privacy from './Privacy'
@@ -30,6 +30,25 @@ describe('SiteFooter (사업자 정보 + 링크)', () => {
     render(<SiteFooter />)
     expect(screen.getByRole('link', { name: '이용약관' })).toHaveAttribute('href', '/terms')
     expect(screen.getByRole('link', { name: '개인정보처리방침' })).toHaveAttribute('href', '/privacy')
+  })
+})
+
+describe('푸터 전화번호 — 실행 설정 LANDING_TEL (#326)', () => {
+  afterEach(() => { window.__FLOW_RUNTIME__ = undefined })
+
+  it('실행 설정에 번호가 있으면 「전화 …」 줄을 그린다', () => {
+    window.__FLOW_RUNTIME__ = { landingTel: '02-0000-0000' }
+    render(<SiteFooter />)
+    expect(screen.getByText('전화 02-0000-0000')).toBeInTheDocument()
+  })
+
+  it('비어 있거나 설정이 없으면 전화 줄을 그리지 않는다', () => {
+    for (const cfg of [{ landingTel: '' }, {}, undefined]) {
+      window.__FLOW_RUNTIME__ = cfg
+      const { unmount } = render(<SiteFooter />)
+      expect(screen.queryByText(/전화/)).toBeNull()
+      unmount()
+    }
   })
 })
 

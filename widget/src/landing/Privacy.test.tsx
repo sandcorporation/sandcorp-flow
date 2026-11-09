@@ -1,6 +1,23 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import Privacy from './Privacy'
+
+describe('Privacy (처리방침) — 보호책임자 전화 (#326)', () => {
+  afterEach(() => { window.__FLOW_RUNTIME__ = undefined })
+
+  it('실행 설정에 번호가 있으면 「· 전화: …」를 그린다', () => {
+    window.__FLOW_RUNTIME__ = { landingTel: '02-0000-0000' }
+    render(<Privacy />)
+    expect(screen.getByText(/· 전화: 02-0000-0000/)).toBeInTheDocument()
+  })
+
+  it('비어 있으면 전화 조각을 그리지 않고 이메일은 남는다', () => {
+    window.__FLOW_RUNTIME__ = { landingTel: '' }
+    render(<Privacy />)
+    expect(screen.queryByText(/전화:/)).toBeNull()
+    expect(screen.getByText(/성명: .* · 이메일: /)).toBeInTheDocument()
+  })
+})
 
 const ERRORS_DOC = 'https://sandcorporation.github.io/privacy-and-terms/errors/'
 

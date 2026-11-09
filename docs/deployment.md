@@ -188,6 +188,7 @@ relay·bridge 5개는 #290에서 `events` 하나로 합쳤다(그룹을 다시 �
 | `NGINX_PORT` | ○ | 호스트에 여는 nginx 포트(기본 8080). **이 박스는 컨테이너가 많으니 비어 있는 포트를 고르고** NPM Forward에 같은 값을 쓴다. |
 | `CHAT_STREAMING_ENABLED` | ○ | 기본 on. 토큰 스트리밍 킬스위치. |
 | `CHAT_RATE_LIMIT_PER_TENANT`·`_PER_VISITOR` | ○ | 레이트리밋. |
+| `LANDING_TEL` | ○ | 랜딩 푸터·처리방침 보호책임자 줄의 전화번호(#326). widget-init이 `runtime-config.js`(`landingTel`)로 쓴다. 비면 전화 줄을 숨긴다. |
 | `SENTRY_DSN_BACKEND`·`SENTRY_DSN_ADMIN`·`SENTRY_DSN_WIDGET` | ○ | GlitchTip DSN(아래 「GlitchTip 오류 수집」). 비면 그 앱의 SDK가 꺼진다. |
 | `LOOP_THREAD_POOL_SIZE` | – | 턴이 도는 루프(api·worker-chat)의 기본 스레드 풀 크기(#322). 기본 32 — taskiq `--max-async-tasks`(25)보다 작게 두지 않는다. |
 

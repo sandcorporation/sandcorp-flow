@@ -1,8 +1,9 @@
-import { BUSINESS } from './business'
+import { BUSINESS, landingTel } from './business'
 import FlowMark from './FlowMark'
 
 // 정보통신망법·전자상거래법 사업자 정보 + 약관/처리방침 링크. 랜딩·약관·처리방침 페이지가 공유.
 export default function SiteFooter() {
+  const tel = landingTel()
   return (
     <footer className="footer">
       <div className="container footer-inner">
@@ -23,7 +24,7 @@ export default function SiteFooter() {
           <span>사업자등록번호 {BUSINESS.bizNo}</span>
           {BUSINESS.salesNo && <span>통신판매업신고 {BUSINESS.salesNo}</span>}
           <span>주소 {BUSINESS.address}</span>
-          <span>전화 {BUSINESS.tel}</span>
+          {tel && <span>전화 {tel}</span>}
           <span>이메일 {BUSINESS.email}</span>
           <span>개인정보보호책임자 {BUSINESS.privacyOfficer}</span>
         </div>

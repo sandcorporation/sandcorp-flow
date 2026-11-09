@@ -31,6 +31,8 @@
       // 저장된 수동 테마를 첫 그림 전에 적용(깜박임 방지). 키·값은 ThemeToggle 과 같다.
       try { var t = localStorage.getItem('admin_theme'); if (t) document.documentElement.classList.add(t === 'dark' ? 'dark' : 'light') } catch (e) {}
     </script>
+    <!-- 실행 설정(#308·#326): 전화번호(landingTel)를 앱보다 먼저 읽는다 -->
+    <script src="/runtime-config.js"></script>
   </head>
   <body>
     <div id="root"><footer class="prerender-madeby"><a href="https://sandcorp.co.kr/?utm_source=flow&amp;utm_medium=footer">Made by Sandcorp</a></footer></div>
