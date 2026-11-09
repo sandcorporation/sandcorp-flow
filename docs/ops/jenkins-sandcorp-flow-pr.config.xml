@@ -29,7 +29,7 @@
         <source class="org.jenkinsci.plugins.github_branch_source.GitHubSCMSource" plugin="github-branch-source@1986.v801e40614d00">
           <id>sandcorp-flow-pr-github</id>
           <apiUri>https://api.github.com</apiUri>
-          <credentialsId>github-sandcorporation-token</credentialsId>
+          <credentialsId>&lt;github-token-credentials-id&gt;</credentialsId>
           <repoOwner>sandcorporation</repoOwner>
           <repository>sandcorp-flow</repository>
           <repositoryUrl>https://github.com/sandcorporation/sandcorp-flow</repositoryUrl>
