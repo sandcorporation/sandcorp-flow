@@ -284,12 +284,11 @@ Operator 비밀번호 로그인은 없다(#21). 관리 화면 Operator 로그인
 실서버(**oracle A1**, arm64·CPU 전용)는 **무중단 롤링**으로 배포한다 — main push를 Jenkins 잡
 `sandcorp-flow`(Jenkinsfile)가 받아 mac(못 잡으면 home)에서 arm64 이미지 3개를 굽고 GHCR에 올린 뒤, 같은 잡이
 oracle에서 `docker rollout`으로 교체한다(ADR-0036). 파이프라인은 공용 Jenkins 라이브러리 `sandcorpDeploy`(배포 전 검사·헬스 실패 시 직전 이미지로 자동 롤백)이고,
-PR은 잡 `sandcorp-flow-pr`이 `scripts/ci/check.sh`(로컬 Docker 시험 전부)와 파괴적 migrate 검사로 보고 상태 `continuous-integration/jenkins/pr-merge`를 올린다 — 그 상태가 초록일 때 병합한다(jenkins-shared #9). NPM(Nginx Proxy Manager)이 공개 TLS를 종단한다. 운영 주소는 `https://flow.sandcorp.co.kr`,
+PR은 GitHub Actions `.github/workflows/pr-check.yml`이 `scripts/ci/check.sh`의 단계(로컬 Docker 시험 전부)·파괴적 migrate 검사·vite build를 잡마다 돌린다 — 전 잡 초록일 때 병합한다(`gh pr checks <PR> --watch`). NPM(Nginx Proxy Manager)이 공개 TLS를 종단한다. 운영 주소는 `https://flow.sandcorp.co.kr`,
 배포 경로는 Jenkins 잡 `sandcorp-flow`의 워크스페이스(호스트 `/var/jenkins_home/workspace/sandcorp-flow`), compose 프로젝트는 `sandcorp-flow-prod`다. 이 스택은 공유 박스에서
 도므로 서비스마다 메모리 상한을 둔다(합계 약 3.2G, 표는 deployment.md). 서버 쪽 설정(DNS·NPM·Jenkins
 잡·운영 `.env`)은 deployment.md의 「서버 쪽 할 일」 체크리스트를 따른다.
-PR 검사는 GitHub Actions `.github/workflows/pr-check.yml`(check.sh 전 단계·파괴적 migrate·vite build)과 Jenkins `sandcorp-flow-pr`이
-함께 돈다 — 자세히는 docs/deployment.md 「PR 검사」.
+Jenkins PR 잡 `sandcorp-flow-pr`은 2026-11-09에 꺼졌다(Actions로 대체) — 자세히는 docs/deployment.md 「PR 검사」.
 
 전체 흐름·1회 설정·환경변수·롤백·트러블슈팅은 **[docs/deployment.md](docs/deployment.md)** 참조
 (설계 근거: [ADR-0015](docs/adr/0015-oracle-zero-downtime-rolling-deploy.md)).

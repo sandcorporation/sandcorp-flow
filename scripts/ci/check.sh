@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PR 검사·배포 전 검사: 로컬 Docker 시험과 같은 것을 한 번에 돌린다(jenkins-shared #9).
-# Jenkins `sandcorp-flow-pr`(Jenkinsfile.pr, sandcorpPrCheck)가 PR 머지 결과로, `sandcorp-flow`(Jenkinsfile, sandcorpDeploy)가
-# 이미지 굽기와 나란히 부른다 — 배포 쪽은 PR 검사가 같은 트리를 통과시켰으면 건너뛴다. 로컬에서도 그대로 돈다.
+# GitHub Actions(.github/workflows/pr-check.yml)가 PR 머지 결과로 단계마다(CHECK_ONLY), Jenkins `sandcorp-flow`(Jenkinsfile, sandcorpDeploy)가
+# 이미지 굽기와 나란히 부른다 — 배포 쪽 재검사 생략은 Jenkins PR 상태(pr-merge)로 판정했는데 그 잡이 꺼져(2026-11-09) 이제 매번 돈다. 로컬에서도 그대로 돈다.
 #
 #   bash scripts/ci/check.sh            # 전부
 #   CHECK_ONLY="backend vitest" bash scripts/ci/check.sh   # 일부만(lint backend vitest openapi nginx e2e)

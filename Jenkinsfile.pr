@@ -1,3 +1,4 @@
+// ※ 잡 꺼짐(2026-11-09), GitHub Actions(.github/workflows/pr-check.yml)로 대체. 기록으로 남긴다.
 // PR 검사 — 멀티브랜치 잡 sandcorp-flow-pr가 PR마다 부른다. 파이프라인은 공용 라이브러리 sandcorp의 sandcorpPrCheck(jenkins-shared #9).
 // 빌드 노드(macos 먼저, 못 잡으면 home — prefer: 'macos')에서 PR 머지 결과로 파괴적 migrate 검사 → scripts/ci/check.sh(로컬 Docker 시험 전부).
 // 결과는 PR head 커밋 상태(continuous-integration/jenkins/pr-merge)로 올라오고, 작업자는 wait-ci.py 통과 뒤 병합한다.

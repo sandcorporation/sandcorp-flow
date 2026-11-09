@@ -3,7 +3,7 @@
 실서버 **oracle**(Ampere A1, arm64, GPU 없음)에 무중단으로 배포하는 런북. main push 하나를 Jenkins 잡
 `sandcorp-flow`([Jenkinsfile](../Jenkinsfile))가 받아 **이미지는 oracle 밖(mac, 대체 home)에서 굽고 oracle은 pull·교체만**
 한다. 파이프라인은 공용 Jenkins 라이브러리 `sandcorp`(sandcorporation/jenkins-shared)의 `sandcorpDeploy`이고 이 저장소
-Jenkinsfile은 값만 넘긴다(jenkins-shared #9). PR은 잡 `sandcorp-flow-pr`([Jenkinsfile.pr](../Jenkinsfile.pr))이 검사한다(아래 「PR 검사」). 설계 근거는 [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md)(무중단 롤링)와
+Jenkinsfile은 값만 넘긴다(jenkins-shared #9). PR은 GitHub Actions([.github/workflows/pr-check.yml](../.github/workflows/pr-check.yml))가 검사한다(아래 「PR 검사」). 설계 근거는 [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md)(무중단 롤링)와
 [ADR-0036](./adr/0036-image-build-on-jenkins.md)(빌드를 Jenkins로, #293).
 
 ## 전체 흐름
@@ -13,7 +13,8 @@ git push main
    │
    ▼  GitHub 웹훅 → Jenkins 잡 sandcorp-flow (Jenkinsfile → 라이브러리 sandcorpDeploy)
 [배포할 커밋 확인]  built-in: main sha가 직전 성공 빌드와 같으면 NOT_BUILT(작업 브랜치 push·중복) — 알림 없음
-                    PR 검사가 이 트리를 통과시켰으면 배포 전 검사 생략(GitHub 상태로 판정)
+                    PR 검사가 이 트리를 통과시켰으면 배포 전 검사 생략(상태 continuous-integration/jenkins/pr-merge로 판정 —
+                    Jenkins PR 잡이 꺼져(2026-11-09) 이 상태가 없으니 이제 매번 검사한다)
 [이미지 빌드]  macos(M4, arm64 네이티브) — 3분(MAC_WAIT_SECONDS) 안에 실행기를 못 잡으면 home(built-in, QEMU)
                검사(scripts/ci/check.sh, 생략이 아니면)와 굽기를 나란히: api·admin·widget 차례로 buildx → GHCR
                ghcr.io/sandcorporation/sandcorp-flow-{api,admin,widget}:<sha>, 캐시 :buildcache
@@ -33,24 +34,21 @@ git push main
   oracle에서 compose를 손으로 부를 때도 `IMAGE_TAG=<sha>`를 준다(안 주면 옛 `:latest`를 받는다). 롤백 = 파라미터 `ROLLBACK_SHA`(아래 「운영」).
 - 자동 롤백: 배포 스크립트가 실패하면(롤링·스모크) 직전 성공 빌드의 sha 이미지로 되돌린다. migrate는 되돌리지 않는다 —
   파괴적 migrate(열·표 지우기·바꾸기, null 불가 새 열에 `db_default` 없음)는 PR 검사가 막는다(jenkins-shared README).
-- 작업 규칙: PR은 `wait-ci.py <PR>`이 SUCCESS(상태 `continuous-integration/jenkins/pr-merge`)일 때만 병합하고, 병합 뒤
+- 작업 규칙: PR은 `gh pr checks <PR> --watch`로 Actions 전 잡이 초록일 때만 병합하고, 병합 뒤
   `wait-deploy.py --job sandcorp-flow --pr <PR>`로 배포를 기다린다.
 
 ### PR 검사
 
-멀티브랜치 잡 `sandcorp-flow-pr`(설정 [docs/ops/jenkins-sandcorp-flow-pr.config.xml](./ops/jenkins-sandcorp-flow-pr.config.xml))이 PR 열기·push마다
-빌드 노드(macos, 못 잡으면 home)에서 PR 머지 결과로 파괴적 migrate 검사 → `scripts/ci/check.sh`를 돌리고 PR head에 상태를 올린다.
-`check.sh`는 로컬 Docker 시험 전부다: 고정 대기 lint·deploy.sh 시험 → 백엔드 pytest → admin·widget vitest·widget typecheck →
-OpenAPI·orval 드리프트 → e2e, 그리고 nginx 계약 시험(기다림이 대부분이라 pytest~드리프트와 나란히). PR 검사 한 판 약 8분(macos, 2026-11-02). compose 프로젝트를 실행마다 따로(`flow-check-…`) 띄우고 끝나면 지운다.
-home 노드는 Jenkins 컨테이너 안이라 bind mount가 맞지 않아 nginx·e2e를 건너뛴다(로그에 남는다). 로컬에서 `bash scripts/ci/check.sh`,
-일부만 `CHECK_ONLY="backend vitest" bash scripts/ci/check.sh`.
-
-**GitHub Actions**([.github/workflows/pr-check.yml](../.github/workflows/pr-check.yml), #317·#320)가 같은 PR에서 위 단계 전부를
-GitHub 호스팅 실행기로 잡마다 나란히 돌린다: ① lint·deploy.sh·runtime-config(`CHECK_ONLY=lint`) · ② backend pytest(`backend`) · ③ vitest·typecheck(`vitest`) ·
-④ OpenAPI 드리프트(`openapi`) · ⑤ nginx(`nginx`) · ⑥ e2e(`e2e`) · 파괴적 migrate 검사([scripts/ci/migrate-guard.sh](../scripts/ci/migrate-guard.sh) — 비공개 jenkins-shared 것의 사본)
-· admin·widget `vite build`. 트리거는 `pull_request`·main push뿐(`pull_request_target` 금지), 권한 `contents: read`, secrets 없음, 액션은 커밋 SHA 고정이다.
-`sandcorp-authkit`은 공개 sandcorp-auth에서 git+https로 받으므로 자격이 필요 없다. Jenkins `sandcorp-flow-pr`은 저장소 공개 전환 뒤 끌 때까지 함께 돈다 —
-그동안 병합은 Actions 초록과 Jenkins `continuous-integration/jenkins/pr-merge` SUCCESS 둘 다.
+GitHub Actions 워크플로 [.github/workflows/pr-check.yml](../.github/workflows/pr-check.yml)(#317·#320)이 PR 열기·push마다(그리고 main push에)
+GitHub 호스팅 실행기에서 PR 머지 결과로 잡을 나란히 돌린다: ① lint·deploy.sh·runtime-config(`CHECK_ONLY=lint`) · ② backend pytest(`backend`) ·
+③ admin·widget vitest·widget typecheck(`vitest`) · ④ OpenAPI·orval 드리프트(`openapi`) · ⑤ nginx 계약 시험(`nginx`) · ⑥ e2e(`e2e`) ·
+파괴적 migrate 검사([scripts/ci/migrate-guard.sh](../scripts/ci/migrate-guard.sh) — 비공개 jenkins-shared 것의 사본) · admin·widget `vite build`.
+각 잡은 `scripts/ci/check.sh`를 `CHECK_ONLY`로 부르고, compose 프로젝트를 실행마다 따로(`flow-check-…`) 띄우고 끝나면 지운다.
+트리거는 `pull_request`·main push뿐(`pull_request_target` 금지), 권한 `contents: read`, secrets 없음, 액션은 커밋 SHA 고정이다.
+`sandcorp-authkit`은 공개 sandcorp-auth에서 git+https로 받으므로 자격이 필요 없다. 병합 조건은 **전 잡 초록**(`gh pr checks <PR> --watch`).
+로컬에서 `bash scripts/ci/check.sh`, 일부만 `CHECK_ONLY="backend vitest" bash scripts/ci/check.sh`.
+- Jenkins 멀티브랜치 잡 `sandcorp-flow-pr`([Jenkinsfile.pr](../Jenkinsfile.pr), 설정 사본 [docs/ops/jenkins-sandcorp-flow-pr.config.xml](./ops/jenkins-sandcorp-flow-pr.config.xml))은
+  2026-11-09에 꺼졌다(Actions로 대체). 파일은 기록으로 남긴다. 배포 잡 `sandcorp-flow`의 배포 전 검사는 그대로 `check.sh`를 부른다.
 - A1은 **arm64·CPU 전용** — ollama·paddle 없음(임베딩·OCR은 per-Tenant Provider / Vision OCR).
 
 ### 잡 파라미터
@@ -90,10 +88,11 @@ gunicorn/gevent→uvicorn + Celery worker-chat→taskiq로 전환하는 **첫 �
 | 파일 | 역할 |
 |---|---|
 | [Jenkinsfile](../Jenkinsfile) | 잡 `sandcorp-flow`: 라이브러리 `sandcorpDeploy`에 넘기는 값(이미지 3개·검사·배포 스크립트) |
-| [Jenkinsfile.pr](../Jenkinsfile.pr) | 잡 `sandcorp-flow-pr`: 라이브러리 `sandcorpPrCheck`(파괴적 migrate 검사 + `check.sh`) |
+| [.github/workflows/pr-check.yml](../.github/workflows/pr-check.yml) | PR 검사(GitHub Actions): `check.sh` 단계별 잡 + 파괴적 migrate + vite build |
+| [Jenkinsfile.pr](../Jenkinsfile.pr) | (꺼짐, 2026-11-09) 옛 PR 검사 잡 `sandcorp-flow-pr` |
 | [scripts/ci/check.sh](../scripts/ci/check.sh) | PR 검사·배포 전 검사(로컬 Docker 시험 전부) |
 | [scripts/test-deploy.sh](../scripts/test-deploy.sh) | `deploy.sh` 시험(가짜 docker — 이미지 태그·자동 롤백 때 migrate 건너뜀) |
-| [docs/ops/jenkins-sandcorp-flow-pr.config.xml](./ops/jenkins-sandcorp-flow-pr.config.xml) | PR 검사 잡 설정(멀티브랜치) |
+| [docs/ops/jenkins-sandcorp-flow-pr.config.xml](./ops/jenkins-sandcorp-flow-pr.config.xml) | (꺼짐) 옛 PR 검사 잡 설정(멀티브랜치) |
 | [docs/ops/jenkins-sandcorp-flow.config.xml](./ops/jenkins-sandcorp-flow.config.xml) | 잡 설정(파이프라인, SCM의 Jenkinsfile) — 잡을 다시 만들 때 쓴다 |
 | [docker-compose.prod.oracle.yml](../docker-compose.prod.oracle.yml) | A1 스택 — GHCR 이미지, `${IMAGE_TAG}` 핀, healthcheck·stop_grace·메모리 limit, nginx를 `${NGINX_PORT}`로 노출(NPM 연결용) |
 | [backend/nginx/nginx.oracle.conf](../backend/nginx/nginx.oracle.conf) | 동적 resolver + SSE + SPA 서빙, NPM의 `X-Forwarded-Proto` 보존 |
