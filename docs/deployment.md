@@ -4,7 +4,7 @@
 `production` 브랜치로 승격**하면, Jenkins 잡 `sandcorp-flow`([Jenkinsfile](../Jenkinsfile))가 production push를 받아 **oracle에서 pull·교체만**
 한다(#340, [ADR-0037](./adr/0037-actions-image-build-production-promote.md)). 파이프라인은 공용 Jenkins 라이브러리 `sandcorp`(sandcorporation/jenkins-shared)의 `sandcorpDeploy`이고 이 저장소
 Jenkinsfile은 값만 넘긴다(jenkins-shared #9). PR은 GitHub Actions([.github/workflows/pr-check.yml](../.github/workflows/pr-check.yml))가 검사한다(아래 「PR 검사」). 설계 근거는 [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md)(무중단 롤링)와
-[ADR-0036](./adr/0036-image-build-on-jenkins.md)(빌드를 Jenkins로, #293).
+[ADR-0037](./adr/0037-actions-image-build-production-promote.md)(Actions 이미지 빌드·production 승격, #340)이다. [ADR-0036](./adr/0036-image-build-on-jenkins.md)은 Jenkins 빌드가 기본이던 이전 설계 기록이며, 현재는 비상 빌드 경로만 설명한다.
 
 ## 전체 흐름
 
@@ -30,7 +30,7 @@ PR → Actions PR 검사(pr-check.yml) 전 잡 초록 → main 병합
 [NPM] 공개 443/TLS → <A1 호스트>:${NGINX_PORT} → 우리 nginx → api / SPA
 ```
 
-- **빌드(Actions)와 런타임(A1)을 완전 분리** — A1은 pull만, 빌드 절대 안 함. Jenkins 노드(mac·home)도 평소엔 굽지 않는다.
+- **빌드(Actions)와 런타임(A1)을 완전 분리** — A1은 pull만, 빌드 절대 안 함. 기본 경로에서는 Jenkins도 굽지 않는다. Actions 이미지 빌드가 불가능할 때만 Jenkins의 `BUILD_ON=jenkins` 비상 경로가 macos(못 잡으면 home)에서 굽는다.
 - release 권한: 워크플로 기본 없음, check `contents: read`, image `packages: write`(이 잡만, GITHUB_TOKEN), promote `contents: write`(이 잡만).
   `GITHUB_TOKEN`의 production push는 다른 워크플로를 깨우지 않고, 저장소 웹훅(Jenkins)만 깨운다. secrets는 쓰지 않는다.
 - main의 PR 검사 캐시(gha)는 release의 check(workflow_call, `github.event_name`은 부른 쪽의 `push`)가 저장한다 — PR은 복원만 한다.
@@ -56,7 +56,7 @@ backend·openapi·e2e 잡은 이미지 레이어를 buildx 빌드 캐시 `type=g
 `sandcorp-authkit`은 공개 sandcorp-auth에서 git+https로 받으므로 자격이 필요 없다. 병합 조건은 **전 잡 초록**(`gh pr checks <PR> --watch`).
 로컬에서 `bash scripts/ci/check.sh`, 일부만 `CHECK_ONLY="backend vitest" bash scripts/ci/check.sh`.
 - Jenkins 멀티브랜치 잡 `sandcorp-flow-pr`([Jenkinsfile.pr](../Jenkinsfile.pr), 설정 사본 [docs/ops/jenkins-sandcorp-flow-pr.config.xml](./ops/jenkins-sandcorp-flow-pr.config.xml))은
-  2026-11-09에 꺼졌다(Actions로 대체). 파일은 기록으로 남긴다. 배포 잡 `sandcorp-flow`는 검사하지 않는다(release의 check가 한다, #340).
+  2026-11-09에 꺼졌다(Actions로 대체). 파일은 기록으로 남긴다. 따라서 현재 macos 실행기는 PR 검사와 경쟁하지 않는다. 배포 잡 `sandcorp-flow`는 검사하지 않는다(release의 check가 한다, #340).
 - A1은 **arm64·CPU 전용** — ollama·paddle 없음(임베딩·OCR은 per-Tenant Provider / Vision OCR).
 
 ### 잡 파라미터
@@ -139,7 +139,7 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
   - **Manage Jenkins → Security → Git Host Key Verification → "Accept first connection"**.
   - 배포 단계는 `oracle` 노드의 잡 워크스페이스에서 돈다. 파이프라인의 `checkout scm`은 추적 파일만 바꾸므로 `.env`·`media`는 그대로다.
 - **빌드 노드(macos·built-in)** — `BUILD_ON=jenkins` 비상 길에서만: docker CLI + buildx. 라이브러리의 `build-image.sh`가 `docker-container` 빌더 `sandcorp-flow-images`(Jenkinsfile `builder`)를 처음 한 번 만든다.
-  macos는 실행기가 하나라 PR 검사와 배포가 겹치면 뒤의 것이 3분 기다린 뒤 home으로 간다.
+  `BUILDER=auto`(기본)는 macos 실행기를 180초 기다리고, 실행기를 못 잡은 경우에만 home으로 간다. 실행기를 잡은 뒤 빌드가 실패해도 다른 노드로 재시도하지 않는다. `BUILDER=macos` 또는 `home`이면 지정한 노드만 쓴다. 현재 Jenkins PR 검사 잡은 꺼져 있다.
   home(built-in, x86)은 QEMU arm64 에뮬레이션이 등록돼 있어야 한다(portfolio·news와 같은 노드).
 - **자격**(이름만, 모두 기존 것을 다시 쓴다): ghcr 쓰기 `ghcr-push-token`(Secret text), 알림 `discord-deploy-webhook`. oracle은 호스트 docker의 ghcr **읽기** 로그인을 쓴다.
   `sandcorp-authkit`은 공개 sandcorp-auth에서 git+https로 받아(#320) SSH 자격이 필요 없다(라이브러리가 `--ssh default`를 넘겨도 쓰지 않는다).

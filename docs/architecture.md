@@ -137,22 +137,21 @@ flowchart LR
 
 ## 4. 배포 파이프라인 (CI/CD)
 
-빌드(mac, 대체 home)와 런타임(A1)을 완전 분리 — A1은 pull만, 빌드는 절대 안 한다. main push 하나를 Jenkins 잡
-`sandcorp-flow`(Jenkinsfile)가 받아 빌드와 배포를 차례로 한다(ADR-0036). 자세한 무중단 메커니즘은
-[deployment.md](./deployment.md), 설계는 [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md).
+이미지는 GitHub Actions가 빌드하고, Jenkins 잡 `sandcorp-flow`(Jenkinsfile)는 승격된 `production` 브랜치를 A1에 배포한다(ADR-0037). Actions를 쓸 수 없을 때만 Jenkins `BUILD_ON=jenkins` 비상 경로에서 이미지를 빌드한다. 자세한 흐름은 [deployment.md](./deployment.md), 설계는 [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md)와 [ADR-0037](./adr/0037-actions-image-build-production-promote.md).
 
 ```mermaid
 flowchart TB
-  push["git push main"] -->|webhook| job["Jenkins 잡 sandcorp-flow<br/>(Jenkinsfile)"]
-  job --> build["이미지 빌드<br/>macos(arm64 네이티브)<br/>3분 못 잡으면 home(QEMU)"]
-  build -->|"api·admin·widget :sha (+latest)"| ghcr[("GHCR")]
-  build -->|"셋 다 성공해야"| jenkins
+  push["git push main"] --> release["GitHub Actions release.yml<br/>검사 + arm64 이미지 빌드"]
+  release -->|"모두 성공: production 승격"| jenkins["Jenkins 잡 sandcorp-flow<br/>(production push)"]
+  release -->|"api·admin·widget :sha"| ghcr[("GHCR")]
+  jenkins -->|"이미지 확인·pull"| ghcr
 
   subgraph a1["Oracle A1 (arm64)"]
-    jenkins["배포 단계(oracle 노드)<br/>deploy.sh sha"]
-    jenkins --> migrate["migrate<br/>(expand / contract)"]
+    jenkins --> deploy["배포 단계(oracle 노드)<br/>deploy.sh sha"]
+    deploy --> migrate["migrate<br/>(expand / contract)"]
     migrate --> rollout["docker rollout<br/>api · worker · worker-chat<br/>start-first 무중단"]
     rollout --> smoke["스모크<br/>/api/health"]
   end
   ghcr -. pull .-> jenkins
+  emergency["Actions 이미지 빌드 불가 시<br/>Jenkins BUILD_ON=jenkins<br/>macos 우선, 180초 미확보면 home"] -. 비상 경로 .-> ghcr
 ```
