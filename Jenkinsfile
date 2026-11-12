@@ -12,12 +12,6 @@
 // .env는 여기서 만들지 않는다. 운영 호스트의 잡 워크스페이스에 놓아 둔 것을 compose가 ./.env로 읽는다(deployDir 기본값).
 @Library('sandcorp') _
 
-// sandcorpDeploy exposes BUILD_ON=jenkins for older adopters. Flow is deploy-only:
-// fail closed if that shared-library option is selected or left over from an old job.
-if (params.BUILD_ON == 'jenkins') {
-  error('Flow 이미지 빌드는 GitHub Actions 전용입니다. release.yml을 다시 실행하세요.')
-}
-
 String repo = 'ghcr.io/sandcorporation/sandcorp-flow'
 
 sandcorpDeploy(

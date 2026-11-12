@@ -3,11 +3,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-grep -Fq "if (params.BUILD_ON == 'jenkins')" Jenkinsfile
 grep -Fq "deployFrom: 'production'" Jenkinsfile
 grep -Fq "imageWaitHint:" Jenkinsfile
 ! grep -Eq 'dockerfile:|context:|cache:|sourceUrl:|builder:|buildSsh:|check:' Jenkinsfile
-! grep -Eq 'BUILD_ON=jenkins|BUILDER=|MAC_WAIT_SECONDS=' Jenkinsfile
+! grep -Eq 'BUILD_ON|BUILDER|MAC_WAIT_SECONDS|dockerfile:|context:|cache:|sourceUrl:|builder:|buildSsh:|check:' Jenkinsfile
 test ! -e Jenkinsfile.pr
 test ! -e docs/ops/jenkins-sandcorp-flow-pr.config.xml
 grep -Fq '<name>*/production</name>' docs/ops/jenkins-sandcorp-flow.config.xml
