@@ -1,5 +1,5 @@
 # oracle(Ampere A1, arm64, GPU 없음) prod 배포 — GHCR 이미지를 pull만 한다(빌드 안 함).
-# Jenkins 잡 sandcorp-flow가 이미지를 굽고(oracle 밖) oracle 노드에서 scripts/deploy.sh로 docker rollout 무중단 배포한다(ADR-0015·0036).
+# GitHub Actions가 이미지를 빌드하고 Jenkins 잡 sandcorp-flow는 production 승격 이미지만 oracle에 배포한다(ADR-0037).
 #
 # - 모든 backend 서비스(api·worker·worker-chat·events)는 같은 sandcorp-flow-api 이미지.
 #   events = relay + 소비자 그룹 4개를 한 프로세스로(#290). replica 1개 고정(relay 단일 인스턴스).
