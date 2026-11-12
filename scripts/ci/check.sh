@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# PR 검사·배포 전 검사: 로컬 Docker 시험과 같은 것을 한 번에 돌린다(jenkins-shared #9).
-# GitHub Actions(.github/workflows/pr-check.yml)가 PR 머지 결과로 단계마다(CHECK_ONLY), Jenkins `sandcorp-flow`(Jenkinsfile, sandcorpDeploy)가
-# 이미지 굽기와 나란히 부른다 — 배포 쪽 재검사 생략은 Jenkins PR 상태(pr-merge)로 판정했는데 그 잡이 꺼져(2026-11-09) 이제 매번 돈다. 로컬에서도 그대로 돈다.
+# PR 검사: GitHub Actions(.github/workflows/pr-check.yml)가 PR 머지 결과로 단계마다(CHECK_ONLY) 부른다. 로컬에서도 그대로 돈다.
 #
 #   bash scripts/ci/check.sh            # 전부
 #   CHECK_ONLY="backend vitest" bash scripts/ci/check.sh   # 일부만(lint backend vitest openapi nginx e2e)
@@ -10,19 +8,14 @@
 #       ④ OpenAPI·orval 생성물 드리프트 ⑤ nginx 계약 시험 ⑥ e2e(Playwright)
 # - compose 프로젝트 이름을 이 실행만의 것(flow-check-…)으로 덮어 dev·로컬 시험 스택, 다른 검사와 겹치지 않는다.
 #   끝나면 그 프로젝트의 컨테이너·볼륨·구운 이미지를 지운다(빌드 캐시는 남아 다음 실행이 빠르다).
-# - 소스는 bind mount 하지 않고 이미지에 굽거나(tar로) 컨테이너에 넣는다 — home 노드는 Jenkins 컨테이너 안이라 작업 공간
-#   경로가 호스트와 달라 bind mount 가 빈 폴더가 된다. 그래서 compose 파일이 bind mount 를 쓰는 ⑤ nginx·⑥ e2e 는
-#   SANDCORP_BUILT_ON=home 에서 건너뛴다(로그에 남긴다). macos·로컬은 전부 돈다.
+# - 소스는 bind mount 하지 않고 이미지에 굽거나(tar로) 컨테이너에 넣는다.
 # - sandcorp-authkit 은 공개 sandcorp-auth 에서 git+https 로 받는다(ssh 전달 불필요, #320).
-# bash 3.2(macos 노드)에서도 돈다.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 run_id="flow-check-$(date +%s)-$$"
 only=" ${CHECK_ONLY:-lint backend vitest openapi nginx e2e} "
 want() { case "$only" in *" $1 "*) return 0 ;; esac; return 1; }
-on_home=0
-if [ "${SANDCORP_BUILT_ON:-}" = home ]; then on_home=1; fi
 # e2e backend 이미지(api-e2e 가 굽고 worker·events 가 같이 쓴다, #332)는 이름이 붙어 down --rmi local 이 안 지운다 — 실행마다 이름을 주고 cleanup 에서 지운다
 export E2E_BACKEND_IMAGE="$run_id-backend-e2e:local"
 T=(docker compose -p "$run_id" -f docker-compose.test.yml)
@@ -53,6 +46,7 @@ if want lint; then
   bash scripts/test-deploy.sh
   bash scripts/test-runtime-config.sh
   bash scripts/ci/promote_test.sh
+  bash scripts/ci/test-actions-only-pipeline.sh
   lap ①
 fi
 
@@ -60,19 +54,15 @@ fi
 nginx_pid=""
 nginx_log="$(mktemp "${TMPDIR:-/tmp}/flow-nginx.XXXXXX")"
 if want nginx; then
-  if [ "$on_home" = 1 ]; then
-    echo "== ⑤ nginx 계약 시험 건너뜀(home: bind mount·호스트 포트가 Jenkins 컨테이너 밖이다)"
-  else
-    echo "== ⑤ nginx 계약 시험 — 배경에서 시작(로그는 ⑥ 전에)"
-    (
-      t0="$(date +%s)"
-      bash scripts/test-nginx-seo.sh && bash scripts/test-nginx-metrics.sh && bash scripts/test-nginx-embed-policy.sh
-      rc=$?
-      echo "== ⑤ 끝: $(( $(date +%s) - t0 ))초 (종료 $rc)"
-      exit "$rc"
-    ) > "$nginx_log" 2>&1 &
-    nginx_pid=$!
-  fi
+  echo "== ⑤ nginx 계약 시험 — 배경에서 시작(로그는 ⑥ 전에)"
+  (
+    t0="$(date +%s)"
+    bash scripts/test-nginx-seo.sh && bash scripts/test-nginx-metrics.sh && bash scripts/test-nginx-embed-policy.sh
+    rc=$?
+    echo "== ⑤ 끝: $(( $(date +%s) - t0 ))초 (종료 $rc)"
+    exit "$rc"
+  ) > "$nginx_log" 2>&1 &
+  nginx_pid=$!
 fi
 
 if want backend || want openapi; then
@@ -121,19 +111,15 @@ if [ -n "$nginx_pid" ]; then
 fi
 
 if want e2e; then
-  if [ "$on_home" = 1 ]; then
-    echo "== ⑥ e2e 건너뜀(home: docker-compose.test.yml 의 bind mount 가 Jenkins 컨테이너 밖 경로다)"
-  else
-    t0="$(date +%s)"; echo "== ⑥ e2e 이미지"
-    "${T[@]}" build
-    lap '⑥ 이미지'
-    t0="$(date +%s)"; echo "== ⑥ e2e(Playwright)"
-    if ! "${T[@]}" run --rm e2e; then
-      echo "== e2e 실패 — api-e2e·worker 로그 끝" >&2
-      "${T[@]}" logs --tail 40 api-e2e chat-worker-e2e worker-e2e >&2 || true
-      exit 1
-    fi
-    lap ⑥
+  t0="$(date +%s)"; echo "== ⑥ e2e 이미지"
+  "${T[@]}" build
+  lap '⑥ 이미지'
+  t0="$(date +%s)"; echo "== ⑥ e2e(Playwright)"
+  if ! "${T[@]}" run --rm e2e; then
+    echo "== e2e 실패 — api-e2e·worker 로그 끝" >&2
+    "${T[@]}" logs --tail 40 api-e2e chat-worker-e2e worker-e2e >&2 || true
+    exit 1
   fi
+  lap ⑥
 fi
 echo "== 검사 통과: $(( $(date +%s) - started ))초"

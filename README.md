@@ -289,7 +289,7 @@ PR은 GitHub Actions `.github/workflows/pr-check.yml`이 `scripts/ci/check.sh`�
 배포 경로는 Jenkins 잡 `sandcorp-flow`의 워크스페이스(호스트 `/var/jenkins_home/workspace/sandcorp-flow`), compose 프로젝트는 `sandcorp-flow-prod`다. 이 스택은 공유 박스에서
 도므로 서비스마다 메모리 상한을 둔다(합계 약 3.2G, 표는 deployment.md). 서버 쪽 설정(DNS·NPM·Jenkins
 잡·운영 `.env`)은 deployment.md의 「서버 쪽 할 일」 체크리스트를 따른다.
-Jenkins PR 잡 `sandcorp-flow-pr`은 2026-11-09에 꺼졌다(Actions로 대체) — 자세히는 docs/deployment.md 「PR 검사」.
+Jenkins PR 검사 잡은 폐기했고 Jenkinsfile·설정 사본을 제거했다. CI·PR 검사는 GitHub Actions 전용이다 — 자세히는 docs/deployment.md 「PR 검사」.
 
 전체 흐름·1회 설정·환경변수·롤백·트러블슈팅은 **[docs/deployment.md](docs/deployment.md)** 참조
 (설계 근거: [ADR-0015](docs/adr/0015-oracle-zero-downtime-rolling-deploy.md)).

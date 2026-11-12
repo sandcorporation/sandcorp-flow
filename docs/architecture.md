@@ -137,7 +137,7 @@ flowchart LR
 
 ## 4. 배포 파이프라인 (CI/CD)
 
-이미지는 GitHub Actions가 빌드하고, Jenkins 잡 `sandcorp-flow`(Jenkinsfile)는 승격된 `production` 브랜치를 A1에 배포한다(ADR-0037). Actions를 쓸 수 없을 때만 Jenkins `BUILD_ON=jenkins` 비상 경로에서 이미지를 빌드한다. 자세한 흐름은 [deployment.md](./deployment.md), 설계는 [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md)와 [ADR-0037](./adr/0037-actions-image-build-production-promote.md).
+CI·검사·이미지 빌드는 GitHub Actions 전용이다. Jenkins 잡 `sandcorp-flow`(Jenkinsfile)는 승격된 `production` 브랜치의 Actions 이미지만 A1에 배포한다(ADR-0037). 자세한 흐름은 [deployment.md](./deployment.md), 설계는 [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md)와 [ADR-0037](./adr/0037-actions-image-build-production-promote.md).
 
 ```mermaid
 flowchart TB
@@ -153,5 +153,4 @@ flowchart TB
     rollout --> smoke["스모크<br/>/api/health"]
   end
   ghcr -. pull .-> jenkins
-  emergency["Actions 이미지 빌드 불가 시<br/>Jenkins BUILD_ON=jenkins<br/>macos 우선, 180초 미확보면 home"] -. 비상 경로 .-> ghcr
 ```
