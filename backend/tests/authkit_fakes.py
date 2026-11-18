@@ -68,7 +68,8 @@ def use_fake_jwks(monkeypatch: pytest.MonkeyPatch, jwks: FakeJwks, clock: FixedC
 
 class FlowAuthServer(FakeTokenEndpoint):
     """`FakeTokenEndpoint`에 Flow 시험 기본값을 얹는다: 토큰 스코프 `flow_scope`(기본 `admin login`, 응답
-    scope는 `openid profile email` + 그것), ID 토큰 프로필(대표·owner@sandcorp.co.kr·확인됨)."""
+    scope는 `openid profile email` + 그것), ID 토큰 프로필(대표·owner@sandcorp.co.kr·확인됨).
+    `amr=["fed"]`이면 대표의 소셜 로그인 세션 토큰(sandcorp-auth #100, A4)."""
 
     def approve(  # type: ignore[override]  # flow 시험의 인자 이름(flow_scope)을 지킨다
         self,
@@ -77,6 +78,7 @@ class FlowAuthServer(FakeTokenEndpoint):
         sub: str = OWNER,
         acct: str | None = None,
         flow_scope: str = "admin login",
+        amr: list[str] | None = None,
         id_token_overrides: Mapping[str, object] | None = None,
     ) -> dict[str, str]:
         profile = {"name": "대표", "email": "owner@sandcorp.co.kr", "email_verified": True}
@@ -85,6 +87,7 @@ class FlowAuthServer(FakeTokenEndpoint):
             sub=sub,
             acct=acct,
             scope=f"openid profile email {flow_scope}",
+            access_overrides={"amr": amr} if amr is not None else None,
             id_token_overrides={**profile, **(id_token_overrides or {})},
         )
 

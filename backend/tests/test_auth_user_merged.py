@@ -316,9 +316,9 @@ def test_command_merges_and_refuses_an_owner_source() -> None:
 
 
 def member_entry_as_owner(client: Client, server: FlowAuthServer):
-    """대표의 소셜 세션(acct 없음, admin 없음)으로 고객 진입 한 바퀴."""
+    """대표의 소셜 세션(acct 없음, admin 없음, `amr` ["fed"] — A4)으로 고객 진입 한 바퀴."""
     started = client.get("/api/auth/authorize/member")
-    return client.get("/api/auth/callback", server.approve(started["Location"], flow_scope="login"))
+    return client.get("/api/auth/callback", server.approve(started["Location"], flow_scope="login", amr=["fed"]))
 
 
 def landing(response) -> tuple[str, dict[str, str]]:

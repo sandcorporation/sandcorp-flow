@@ -379,6 +379,16 @@ def test_owner_sees_only_tenants_with_membership(signer: Signer) -> None:
 
 
 @pytest.mark.django_db
+def test_owner_social_session_gets_the_same_memberships(signer: Signer) -> None:
+    """소셜로 들어온 대표 토큰(`amr` ["fed"], A4)도 MCP에서는 회원과 같은 길 — 멤버십으로만 연다."""
+    member_of(make_tenant("mine"), Membership.ROLE_ADMIN, sub=OWNER)
+
+    body = call(signer.token(aud=MCP, scope="flow.read flow.write", amr=["fed"]), "list_tenants")
+
+    assert [t["slug"] for t in body["result"]["structuredContent"]["tenants"]] == ["mine"]
+
+
+@pytest.mark.django_db
 def test_owner_without_membership_has_none(signer: Signer, write_tool: str) -> None:
     make_tenant("acme")
 

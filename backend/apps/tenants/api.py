@@ -437,7 +437,7 @@ def login_authorize_member(request, invite: str | None = None, then: str | None 
 @auth_router.get("/callback", auth=None, include_in_schema=False)
 def login_callback(request):
     """콜백 검증은 패키지(`complete_login`), 진입과 계정 종류 맞추기는 Flow 몫이다(ADR-0028).
-    대표는 `acct` 없음(A1) + `admin`일 때만 Operator가 되고, 고객 화면은 `acct="member"` 또는 멤버십이 있는 대표(#350)만 간다."""
+    대표는 `acct` 없음(A1) + 소셜 세션 아님(A4) + `admin`일 때만 Operator가 되고, 고객 화면은 `acct="member"` 또는 멤버십이 있는 대표(#350)만 간다."""
     store = authkit.CookieAttemptStore(request.COOKIES.get(LOGIN_ATTEMPT_COOKIE))
     try:
         result = authkit.finish_login(request.GET.dict(), store)
@@ -461,6 +461,8 @@ def login_callback(request):
         return _member_landing(MemberLogin(user=user, invite=invite, then=then))
     if access.acct is not None:
         return _rejected_redirect("operator", "member")  # 고객은 관리 화면(Operator)으로 들어오지 않는다
+    if not authkit.opens_owner_features(access):
+        return _rejected_redirect("operator", "social")  # 소셜로 들어온 대표 세션은 고객 진입으로만(A4)
     if authkit.OPERATOR_SCOPE not in access.scopes:
         return _rejected_redirect("operator", "admin")
     operator = owner_operator(settings.AUTH_ISSUER, access.sub, identity)

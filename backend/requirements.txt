@@ -36,4 +36,4 @@ psycopg[binary]>=3.0,<4.0
 django-types>=0.19
 celery-types>=0.22
 # MCP·운영자 인증(sandcorp-auth #54). 공개 저장소에서 git+https로 받는다(인증·ssh 전달 불필요, #320).
-sandcorp-authkit[django] @ git+https://github.com/sandcorporation/sandcorp-auth.git@authkit-v0.2.0#subdirectory=clients/python
+sandcorp-authkit[django] @ git+https://github.com/sandcorporation/sandcorp-auth.git@authkit-v0.3.0#subdirectory=clients/python
