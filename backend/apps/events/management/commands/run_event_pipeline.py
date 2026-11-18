@@ -28,6 +28,9 @@ class Command(BaseCommand):
         loops = default_loops(exclude=tuple(opts["exclude"]))
         if not loops:
             raise CommandError("돌릴 루프가 없다(--exclude가 전부를 뺐다)")
+        from apps.core.heartbeat import start_heartbeat
+
+        start_heartbeat("events")  # 생존 신호(#362)
         sup = Supervisor(loops, on_stop=(wake_relay,) if any(lp.name == "relay" for lp in loops) else ())
 
         def on_signal(signum, frame):

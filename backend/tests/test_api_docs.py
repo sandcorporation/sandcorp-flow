@@ -9,6 +9,7 @@ from ninja import NinjaAPI
 from config.api import docs_routes
 
 
+@pytest.mark.django_db
 def test_docs_and_openapi_open_in_dev(client):
     assert client.get("/api/openapi.json").status_code == 200
     assert client.get("/api/docs").status_code == 200
