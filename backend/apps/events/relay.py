@@ -6,10 +6,49 @@
 """
 import logging
 import time
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
 RELAY_BACKOFF_SECONDS = 2.0  # 루프 오류(인프라 블립·발행 실패 등) 후 재시도 간격
+
+
+# 배포 순간(db·redis 재시작)의 연결 오류는 warning, 이 문턱을 넘으면 exception(오류 이벤트).
+CONNECTION_WARN_MAX_CONSECUTIVE = 5  # 연속 이 횟수 미만이면 warning
+CONNECTION_WARN_MAX_SECONDS = 30.0  # 첫 실패로부터 이 시간 미만이면 warning
+
+
+def _is_connection_error(exc: BaseException) -> bool:
+    from django.db import InterfaceError, OperationalError
+    from redis.exceptions import ConnectionError as RedisConnectionError
+    from redis.exceptions import TimeoutError as RedisTimeoutError
+
+    return isinstance(exc, (OperationalError, InterfaceError, RedisConnectionError, RedisTimeoutError))
+
+
+class _FailureStreak:
+    """연속 연결 오류를 세어 warning/exception을 가른다. 성공하면 reset()."""
+
+    def __init__(self, clock: Callable[[], float]):
+        self._clock = clock
+        self._count = 0
+        self._first_at = 0.0
+
+    def reset(self) -> None:
+        self._count = 0
+
+    def log(self, exc: BaseException, message: str, *args: object) -> None:
+        if not _is_connection_error(exc):
+            logger.exception(message, *args)
+            return
+        now = self._clock()
+        if self._count == 0:
+            self._first_at = now
+        self._count += 1
+        if self._count < CONNECTION_WARN_MAX_CONSECUTIVE and now - self._first_at < CONNECTION_WARN_MAX_SECONDS:
+            logger.warning("%s (%s: %s)", message % args if args else message, type(exc).__name__, exc)
+        else:
+            logger.exception(message, *args)
 
 
 def drain_once(bus, batch=200) -> int:
@@ -41,7 +80,7 @@ def _close_pubsub(pubsub):
     return None
 
 
-def run_relay(bus=None, idle_drain=5.0, stop=None) -> None:
+def run_relay(bus=None, idle_drain=5.0, stop=None, clock: Callable[[], float] = time.monotonic) -> None:
     """Redis pub/sub wake로 깨어 outbox를 드레인한다(부팅 sweep + 주기 backstop 포함).
 
     record_event가 커밋 후 쏘는 wake를 구독해 저지연으로 드레인하고, wake가 없어도 idle_drain
@@ -58,14 +97,16 @@ def run_relay(bus=None, idle_drain=5.0, stop=None) -> None:
 
     bus = bus or RedisStreamsBus()
     pubsub = None
+    streak = _FailureStreak(clock)
     try:
         # 부팅 catch-up sweep — stop과 무관하게 1회 시도. 실패해도 루프가 재시도한다.
         try:
             pubsub = _redis().pubsub()
             pubsub.subscribe(OUTBOX_WAKE_CHANNEL)
             drain_once(bus)
-        except Exception:
-            logger.exception("[relay] 부팅 sweep/구독 실패 — 루프에서 재시도")
+            streak.reset()
+        except Exception as exc:
+            streak.log(exc, "[relay] 부팅 sweep/구독 실패 — 루프에서 재시도")
             pubsub = _close_pubsub(pubsub)
 
         while stop is None or not stop():
@@ -77,8 +118,9 @@ def run_relay(bus=None, idle_drain=5.0, stop=None) -> None:
                     drain_once(bus)
                 pubsub.get_message(timeout=idle_drain)  # wake 시 즉시, 없으면 idle_drain backstop
                 drain_once(bus)
-            except Exception:  # noqa: BLE001 — 죽지 말고 재구독/재시도(컨테이너 생존)
-                logger.exception("[relay] 루프 오류 — %.1fs 후 재시도", RELAY_BACKOFF_SECONDS)
+                streak.reset()
+            except Exception as exc:  # noqa: BLE001 — 죽지 말고 재구독/재시도(컨테이너 생존)
+                streak.log(exc, "[relay] 루프 오류 — %.1fs 후 재시도", RELAY_BACKOFF_SECONDS)
                 pubsub = _close_pubsub(pubsub)
                 time.sleep(RELAY_BACKOFF_SECONDS)
     finally:

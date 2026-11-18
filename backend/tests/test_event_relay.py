@@ -135,3 +135,86 @@ def test_run_relay_survives_transient_error(monkeypatch):
     rmod.run_relay(bus=object(), idle_drain=0.01, stop=lambda: calls["n"] >= 3)
 
     assert calls["n"] >= 3  # 부팅 sweep 예외에도 죽지 않고 루프 지속
+
+
+def _run_failing_relay(monkeypatch, caplog, errors, clock_times):
+    """errors를 차례로 drain_once가 던지게 하고(끝나면 성공), relay 루프를 돌려 로그 레코드를 돌려준다."""
+    import logging
+
+    from apps.events import relay as rmod
+
+    calls = {"n": 0}
+
+    def drain(bus, batch=200):
+        calls["n"] += 1
+        if calls["n"] <= len(errors):
+            raise errors[calls["n"] - 1]
+        return 0
+
+    times = iter(clock_times)
+    last = [0.0]
+
+    def clock():
+        last[0] = next(times, last[0])
+        return last[0]
+
+    monkeypatch.setattr(rmod, "drain_once", drain)
+    monkeypatch.setattr(rmod, "RELAY_BACKOFF_SECONDS", 0)
+    with caplog.at_level(logging.DEBUG, logger="apps.events.relay"):
+        rmod.run_relay(bus=object(), idle_drain=0.01, stop=lambda: calls["n"] > len(errors) + 1, clock=clock)
+    return [r for r in caplog.records if r.name == "apps.events.relay" and "[relay]" in r.getMessage()
+            and r.levelno >= logging.WARNING]
+
+
+def _conn_errors(n):
+    from django.db import OperationalError
+
+    return [OperationalError("connection refused") for _ in range(n)]
+
+
+@pytest.mark.django_db
+def test_connection_blip_is_warning_not_exception(monkeypatch, caplog):
+    """배포 순간의 짧은 연결 오류(5회 미만·30초 미만)는 warning — 오류 이벤트가 되지 않는다."""
+    import logging
+
+    recs = _run_failing_relay(monkeypatch, caplog, _conn_errors(3), [0.0] * 20)
+    assert [r.levelno for r in recs] == [logging.WARNING] * 3
+    assert all(r.exc_info is None for r in recs)
+
+
+@pytest.mark.django_db
+def test_connection_errors_escalate_after_five_consecutive(monkeypatch, caplog):
+    """연속 5회째부터는 exception(logger.exception = ERROR)."""
+    import logging
+
+    recs = _run_failing_relay(monkeypatch, caplog, _conn_errors(6), [0.0] * 40)
+    assert [r.levelno for r in recs] == [logging.WARNING] * 4 + [logging.ERROR] * 2
+    assert recs[-1].exc_info is not None
+
+
+@pytest.mark.django_db
+def test_connection_errors_escalate_after_thirty_seconds(monkeypatch, caplog):
+    """첫 실패로부터 30초가 지나면 횟수와 무관하게 exception."""
+    import logging
+
+    # 시계는 실패 기록 때만 읽힌다: 첫 실패 t=0, 두 번째 t=31
+    recs = _run_failing_relay(monkeypatch, caplog, _conn_errors(2), [0.0, 31.0])
+    assert [r.levelno for r in recs] == [logging.WARNING, logging.ERROR]
+
+
+@pytest.mark.django_db
+def test_non_connection_error_is_always_exception(monkeypatch, caplog):
+    import logging
+
+    recs = _run_failing_relay(monkeypatch, caplog, [RuntimeError("bug")], [0.0] * 10)
+    assert [r.levelno for r in recs] == [logging.ERROR]
+
+
+@pytest.mark.django_db
+def test_redis_connection_error_is_warning(monkeypatch, caplog):
+    import logging
+
+    import redis
+
+    recs = _run_failing_relay(monkeypatch, caplog, [redis.ConnectionError("down"), redis.TimeoutError("t")], [0.0] * 20)
+    assert [r.levelno for r in recs] == [logging.WARNING] * 2
