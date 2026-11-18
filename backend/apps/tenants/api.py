@@ -28,7 +28,7 @@ from apps.tenants.refresh_tokens import (
 )
 from apps.tenants.models import Membership, Operator, Tenant, TenantConfig, TenantInvite
 from apps.tenants import authkit
-from apps.tenants.members import MemberLogin, member_user, owner_operator
+from apps.tenants.members import MemberLogin, member_user, owner_member_user, owner_operator
 from sandcorp_authkit.login import ATTEMPT_MAX_AGE_SECONDS, LoginRejected, start_login
 
 operator_router = Router(tags=["operator"])
@@ -437,7 +437,7 @@ def login_authorize_member(request, invite: str | None = None, then: str | None 
 @auth_router.get("/callback", auth=None, include_in_schema=False)
 def login_callback(request):
     """콜백 검증은 패키지(`complete_login`), 진입과 계정 종류 맞추기는 Flow 몫이다(ADR-0028).
-    대표는 `acct` 없음(A1) + `admin`일 때만 Operator가 되고, 고객은 `acct="member"`일 때만 고객 화면으로 간다."""
+    대표는 `acct` 없음(A1) + `admin`일 때만 Operator가 되고, 고객 화면은 `acct="member"` 또는 멤버십이 있는 대표(#350)만 간다."""
     store = authkit.CookieAttemptStore(request.COOKIES.get(LOGIN_ATTEMPT_COOKIE))
     try:
         result = authkit.finish_login(request.GET.dict(), store)
@@ -447,11 +447,18 @@ def login_callback(request):
         return _rejected_redirect(entry, "state" if exc.reason == "expired" else exc.reason)
     access, identity = result.access, result.identity
     if result.extra.get("entry") == "member":
-        if access.acct != "member":
-            return _rejected_redirect("member", "owner")  # 대표는 고객 화면으로 들어오지 않는다
         then = "try_claim" if result.extra.get("then") == "try_claim" else None
-        user = member_user(settings.AUTH_ISSUER, access.sub, identity)
-        return _member_landing(MemberLogin(user=user, invite=result.extra.get("invite"), then=then))
+        invite = result.extra.get("invite")
+        if access.acct == "member":
+            user = member_user(settings.AUTH_ISSUER, access.sub, identity)
+        else:
+            # 대표(acct 없음)는 이미 멤버십이 있을 때만 고객 진입을 받는다 — 합치기로 회원 계정의 멤버십을
+            # 받은 경우(#350). 그 밖에는 예전처럼 돌려보낸다(Operator·멤버 세션을 새로 만들지 않는다).
+            owner = owner_member_user(settings.AUTH_ISSUER, access.sub, identity)
+            if owner is None or not (invite or active_memberships(owner)):
+                return _rejected_redirect("member", "owner")
+            user = owner
+        return _member_landing(MemberLogin(user=user, invite=invite, then=then))
     if access.acct is not None:
         return _rejected_redirect("operator", "member")  # 고객은 관리 화면(Operator)으로 들어오지 않는다
     if authkit.OPERATOR_SCOPE not in access.scopes:

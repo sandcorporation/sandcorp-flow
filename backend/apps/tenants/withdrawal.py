@@ -1,10 +1,11 @@
-"""sandcorp-auth 탈퇴 웹훅(`user.deleted`) 받기 — #55, ADR-0028 「탈퇴」.
+"""sandcorp-auth 웹훅 받기 — 탈퇴 `user.deleted`(#55, ADR-0028 「탈퇴」)·계정 합치기 `user.merged`(#350, 「계정 합치기」).
 
 규칙 원문: sandcorp-auth `docs/resource-server-token-validation.md` 11절(W1~W5).
 `verify_sandcorp_webhook`은 그 문서의 Python 예시를 그대로 옮겼다(고치지 말 것 — 문서와 함께 바뀐다).
 
 - `verify_sandcorp_webhook(secret, body, header, now=)` : W1~W3. 받은 본문 **바이트**로 검증한다.
 - `handle_event(event)`                                 : W4~W5. 같은 id는 한 번만 처리한다.
+  `user.merged {from_sub, to_sub}`는 `merge.merge_auth_user`로 from 사용자의 데이터를 to 사용자로 옮긴다(지우지 않는다).
 
 처리는 짧다(사용자 행 하나를 지우면 멤버십·Refresh Family가 CASCADE로 함께 지워진다). 그래서 큐로 넘기지 않고
 id 기록과 같은 트랜잭션에서 끝낸다 — 「기록은 됐는데 정리는 안 됨」이 생기지 않고, 세션도 즉시 끊긴다.
@@ -21,6 +22,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.tenants.members import forget_user
+from apps.tenants.merge import merge_auth_user
 from apps.tenants.models import AuthWebhookEvent
 
 # 문서는 「적어도 3일」(auth 재시도 기간 약 47시간보다 길게). 여유를 두고 7일 기억한다.
@@ -89,6 +91,11 @@ def handle_event(event: dict[str, object]) -> bool:
         if event_type == "user.deleted" and isinstance(sub, str):
             # 대표(acct=owner)는 지우지 않는다. 마지막 Admin이 떠난 Tenant는 그대로 둔다(ADR-0028 「탈퇴」).
             forget_user(settings.AUTH_ISSUER, sub)
+        elif event_type == "user.merged":
+            from_sub, to_sub = event.get("from_sub"), event.get("to_sub")
+            if isinstance(from_sub, str) and isinstance(to_sub, str) and from_sub and to_sub:
+                # 거절(from이 대표 등)도 기록만 하고 200 — auth가 재시도해도 결과가 같다. 사유는 로그에 남는다.
+                merge_auth_user(settings.AUTH_ISSUER, from_sub, to_sub)
         # 모르는 type은 기록만 하고 무시한다(W5).
     return True
 

@@ -2,6 +2,7 @@
 
 - `member_user(iss, sub, identity)`      : 일반 사용자 `User(iss, sub)`를 찾거나 만들고 프로필 캐시를 갱신한다.
 - `owner_operator(iss, sub, identity)`   : 대표 `User(iss, sub)`와 거기 이은 `Operator`를 찾거나 만든다(#21).
+- `owner_member_user(iss, sub, identity)`: 고객 진입으로 온 대표의 기존 `User`(없으면 None, 합친 계정 #350).
 - `active_memberships(user)`             : 지금 세션을 열 수 있는 멤버십(멤버십·Tenant 모두 활성).
 - `create_invite(tenant, role, by)`      : 초대 링크 발급 → (초대 행, 원문 토큰). 원문은 이때 한 번만 나온다.
 - `accept_invite(user, raw)`             : 초대를 써서 멤버십을 만든다. 만료·재사용·폐기·없음은 `InviteRejected`.
@@ -69,6 +70,21 @@ class MemberLogin:
     user: User
     invite: str | None
     then: LoginThen | None = None
+
+
+def owner_member_user(iss: str, sub: str, identity: IdentityClaims | None = None) -> User | None:
+    """고객 진입으로 들어온 대표(#350). 이미 있는 대표 `User`만 돌려준다(새로 만들지 않는다), 없으면 None.
+
+    합치기(`user.merged`)로 회원 계정의 멤버십을 받은 대표가 소셜 세션(admin 없음)으로 테넌트에 들어오는 길이다.
+    """
+    with transaction.atomic():
+        user = User.objects.filter(iss=iss, sub=sub, acct=User.Acct.OWNER).first()
+        if user is not None and identity is not None:
+            user.name = identity.get("name")
+            user.email = identity.get("email")
+            user.email_verified = identity.get("email_verified")
+            user.save(update_fields=["name", "email", "email_verified", "updated_at"])
+    return user
 
 
 def owner_operator(iss: str, sub: str, identity: IdentityClaims | None = None) -> Operator:
@@ -170,7 +186,8 @@ def read_member_ticket(raw: str | None) -> User | None:
     user_id = payload.get("u") if isinstance(payload, dict) else None
     if not isinstance(user_id, str):
         return None
-    return User.objects.filter(id=user_id, acct=User.Acct.MEMBER).first()
+    # 대표도 받는다 — 합쳐진 회원 계정의 멤버십으로 고객 진입을 한다(#350).
+    return User.objects.filter(id=user_id).first()
 
 
 def forget_user(iss: str, sub: str) -> bool:
