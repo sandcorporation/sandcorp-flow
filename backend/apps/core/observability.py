@@ -53,20 +53,25 @@ def _is_intended_rejection(exc: BaseException) -> bool:
 
 _CELERY_CONSUMER_LOGGER = "celery.worker.consumer"
 _BROKER_RECONNECT_PREFIX = "consumer: Cannot connect to "
+_BROKER_RETRY_MARK = "Trying again"  # celery CONNECTION_RETRY_STEP — 재시도 없이 포기하는 메시지에는 없다
 
 
 def _is_transient_broker_reconnect(event: Event) -> bool:
-    """celery 컨슈머가 배포 순간 브로커 재연결을 시도하며 남기는 ERROR 로그(#358). 이 문구만 좁게 본다.
+    """celery 컨슈머가 브로커 재연결을 재시도하며 남기는 ERROR 로그(#358). 접두어와 재시도 문구가 함께 있을 때만 버린다.
 
-    오래 끊긴 경우는 이 이벤트가 아니라 컨테이너 헬스체크·재시작이 잡는다(로거 통째 무시 아님).
+    재시도 없이 포기하는 메시지·다른 로거는 그대로 보낸다(로거 통째 무시 아님). 오래 끊긴 redis 는 이 이벤트가 아니라
+    events 컨테이너 relay·consumer 루프의 FailureStreak(연속 5회·30초 넘으면 exception)이 잡는다. 헬스체크는
+    db·redis 컨테이너뿐이고 `/api/health` 는 redis 를 보지 않으며 worker 자체 감시는 없다.
     """
 
     logger = event.get("logger")
     if not isinstance(logger, str) or not logger.startswith(_CELERY_CONSUMER_LOGGER):
         return False
     logentry = event.get("logentry") or {}
-    texts = (event.get("message"), logentry.get("message"), logentry.get("formatted"))
-    return any(isinstance(t, str) and t.startswith(_BROKER_RECONNECT_PREFIX) for t in texts)
+    texts = (event.get("message"), logentry.get("formatted"))
+    return any(
+        isinstance(t, str) and t.startswith(_BROKER_RECONNECT_PREFIX) and _BROKER_RETRY_MARK in t for t in texts
+    )
 
 
 def drop_expected_error(event: Event, hint: Hint) -> Event | None:
