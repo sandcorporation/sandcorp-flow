@@ -55,3 +55,6 @@ if os.environ.get("TASKIQ_INMEMORY") != "1":
 async def _loop_thread_pool(state: TaskiqState) -> None:
     """턴의 임베딩·http_tool이 도는 루프 기본 풀을 --max-async-tasks 이상으로(#322)."""
     install_loop_thread_pool(asyncio.get_running_loop())
+    from apps.core.heartbeat import start_heartbeat
+
+    start_heartbeat("worker-chat")  # 생존 신호(#362)

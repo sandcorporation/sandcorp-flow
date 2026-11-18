@@ -71,7 +71,7 @@ backend·openapi·e2e 잡은 이미지 레이어를 buildx 빌드 캐시 `type=g
 
 | 요소 | 방법 |
 |---|---|
-| 앱 교체 | **`docker rollout`**(start-first): 새 컨테이너 → `/api/health` 통과 → 옛 것 드레인. **api·worker·worker-chat만**. db·redis·nginx는 싱글톤. |
+| 앱 교체 | **`docker rollout`**(start-first): 새 컨테이너 → `/api/health?scope=ready`(db·redis) 통과 → 옛 것 드레인. **api·worker·worker-chat만**. db·redis·nginx는 싱글톤. |
 | 프록시 수렴 | nginx **동적 resolver**(`127.0.0.11 valid=5s`) + 변수 `proxy_pass` → rollout로 바뀐 api IP를 reload 없이 ~5s 수렴. |
 | nginx 재생성 가드(#302) | 실행 중 nginx의 `nginx.conf`가 repo와 다르면 `--force-recreate`(단일 파일 bind mount는 inode 교체라 compose가 못 봄). 같을 때도 force 없는 `up -d --no-deps nginx`를 불러 compose가 **서비스 정의(포트·볼륨·환경) 변경**을 스스로 반영한다(#300 포트 바인딩 사례). `IMAGE_TAG`는 nginx 정의에 없어 api 태그만 바뀐 배포는 no-op(무중단). |
 | 기반 이미지 고정(#360) | `deploy.sh`는 우리 앱 이미지(ghcr: api·worker·worker-chat·events·widget-init·admin-init)만 pull한다. db·redis·nginx 이미지는 compose에 `태그@sha256:…`로 고정돼 상류가 같은 태그로 새 이미지를 내도 배포가 받지 않고 컨테이너를 다시 만들지 않는다. 떠 있는 컨테이너가 image 문자열만 다르고 같은 이미지(ID)·같은 정의면 `up`을 건너뛰고 로그에 `<서비스> 유지`를 남긴다(태그 → 태그@digest 첫 고정 때 compose가 해시 차이로 재생성하는 것을 막음). migrate `run`은 `--no-deps`(run도 의존을 재생성한다). 재생성되면 로그에 `생성/재생성됨`. |
@@ -520,3 +520,12 @@ $N | grep ' /api/' | grep -v '/api/chat/stream' | awk '{for(i=1;i<=NF;i++) if($i
 - [ADR-0015](./adr/0015-oracle-zero-downtime-rolling-deploy.md) — 무중단 롤링 설계·기각안
 - [ADR-0012](./adr/0012-per-tenant-llm-embedding-providers.md) — per-Tenant Provider(플랫폼 기본 off)
 - [docs/event-pipeline.md](./event-pipeline.md) — 이벤트 파이프라인 운영
+
+## 감시: health와 생존 신호 (#362)
+
+- `GET /api/health`는 db(`SELECT 1`)와 redis(ping, 1초 타임아웃)를 보고, 운영에서는 worker·worker-chat·events의 생존 신호도 본다. 하나라도 실패면 **503** + `{"status":"error","failed":[...]}`(`workers`가 실패면 `workers_missing`에 역할 이름). 정상이면 200 `{"status":"ok"}`라 외부 감시(Gatus 등)가 이 주소의 상태 코드만 봐도 알림이 된다.
+- `?scope=ready`는 db·redis만 본다. 컨테이너 healthcheck와 deploy.sh 스모크·롤링 교체가 쓴다 — worker 신호가 아직 없는 새 api를 막지 않고, worker가 죽었다고 api를 로테이션에서 빼지도 않는다.
+- 생존 신호: worker(celery `worker_ready`)·worker-chat(taskiq startup)·events(`run_event_pipeline`) 프로세스의 스레드가 15초마다 redis 키 `flow:heartbeat:<역할>`(TTL 90초)을 갱신하고 `/tmp/flow-heartbeat`를 만진다. 점검할 역할은 api의 `HEALTH_REQUIRED_WORKERS`(쉼표 목록, 운영 compose가 채움 — 개발·시험은 비어 있어 점검하지 않는다). 프로세스가 죽거나 멈추거나 redis에 못 닿으면 최대 90초 뒤 health가 503이다. 스레드 생존 신호라 태스크 소비 자체를 증명하지는 않는다.
+- worker·worker-chat·events 컨테이너 healthcheck는 그 파일이 90초 안에 갱신됐는지 본다(`docker ps`의 unhealthy).
+- 외부 감시가 `/api/health`를 1~2분 간격으로 보고 실패 즉시 알린다면 redis·worker 정지는 약 2~3분 안에 잡힌다. 감시 쪽 조건은 상태 코드 200이면 충분하다(응답 본문 `[BODY]` 조건을 쓴다면 `status == ok`).
+- **db·redis·nginx 재생성 판단(#362)**: deploy.sh는 세 서비스를 한 함수(`up_base_service`)로 올린다. 떠 있는 컨테이너가 image 문자열만 다르고 같은 이미지·같은 정의면 건드리지 않고, 아니면 `up`에 맡긴 뒤 「건너뛰기 불가 — 까닭」 한 줄(고정 digest 이미지가 호스트에 없음 / 이미지 ID 다름 / image 외 정의 다름)과 재생성 여부를 배포 로그에 남긴다.

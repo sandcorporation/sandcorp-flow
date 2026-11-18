@@ -52,46 +52,60 @@ $COMPOSE pull $APP_SERVICES
 # 떠 있는 컨테이너가 compose의 image 문자열과 다른 문자열(예 태그 → 태그@sha256)로 만들어졌지만 같은 이미지(ID)를
 # 가리키고, 정의 해시도 image 문자열을 컨테이너 것으로 되돌리면 라벨과 같으면(= 다른 정의는 그대로) 0.
 # 이때 up은 해시가 달라 컨테이너를 다시 만들므로(compose v2 실측, PR #360) 건너뛴다. 이미지가 다르면(digest를 올린 PR) 1 → up이 재생성.
+# 거짓(1)이면 SKIP_WHY에 어느 검사가 실패했는지 남긴다(#362 — 배포 #49에서 nginx만 재생성된 까닭을 로그로 알 수 있게).
+SKIP_WHY=""
 same_image_only_ref_changed() {
-  local svc=$1 cid cur_ref want_ref ov ok=1
+  local svc=$1 cid cur_ref want_ref want_id cur_id ov ok=1
+  SKIP_WHY=""
   cid=$($COMPOSE ps -q --status running "$svc" 2>/dev/null | head -n 1)
-  [ -n "$cid" ] || return 1
-  cur_ref=$(docker inspect -f '{{.Config.Image}}' "$cid") || return 1
-  want_ref=$($COMPOSE config --images "$svc") || return 1
-  [ "$cur_ref" != "$want_ref" ] || return 1 # 같은 문자열이면 up이 no-op인지 스스로 판단한다
-  [ "$(docker image inspect -f '{{.Id}}' "$want_ref" 2>/dev/null)" = "$(docker inspect -f '{{.Image}}' "$cid")" ] || return 1
+  [ -n "$cid" ] || { SKIP_WHY="떠 있는 컨테이너 없음"; return 1; }
+  cur_ref=$(docker inspect -f '{{.Config.Image}}' "$cid") || { SKIP_WHY="컨테이너 inspect 실패"; return 1; }
+  want_ref=$($COMPOSE config --images "$svc") || { SKIP_WHY="compose config --images 실패"; return 1; }
+  [ "$cur_ref" != "$want_ref" ] || { SKIP_WHY="image 문자열 같음(up이 스스로 판단)"; return 1; }
+  want_id=$(docker image inspect -f '{{.Id}}' "$want_ref" 2>/dev/null || true)
+  cur_id=$(docker inspect -f '{{.Image}}' "$cid")
+  if [ -z "$want_id" ]; then
+    SKIP_WHY="compose가 고정한 이미지($want_ref)가 호스트에 없다 — 떠 있는 이미지($cur_ref)와 다른 digest라 up이 받아서 재생성"
+    return 1
+  fi
+  [ "$want_id" = "$cur_id" ] || { SKIP_WHY="이미지 ID가 다르다(떠 있는 ${cur_id#sha256:} ≠ 고정 ${want_id#sha256:})"; return 1; }
   ov=$(mktemp "${TMPDIR:-/tmp}/flow-deploy-ov.XXXXXX")
   printf 'services:\n  %s:\n    image: %s\n' "$svc" "$cur_ref" > "$ov"
   if [ "$($COMPOSE -f "$ov" config --hash "$svc" | awk '{print $2}')" \
        = "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.config-hash"}}' "$cid")" ]; then
     ok=0
+  else
+    SKIP_WHY="image 외 서비스 정의(포트·볼륨·환경·depends_on 등)가 컨테이너 라벨과 다르다"
   fi
   rm -f "$ov"
   return $ok
 }
 
-echo "▶ 데이터스토어 기동(마이그레이션 전제)"
-datastores=()
-for svc in db redis; do
+# db·redis·nginx처럼 상류 이미지를 쓰는 서비스를 올리는 공용 경로. 같은 이미지에 문자열만 다르면 건드리지 않고,
+# 아니면 force 없는 `up -d --no-deps`(정의가 같으면 compose가 no-op)를 부른 뒤 재생성 여부를 로그로 남긴다.
+# 사용: up_base_service <서비스> [up 옵션…]
+up_base_service() {
+  local svc=$1 before
+  shift
   if same_image_only_ref_changed "$svc"; then
     echo "  $svc 유지 — image 문자열만 바뀌고 같은 이미지(재생성 안 함)"
-  else
-    datastores+=("$svc")
+    return 0
   fi
+  [ -z "$SKIP_WHY" ] || echo "  $svc: 건너뛰기 불가 — $SKIP_WHY"
+  before=$($COMPOSE ps -q "$svc" 2>/dev/null | head -n 1)
+  $COMPOSE up -d --no-deps "$@" "$svc"
+  if [ -n "$before" ] && [ "$before" = "$($COMPOSE ps -q "$svc" 2>/dev/null | head -n 1)" ]; then
+    echo "  $svc 유지(재생성 안 함)"
+  else
+    echo "  $svc 생성/재생성됨"
+  fi
+}
+
+echo "▶ 데이터스토어 기동(마이그레이션 전제)"
+# --wait: healthy까지 기다린다(아래 migrate run은 --no-deps라 depends_on healthy 대기를 대신한다).
+for svc in db redis; do
+  up_base_service "$svc" --wait
 done
-if [ ${#datastores[@]} -gt 0 ]; then
-  declare -A before=()
-  for svc in "${datastores[@]}"; do before[$svc]=$($COMPOSE ps -q "$svc" 2>/dev/null | head -n 1); done
-  # --wait: healthy까지 기다린다(아래 migrate run은 --no-deps라 depends_on healthy 대기를 대신한다).
-  $COMPOSE up -d --wait "${datastores[@]}"
-  for svc in "${datastores[@]}"; do
-    if [ -n "${before[$svc]}" ] && [ "${before[$svc]}" = "$($COMPOSE ps -q "$svc" 2>/dev/null | head -n 1)" ]; then
-      echo "  $svc 유지(재생성 안 함)"
-    else
-      echo "  $svc 생성/재생성됨"
-    fi
-  done
-fi
 
 if [ "${SANDCORP_ROLLBACK:-0}" = 1 ]; then
   echo "▶ migrate 건너뜀(자동 롤백 — 직전 이미지로 되돌리는 중. migrate는 되돌리지 않는다)"
@@ -125,18 +139,8 @@ if ! $COMPOSE exec -T nginx cat /etc/nginx/nginx.conf 2>/dev/null \
   echo "  변경 감지 → nginx 재생성"
   $COMPOSE up -d --no-deps --force-recreate nginx
 else
-  if same_image_only_ref_changed nginx; then
-    echo "  nginx 유지 — image 문자열만 바뀌고 같은 이미지(재생성 안 함)"
-  else
-    echo "  설정 파일 변경 없음 → compose가 서비스 정의(포트·볼륨·이미지 등) 변경만 확인"
-    ng_before=$($COMPOSE ps -q nginx 2>/dev/null | head -n 1)
-    $COMPOSE up -d --no-deps nginx
-    if [ -n "$ng_before" ] && [ "$ng_before" = "$($COMPOSE ps -q nginx 2>/dev/null | head -n 1)" ]; then
-      echo "  변경 없음 → nginx 유지(무중단)"
-    else
-      echo "  nginx 생성/재생성됨"
-    fi
-  fi
+  echo "  설정 파일 변경 없음 → 서비스 정의(포트·볼륨·이미지 등) 변경만 확인"
+  up_base_service nginx
 fi
 
 echo "▶ 무중단 롤링(start-first → /api/health 통과 → 옛 컨테이너 드레인)"
@@ -146,5 +150,5 @@ done
 
 # 우리 nginx는 호스트 포트를 안 열고 NPM 뒤에 있으므로, api 컨테이너 내부에서 health를 친다.
 echo "▶ 스모크(api health)"
-$COMPOSE exec -T api python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')" \
+$COMPOSE exec -T api python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health?scope=ready')" \
   && echo "✔ deploy OK: $IMAGE_TAG"

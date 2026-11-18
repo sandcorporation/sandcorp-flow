@@ -26,7 +26,7 @@ case "$*" in
   "inspect -f {{.Config.Image}} "*) last=${@: -1}; echo "${last#cid-}:old" ;;
   "inspect -f {{.Image}} "*) echo "sha256:running" ;;
   "inspect -f "*config-hash*) echo "H-old" ;;
-  "image inspect -f {{.Id}} "*) if [ -n "${FAKE_SAME_IMAGE:-}" ]; then echo "sha256:running"; else echo "sha256:other"; fi ;;
+  "image inspect -f {{.Id}} "*) if [ -n "${FAKE_PIN_MISSING:-}" ]; then exit 1; fi; if [ -n "${FAKE_SAME_IMAGE:-}" ]; then echo "sha256:running"; else echo "sha256:other"; fi ;;
   *" exec -T nginx "*) if [ -n "${FAKE_NGINX_SAME:-}" ]; then : ; else exit 1; fi ;;
   *" exec -T api "*) [ -n "${FAKE_SMOKE_FAIL:-}" ] && exit 1 ;;
 esac
@@ -110,19 +110,29 @@ done
 has 'migrate는 의존을 다시 올리지 않음' 'run --rm --no-deps api python manage.py migrate --noinput'
 
 # 처음 떠 있지 않으면 up(그리고 healthy까지 기다려 migrate 전제를 지킨다).
-has '안 떠 있으면 db·redis up' 'up -d --wait db redis'
+has '안 떠 있으면 db up' 'up -d --no-deps --wait db'
+has '안 떠 있으면 redis up' 'up -d --no-deps --wait redis'
 
 # 첫 고정 배포: 떠 있는 db·redis·nginx가 image 문자열만 다르고 같은 이미지 → up 하지 않는다(재생성 안 함).
 run pinsame 0 FAKE_RUNNING=1 FAKE_SAME_IMAGE=1 FAKE_NGINX_SAME=1 SANDCORP_IMAGE_SHA=abc777
-lacks '같은 이미지면 db·redis up 안 함' 'up -d --wait'
+lacks '같은 이미지면 db·redis up 안 함' 'up -d --no-deps --wait'
 lacks '같은 이미지면 nginx up 안 함' 'up -d --no-deps nginx'
 grep -q 'db 유지' "$LAST/out" && grep -q 'redis 유지' "$LAST/out" && grep -q 'nginx 유지' "$LAST/out" && pass=$((pass + 1)) \
   || { echo "FAIL 유지 문구(배포 로그에 재생성 안 함이 보여야)"; tail -n 30 "$LAST/out"; fail=$((fail + 1)); }
 
 # digest를 올린 PR(다른 이미지)은 up — compose가 재생성한다(의도된 올림). 로그에 재생성 사실이 남는다.
 run pinbump 0 FAKE_RUNNING=1 FAKE_NGINX_SAME=1 SANDCORP_IMAGE_SHA=abc888
-has '다른 이미지면 db·redis up' 'up -d --wait db redis'
+has '다른 이미지면 db up' 'up -d --no-deps --wait db'
+has '다른 이미지면 redis up' 'up -d --no-deps --wait redis'
 has '다른 이미지면 nginx up' 'up -d --no-deps nginx'
+grep -q 'nginx: 건너뛰기 불가 — 이미지 ID가 다르다' "$LAST/out" && pass=$((pass + 1)) \
+  || { echo "FAIL 건너뛰기 불가 까닭 줄(이미지 ID)"; tail -n 20 "$LAST/out"; fail=$((fail + 1)); }
+
+# #362: 고정한 digest 이미지가 호스트에 없으면(떠 있는 것과 다른 digest) nginx도 db·redis와 같은 경로로 up하고 까닭을 남긴다.
+run pinmissing 0 FAKE_RUNNING=1 FAKE_PIN_MISSING=1 FAKE_NGINX_SAME=1 SANDCORP_IMAGE_SHA=abc889
+has '고정 이미지 없으면 nginx up' 'up -d --no-deps nginx'
+grep -q 'nginx: 건너뛰기 불가 — compose가 고정한 이미지' "$LAST/out" && grep -q 'db: 건너뛰기 불가' "$LAST/out" && pass=$((pass + 1)) \
+  || { echo "FAIL 건너뛰기 불가 까닭 줄(고정 이미지 없음)"; tail -n 20 "$LAST/out"; fail=$((fail + 1)); }
 
 run nosha 2
 lacks 'sha 없으면 아무것도 안 함' 'pull'

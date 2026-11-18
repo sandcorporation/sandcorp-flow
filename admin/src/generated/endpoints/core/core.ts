@@ -7,6 +7,10 @@
 import { customInstance } from '../../../mutator';
 
 /**
+ * db·redis(짧은 타임아웃)와 worker 생존을 본다. 하나라도 실패면 503 + 실패한 점검 이름.
+
+`?scope=ready` 는 db·redis 만(롤링 교체·컨테이너 healthcheck 용 — worker 신호가 아직 없는 새 api 를 막지 않는다).
+worker 점검은 `HEALTH_REQUIRED_WORKERS`(쉼표 목록)가 있을 때만 — 개발·시험 스택은 worker 가 없다.
  * @summary Health
  */
 export type appsCoreApiHealthResponse200 = {

@@ -106,6 +106,8 @@ EVENTS_TOPIC = os.environ.get("EVENTS_TOPIC", "events.session")
 
 # Celery — 배치(ingest/OCR/community/webhook/memory)만 담당. chat은 taskiq 전담(ADR-0024).
 CELERY_BROKER_URL = REDIS_URL
+# /api/health 가 생존 신호(apps/core/heartbeat.py)를 확인할 역할 — 운영 compose 만 채운다(#362).
+HEALTH_REQUIRED_WORKERS = [r.strip() for r in os.environ.get("HEALTH_REQUIRED_WORKERS", "").split(",") if r.strip()]
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_TASK_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
