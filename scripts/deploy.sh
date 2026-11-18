@@ -42,17 +42,63 @@ fi
 COMPOSE_FILE="docker-compose.prod.oracle.yml"
 COMPOSE="docker compose -f $COMPOSE_FILE"
 
-echo "▶ pull ($IMAGE_TAG)"
-$COMPOSE pull
+# pull은 우리 앱 이미지(ghcr) 서비스만(#360). db·redis·nginx 기반 이미지는 compose에 태그@sha256로 고정돼 있고
+# 없을 때만 up이 받는다 — 떠다니는 태그를 배포마다 새로 받아 상류 새 이미지로 컨테이너가 다시 만들어지지 않게.
+APP_SERVICES="api worker worker-chat events widget-init admin-init"
+echo "▶ pull ($IMAGE_TAG): $APP_SERVICES"
+# shellcheck disable=SC2086
+$COMPOSE pull $APP_SERVICES
+
+# 떠 있는 컨테이너가 compose의 image 문자열과 다른 문자열(예 태그 → 태그@sha256)로 만들어졌지만 같은 이미지(ID)를
+# 가리키고, 정의 해시도 image 문자열을 컨테이너 것으로 되돌리면 라벨과 같으면(= 다른 정의는 그대로) 0.
+# 이때 up은 해시가 달라 컨테이너를 다시 만들므로(compose v2 실측, PR #360) 건너뛴다. 이미지가 다르면(digest를 올린 PR) 1 → up이 재생성.
+same_image_only_ref_changed() {
+  local svc=$1 cid cur_ref want_ref ov ok=1
+  cid=$($COMPOSE ps -q --status running "$svc" 2>/dev/null | head -n 1)
+  [ -n "$cid" ] || return 1
+  cur_ref=$(docker inspect -f '{{.Config.Image}}' "$cid") || return 1
+  want_ref=$($COMPOSE config --images "$svc") || return 1
+  [ "$cur_ref" != "$want_ref" ] || return 1 # 같은 문자열이면 up이 no-op인지 스스로 판단한다
+  [ "$(docker image inspect -f '{{.Id}}' "$want_ref" 2>/dev/null)" = "$(docker inspect -f '{{.Image}}' "$cid")" ] || return 1
+  ov=$(mktemp "${TMPDIR:-/tmp}/flow-deploy-ov.XXXXXX")
+  printf 'services:\n  %s:\n    image: %s\n' "$svc" "$cur_ref" > "$ov"
+  if [ "$($COMPOSE -f "$ov" config --hash "$svc" | awk '{print $2}')" \
+       = "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.config-hash"}}' "$cid")" ]; then
+    ok=0
+  fi
+  rm -f "$ov"
+  return $ok
+}
 
 echo "▶ 데이터스토어 기동(마이그레이션 전제)"
-$COMPOSE up -d db redis
+datastores=()
+for svc in db redis; do
+  if same_image_only_ref_changed "$svc"; then
+    echo "  $svc 유지 — image 문자열만 바뀌고 같은 이미지(재생성 안 함)"
+  else
+    datastores+=("$svc")
+  fi
+done
+if [ ${#datastores[@]} -gt 0 ]; then
+  declare -A before=()
+  for svc in "${datastores[@]}"; do before[$svc]=$($COMPOSE ps -q "$svc" 2>/dev/null | head -n 1); done
+  # --wait: healthy까지 기다린다(아래 migrate run은 --no-deps라 depends_on healthy 대기를 대신한다).
+  $COMPOSE up -d --wait "${datastores[@]}"
+  for svc in "${datastores[@]}"; do
+    if [ -n "${before[$svc]}" ] && [ "${before[$svc]}" = "$($COMPOSE ps -q "$svc" 2>/dev/null | head -n 1)" ]; then
+      echo "  $svc 유지(재생성 안 함)"
+    else
+      echo "  $svc 생성/재생성됨"
+    fi
+  done
+fi
 
 if [ "${SANDCORP_ROLLBACK:-0}" = 1 ]; then
   echo "▶ migrate 건너뜀(자동 롤백 — 직전 이미지로 되돌리는 중. migrate는 되돌리지 않는다)"
 else
   echo "▶ migrate (롤아웃 전 — expand/contract). collectstatic은 STATIC_ROOT 미사용으로 불필요."
-  $COMPOSE run --rm api python manage.py migrate --noinput
+# --no-deps: run은 의존(db·redis)을 정의 해시가 다르면 다시 만든다(실측) — 위에서 이미 healthy로 올렸다.
+  $COMPOSE run --rm --no-deps api python manage.py migrate --noinput
 fi
 
 echo "▶ 정적 SPA 갱신(init이 dist를 볼륨에 복사 후 종료)"
@@ -79,9 +125,18 @@ if ! $COMPOSE exec -T nginx cat /etc/nginx/nginx.conf 2>/dev/null \
   echo "  변경 감지 → nginx 재생성"
   $COMPOSE up -d --no-deps --force-recreate nginx
 else
-  echo "  설정 파일 변경 없음 → compose가 서비스 정의(포트·볼륨 등) 변경만 확인"
-  $COMPOSE up -d --no-deps nginx
-  echo "  변경 없음 → 유지(무중단)"
+  if same_image_only_ref_changed nginx; then
+    echo "  nginx 유지 — image 문자열만 바뀌고 같은 이미지(재생성 안 함)"
+  else
+    echo "  설정 파일 변경 없음 → compose가 서비스 정의(포트·볼륨·이미지 등) 변경만 확인"
+    ng_before=$($COMPOSE ps -q nginx 2>/dev/null | head -n 1)
+    $COMPOSE up -d --no-deps nginx
+    if [ -n "$ng_before" ] && [ "$ng_before" = "$($COMPOSE ps -q nginx 2>/dev/null | head -n 1)" ]; then
+      echo "  변경 없음 → nginx 유지(무중단)"
+    else
+      echo "  nginx 생성/재생성됨"
+    fi
+  fi
 fi
 
 echo "▶ 무중단 롤링(start-first → /api/health 통과 → 옛 컨테이너 드레인)"

@@ -30,7 +30,7 @@ name: sandcorp-flow-prod
 
 services:
   db:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg16@sha256:484e838076e04939d27d3e176e91c86eea96236126023be8d3059761122e579f
     environment:
       POSTGRES_DB: ${DB_NAME:-sandcorp_flow}
       POSTGRES_USER: ${DB_USER:-postgres}
@@ -53,7 +53,7 @@ services:
           memory: 512M
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
     # 브로커·스트림·레이트리밋 저장소라 evict하면 작업이 사라진다 → noeviction(가득 차면 쓰기 오류로 드러낸다).
     command: redis-server --maxmemory 192mb --maxmemory-policy noeviction
     volumes:
@@ -156,7 +156,7 @@ services:
     restart: "no"
 
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
     # 호스트 포트로 노출 → NPM이 <A1 호스트>:${NGINX_PORT}로 포워딩한다(공유 네트워크 불필요).
     # 이 포트는 Oracle 보안목록에 열지 말 것 — 같은 호스트의 NPM만 접근한다.
     ports:

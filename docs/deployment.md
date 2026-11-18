@@ -74,6 +74,7 @@ backend·openapi·e2e 잡은 이미지 레이어를 buildx 빌드 캐시 `type=g
 | 앱 교체 | **`docker rollout`**(start-first): 새 컨테이너 → `/api/health` 통과 → 옛 것 드레인. **api·worker·worker-chat만**. db·redis·nginx는 싱글톤. |
 | 프록시 수렴 | nginx **동적 resolver**(`127.0.0.11 valid=5s`) + 변수 `proxy_pass` → rollout로 바뀐 api IP를 reload 없이 ~5s 수렴. |
 | nginx 재생성 가드(#302) | 실행 중 nginx의 `nginx.conf`가 repo와 다르면 `--force-recreate`(단일 파일 bind mount는 inode 교체라 compose가 못 봄). 같을 때도 force 없는 `up -d --no-deps nginx`를 불러 compose가 **서비스 정의(포트·볼륨·환경) 변경**을 스스로 반영한다(#300 포트 바인딩 사례). `IMAGE_TAG`는 nginx 정의에 없어 api 태그만 바뀐 배포는 no-op(무중단). |
+| 기반 이미지 고정(#360) | `deploy.sh`는 우리 앱 이미지(ghcr: api·worker·worker-chat·events·widget-init·admin-init)만 pull한다. db·redis·nginx 이미지는 compose에 `태그@sha256:…`로 고정돼 상류가 같은 태그로 새 이미지를 내도 배포가 받지 않고 컨테이너를 다시 만들지 않는다. 떠 있는 컨테이너가 image 문자열만 다르고 같은 이미지(ID)·같은 정의면 `up`을 건너뛰고 로그에 `<서비스> 유지`를 남긴다(태그 → 태그@digest 첫 고정 때 compose가 해시 차이로 재생성하는 것을 막음). migrate `run`은 `--no-deps`(run도 의존을 재생성한다). 재생성되면 로그에 `생성/재생성됨`. |
 | 마이그레이션 | **expand/contract** — migrate를 rollout보다 먼저. 옛/새 코드가 공존해야 하므로 컬럼 drop/rename·즉시 NOT NULL 금지. |
 | 워커 드레인 | `stop_grace_period`(api 30s·worker 120s·worker-chat 60s). 배치(Celery)는 `acks_late=True`+`reject_on_worker_lost`로 SIGKILL돼도 재배달(전제: ingest 멱등 — 결정적 ID + upsert). chat(taskiq)은 `ListQueueBroker` pop=소비라 재배달 없음(at-most-once, 중복 응답 방지) — SIGTERM 후 신규 수신을 멈추고 진행 중 응답(LLM ~30s)을 마치도록 드레인. |
 | 정적 SPA | init이 dist를 볼륨에 복사(additive). Vite content-hash라 in-flight 세션 안전. |
@@ -100,7 +101,7 @@ gunicorn/gevent→uvicorn + Celery worker-chat→taskiq로 전환하는 **첫 �
 | [docs/ops/jenkins-sandcorp-flow.config.xml](./ops/jenkins-sandcorp-flow.config.xml) | 잡 설정(파이프라인, SCM의 Jenkinsfile) — 잡을 다시 만들 때 쓴다 |
 | [docker-compose.prod.oracle.yml](../docker-compose.prod.oracle.yml) | A1 스택 — GHCR 이미지, `${IMAGE_TAG}` 핀, healthcheck·stop_grace·메모리 limit, nginx를 `${NGINX_PORT}`로 노출(NPM 연결용) |
 | [backend/nginx/nginx.oracle.conf](../backend/nginx/nginx.oracle.conf) | 동적 resolver + SSE + SPA 서빙, NPM의 `X-Forwarded-Proto` 보존 |
-| [scripts/deploy.sh](../scripts/deploy.sh) | A1에서 pull→migrate(자동 롤백 땐 건너뜀)→init swap→rollout→스모크 |
+| [scripts/deploy.sh](../scripts/deploy.sh) | A1에서 앱 이미지만 pull→migrate(자동 롤백 땐 건너뜀)→init swap→rollout→스모크 |
 
 ## 1회 설정
 
@@ -154,6 +155,10 @@ echo "<PAT>" | docker login ghcr.io -u <github-user> --password-stdin
 - `production` 브랜치: ruleset으로 강제 push·삭제 금지. Actions promote 잡만 fast-forward한다(사람은 push하지 않는다).
 - 웹훅 `https://<jenkins-host>/github-webhook/`(push)만 있으면 된다.
 - A1 pull용 **classic PAT**(`read:packages`)만 A1의 `docker login`에 사용(org면 SSO authorize).
+
+### 기반 이미지 올리기(db·redis·nginx)
+
+PR로만 올린다. `docker-compose.prod.oracle.yml`의 image를 `태그@sha256:<digest>`로 바꾼다 — 태그는 사람이 읽을 버전, digest가 실제로 받는 이미지다(`docker buildx imagetools inspect <이미지>:<태그>`의 `Digest`, 멀티아키 인덱스 digest). PR 검사의 `scripts/test-deploy.sh`가 비-ghcr image의 digest 고정과 pull 대상에 기반 서비스가 없음을 본다. 병합된 배포에서 그 서비스만 다시 만들어진다(db는 짧은 재시작 — 연결 오류가 잠깐 난다). pgvector의 PostgreSQL 메이저(pg16→pg17)는 데이터 디렉터리가 호환되지 않으므로 digest만 바꾸지 않는다(덤프·복원 절차 별도).
 
 ## 메모리 상한 (`docker-compose.prod.oracle.yml`)
 
