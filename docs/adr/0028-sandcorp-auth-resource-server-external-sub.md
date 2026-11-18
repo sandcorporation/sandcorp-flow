@@ -43,13 +43,14 @@ Embed Chat은 자체 계정을 가진다: Django `Operator`, `TenantAgent`(tenan
 ## 고객 토큰 검증 (2026-10-24 계약 확정, sandcorp-auth #35·PR #40)
 규칙 원문은 sandcorp-auth `docs/resource-server-token-validation.md` 10절, 참조 구현은 `backend/tests/reference_validator.py`의 `validate_account_access_token`.
 
-- **검증 순서**: T1~T10(3절) → **T11 대신 A1~A3** → S1.
+- **검증 순서**: T1~T10(3절) → **T11 대신 A1~A4** → S1.
   - A1. `acct`가 없으면 대표 토큰. `sub`가 `AUTH_OWNER_SUB`와 정확히 같지 않으면 거부.
   - A2. `acct`가 있는데 정확히 문자열 `"member"`가 아니면 거부(`"owner"`, 대소문자 차이, 빈 문자열, 배열, `null`).
+  - A4(#354, authkit 0.3.0). `acct`가 없는 대표 토큰의 `amr`이 문자열 배열이 아니면 거부(401). `amr`에 `"fed"`(대표의 소셜 로그인 세션)가 있으면 받되 **대표 전용 기능(Operator API·관리 화면 진입)은 열지 않는다** — 판정은 `acct is None and not via_social`(어댑터 `opens_owner_features`). 그 세션은 고객 진입(멤버십 세션)·MCP 멤버십 같은 일반 사용자 기능만 쓴다. 관리 화면 진입 콜백은 `login_error=social`로 돌려보낸다.
   - A3. `acct`가 `"member"`인데 `sub`가 `^m_[0-7][0-9A-HJKMNP-TV-Z]{25}$`(대소문자 구분)에 맞지 않으면 거부.
   - 위반은 401 `invalid_token`.
 - **External Identity**: 일반 사용자는 `(iss, sub)`, `sub` = `m_` + ULID 26자이며 바뀌지 않는다. 대표도 같은 사용자 표에 `(iss, "farrar142")`로 있다. 사용자·테넌트·역할은 `sub`로 묶고 **이메일로 묶지 않는다**.
-- **스코프**: 일반 사용자는 `login`(리소스 스코프)과 `openid`·`profile`·`email`만 받는다. `admin`·`editor`는 받을 수 없다(auth가 `invalid_scope`). Flow 관리 화면 로그인 콜백은 `login`을 요구하고, Operator 기능은 A1 통과 + `admin`일 때만 연다.
+- **스코프**: 일반 사용자는 `login`(리소스 스코프)과 `openid`·`profile`·`email`만 받는다. `admin`·`editor`는 받을 수 없다(auth가 `invalid_scope`). Flow 관리 화면 로그인 콜백은 `login`을 요구하고, Operator 기능은 A1 통과 + 소셜 세션 아님(A4) + `admin`일 때만 연다.
 - **신원 정보**: Flow 클라이언트는 기밀 클라이언트로 `openid profile email`을 요청한다. ID 토큰·userinfo의 일반 사용자 필드는 `sub`, `acct`, `name`(있을 때), `email`·`email_verified`(이메일이 있을 때만 — Kakao는 없을 수 있다). `preferred_username`은 없다. 이메일·이름은 표시용 캐시이며, 이메일이 필요하면 Flow가 사용자에게 입력받는다.
 - **클라이언트 등록**: Flow 기밀 클라이언트는 auth 쪽 「일반 사용자 허용」(`allows_members=True`)이 켜져 있어야 한다. 꺼져 있으면 일반 사용자는 `access_denied`로 돌아온다. 등록은 서버 쪽 일이다(`docs/deployment.md` 「서버 쪽 할 일」).
 - **탈퇴**(#55, 규칙 원문 sandcorp-auth 규칙 문서 11절 W1~W5): `POST /api/auth/webhook`(인증 없음 — 서명이 인증, CSRF 검사 없음)이 sandcorp-auth의 `user.deleted`를 받는다. 구현은 `apps/tenants/withdrawal.py`이고 검증 함수는 문서 예시를 그대로 옮겼다.

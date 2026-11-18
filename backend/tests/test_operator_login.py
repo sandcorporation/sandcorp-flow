@@ -213,6 +213,19 @@ def test_owner_without_admin_scope_is_refused(server: FlowAuthServer) -> None:
 
 
 @pytest.mark.django_db
+def test_owner_social_session_through_the_operator_entry_is_refused(server: FlowAuthServer) -> None:
+    """소셜로 들어온 대표(`amr` ["fed"], A4)는 admin을 들고 와도 Operator가 아니다 — 고객 진입으로만."""
+    from apps.tenants.models import Operator
+
+    client = Client()
+    response = callback(client, server.approve(start(client), amr=["fed"]))
+
+    assert rejected_with(response) == "social"
+    assert "op_refresh" not in response.cookies and "member_refresh" not in response.cookies
+    assert not Operator.objects.exists()
+
+
+@pytest.mark.django_db
 def test_member_through_the_operator_entry_is_refused(server: FlowAuthServer) -> None:
     """관리 화면(Operator) 진입에 일반 사용자 — ADR-0028대로 Operator가 아니다. 고객 진입은 test_member_login.py."""
     from apps.tenants.models import Membership, Operator

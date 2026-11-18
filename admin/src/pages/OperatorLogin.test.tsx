@@ -36,6 +36,12 @@ describe('OperatorLogin — sandcorp-auth 로그인 (#21)', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('대표 계정만')
   })
 
+  it('소셜로 들어온 대표 세션은 비밀번호·TOTP 로그인을 안내한다', () => {
+    arriveAt('/operator?login_error=social')
+
+    expect(screen.getByRole('alert')).toHaveTextContent('비밀번호와 TOTP')
+  })
+
   it('admin 권한이 없는 대표 토큰은 권한 안내를 보여 준다', () => {
     arriveAt('/operator?login_error=admin')
 

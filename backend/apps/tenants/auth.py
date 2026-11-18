@@ -107,8 +107,9 @@ def _verify_operator_resource_token(request) -> "AccessToken":
         verified = authenticate(request, OPERATOR_SCOPE, authkit.api_bearer_config)
     except (AuthNotConfigured, MissingToken, TokenRejected, InsufficientScope) as exc:
         raise ResourceAuthFailed(authkit.operator_denial(request, exc)) from exc
-    if verified.acct is not None:  # 일반 사용자는 스코프와 무관하게 Operator가 아니다
-        logger.info("Resource Token 거부: 일반 사용자 %s는 Operator가 아님", verified.sub)
+    # 일반 사용자와 소셜로 들어온 대표 세션(A4)은 스코프와 무관하게 Operator가 아니다
+    if not authkit.opens_owner_features(verified):
+        logger.info("Resource Token 거부: %s는 Operator가 아님(acct=%s, 소셜=%s)", verified.sub, verified.acct, verified.via_social)
         denied = authkit.operator_denial(request, InsufficientScope(OPERATOR_SCOPE))
         raise ResourceAuthFailed(denied)
     return verified

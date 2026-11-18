@@ -4,6 +4,7 @@
 여기서는 settings를 함수 인자(`BearerConfig`·`LoginConfig`)로 바꾸고 Flow 고유 규칙만 더한다.
 
 - 계정 규칙: 대표(`acct` 없음, sub == `AUTH_OWNER_SUB`) 또는 일반 사용자(`acct="member"`) — `owner_or_member`.
+  대표 전용 기능은 `opens_owner_features`(소셜로 들어온 대표 세션은 닫는다, A4 #354).
 - 리소스 둘: API(aud=`AUTH_RESOURCE`, 메타데이터는 경로 없는 `/.well-known/oauth-protected-resource`)와
   MCP(aud=`AUTH_MCP_RESOURCE`, RFC 9728 경로 `metadata_path` = `/.well-known/oauth-protected-resource/mcp`).
 - 운영자 API 거부 본문은 기존 꼴 `{"detail": …}`(`operator_denial`). MCP는 패키지 본문 `{"error": …}` 그대로.
@@ -25,6 +26,7 @@ from sandcorp_authkit.django import BearerConfig, BearerError, deny
 from sandcorp_authkit.login import LoginAttempt, LoginConfig, LoginResult, TokenTransport, complete_login
 from sandcorp_authkit.resource import metadata_url
 from sandcorp_authkit.tokens import (
+    AccessToken,
     ClaimsHook,
     Clock,
     JwksCache,
@@ -55,6 +57,14 @@ def jwks_cache() -> JwksCache:
 
 def account_rule() -> ClaimsHook:
     return owner_or_member(settings.AUTH_OWNER_SUB)
+
+
+def opens_owner_features(access: AccessToken) -> bool:
+    """대표 전용 기능(Operator)을 여는 토큰인가(10절 A4). `account_rule`을 통과한 토큰에만 묻는다.
+
+    대표(`acct` 없음)라도 소셜 로그인 세션(`amr`에 "fed", sandcorp-auth #100)이면 열지 않는다 —
+    그 세션은 일반 사용자와 같은 기능(고객 진입·MCP 멤버십)만 쓴다."""
+    return access.acct is None and not access.via_social
 
 
 def _origin(resource: str) -> str:

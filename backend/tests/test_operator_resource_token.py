@@ -91,6 +91,36 @@ def test_owner_token_without_admin_scope_is_403(signer: Signer) -> None:
         assert response["WWW-Authenticate"] == NEED_ADMIN
 
 
+# ── 소셜로 들어온 대표 세션(A4, sandcorp-auth #100) ───────────────────────────
+
+
+@pytest.mark.django_db
+def test_owner_social_token_is_valid_but_not_an_operator(signer: Signer) -> None:
+    """`amr`에 "fed" — 대표 sub라도 대표 전용(Operator)은 열지 않는다. admin을 들고 와도 403."""
+    from apps.tenants.models import Operator
+
+    for scope in ["login", "admin login"]:
+        response = get_tenants(signer.token(scope=scope, amr=["fed"]))
+
+        assert response.status_code == 403
+        assert response["WWW-Authenticate"] == NEED_ADMIN
+    assert not Operator.objects.exists()
+
+
+@pytest.mark.django_db
+def test_owner_token_without_fed_in_amr_opens_the_operator_api(signer: Signer) -> None:
+    assert get_tenants(signer.token(amr=["pwd", "otp"])).status_code == 200
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("amr", ["fed", [1], {"fed": True}])
+def test_owner_token_with_amr_that_is_not_a_string_array_is_401(signer: Signer, amr: object) -> None:
+    response = get_tenants(signer.token(amr=amr))
+
+    assert response.status_code == 401
+    assert response["WWW-Authenticate"] == INVALID
+
+
 # ── 일반 사용자(member) ───────────────────────────────────────────────────────
 
 
