@@ -139,6 +139,24 @@ def test_events_without_exception_are_kept():
     assert before_send({"message": "log line"}, {}) is not None
 
 
+def _celery_reconnect_event(message: str, logger: str = "celery.worker.consumer.consumer") -> dict:
+    return {"logger": logger, "level": "error", "logentry": {"message": message, "formatted": message}}
+
+
+def test_celery_transient_broker_reconnect_log_is_dropped():
+    text = "consumer: Cannot connect to redis://redis:6379/0: Error 111 connecting to redis:6379. Connection refused.."
+    assert before_send(_celery_reconnect_event(text), {}) is None
+    raw = _celery_reconnect_event("consumer: Cannot connect to %s: %s.")
+    raw["message"] = text
+    assert before_send(raw, {}) is None
+
+
+def test_other_consumer_and_other_logger_errors_are_kept():
+    assert before_send(_celery_reconnect_event("consumer: something else broke"), {}) is not None
+    other = _celery_reconnect_event("consumer: Cannot connect to x: y.", logger="apps.other")
+    assert before_send(other, {}) is not None
+
+
 # ── 비밀을 지운다 ──
 
 

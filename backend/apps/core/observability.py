@@ -51,9 +51,29 @@ def _is_intended_rejection(exc: BaseException) -> bool:
     return isinstance(status, int) and 400 <= status < 500
 
 
-def drop_expected_error(event: Event, hint: Hint) -> Event | None:
-    """의도한 거절이면 None(버림), 그 밖이면 그대로. 예외가 없는 이벤트(로그 등)는 보낸다."""
+_CELERY_CONSUMER_LOGGER = "celery.worker.consumer"
+_BROKER_RECONNECT_PREFIX = "consumer: Cannot connect to "
 
+
+def _is_transient_broker_reconnect(event: Event) -> bool:
+    """celery 컨슈머가 배포 순간 브로커 재연결을 시도하며 남기는 ERROR 로그(#358). 이 문구만 좁게 본다.
+
+    오래 끊긴 경우는 이 이벤트가 아니라 컨테이너 헬스체크·재시작이 잡는다(로거 통째 무시 아님).
+    """
+
+    logger = event.get("logger")
+    if not isinstance(logger, str) or not logger.startswith(_CELERY_CONSUMER_LOGGER):
+        return False
+    logentry = event.get("logentry") or {}
+    texts = (event.get("message"), logentry.get("message"), logentry.get("formatted"))
+    return any(isinstance(t, str) and t.startswith(_BROKER_RECONNECT_PREFIX) for t in texts)
+
+
+def drop_expected_error(event: Event, hint: Hint) -> Event | None:
+    """의도한 거절·일시적 브로커 재연결 로그면 None(버림), 그 밖이면 그대로. 예외 없는 이벤트(로그 등)는 보낸다."""
+
+    if _is_transient_broker_reconnect(event):
+        return None
     exc_info = hint.get("exc_info")
     if exc_info and isinstance(exc_info[1], BaseException) and _is_intended_rejection(exc_info[1]):
         return None
