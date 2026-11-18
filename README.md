@@ -248,7 +248,7 @@ START → local_search → call_llm ─(context_sufficient=False)─→ source_s
 | `AUTH_CLIENT_ID` / `AUTH_CLIENT_SECRET` | 관리 화면 로그인용 sandcorp-auth 기밀 클라이언트(#21). 비우면 로그인 버튼이 「설정되지 않음」 거절 화면 | (sandcorp-auth에서 발급) |
 | `AUTH_REDIRECT_URI` | 로그인 콜백 주소. sandcorp-auth 등록값과 문자 하나까지 일치 | `https://flow.sandcorp.co.kr/api/auth/callback`(기본) |
 | `AUTH_AUTHORIZE_URL` / `AUTH_TOKEN_URL` | sandcorp-auth 인가·토큰 엔드포인트 | `<AUTH_ISSUER>/authorize`·`<AUTH_ISSUER>/token`(기본) |
-| `AUTH_WEBHOOK_SECRET` | 탈퇴 웹훅(`/api/auth/webhook`) 서명 비밀. 비면 웹훅을 모두 503으로 거부 | (sandcorp-auth `clients webhook`으로 발급) |
+| `AUTH_WEBHOOK_SECRET` | 탈퇴·계정 합치기 웹훅(`/api/auth/webhook`) 서명 비밀. 비면 웹훅을 모두 503으로 거부 | (sandcorp-auth `clients webhook`으로 발급) |
 | `AUTH_LOGIN_REDIRECT` | 콜백 뒤 돌아갈 관리 화면(거절이면 `?login_error=<사유>`) | `/admin-ui/operator`(기본) |
 
 ---
@@ -389,7 +389,7 @@ Jenkins PR 검사 잡은 폐기했고 Jenkinsfile·설정 사본을 제거했다
 
 **관리 화면 Operator 로그인**(#21, 패키지 `sandcorp_authkit.login` + 어댑터 `apps/tenants/authkit.py`): `GET /api/auth/authorize`가 state·PKCE(S256)·nonce를 서명된 httpOnly 쿠키(SameSite=Lax, 10분, `authkit.CookieAttemptStore`)에 맡기고 sandcorp-auth `/authorize`로 보낸다(`scope=openid profile email login admin`, `resource=AUTH_RESOURCE`). `GET /api/auth/callback`은 state → 코드 교환(`client_secret_basic` + `code_verifier`) → 액세스 토큰(`login` 스코프·`client_id`) → ID 토큰(EdDSA·`iss`·`aud`=client_id(문자열)·`azp`·`exp`·`iat`·`nonce`·같은 `sub`·같은 `acct`)을 확인하고, **대표(`acct` 없음, A1) + `admin`**이면 사용자 행 `User(iss, sub)`와 이어진 Operator에 Refresh Family를 열어 `/admin-ui/operator`로 돌려보낸다. 일반 사용자면 `?login_error=member`, 대표인데 `admin`이 없으면 `admin`, 그 밖에 `state|exchange|token|denied|config`. sandcorp-auth 토큰은 저장하지 않는다.
 
-**고객(일반 사용자) 로그인**(#40, `apps/tenants/members.py`): `GET /api/auth/authorize/member`(`scope=openid profile email login` — admin 없음)로 시작하면 같은 콜백이 A1~A3을 통과한 `acct=member`를 받아 `User(iss, sub, acct="member")`를 갱신(이름·이메일 캐시)하고, `AUTH_MEMBER_REDIRECT`(기본 `/admin-ui/tenant`)로 돌려보낸다. 멤버십 1개 → 그 Membership의 Refresh Family(`member_refresh` 쿠키, `/api/tenant/members/auth`), 여럿 → `?select_tenant=1` + 10분 서명 표 `member_ticket`(→ `GET /api/auth/member/tenants`, `POST /api/auth/member/select`), 없음 → `?onboarding=1`(같은 표). `?then=try_claim`(#42)으로 시작하면 멤버십 수와 무관하게 표를 주고 `AUTH_TRY_CLAIM_REDIRECT`(기본 `/admin-ui/try/claim`)로 보낸다. 초대 링크(`/api/auth/authorize/member?invite=<토큰>`)로 시작한 로그인은 먼저 멤버십을 만들고, 실패하면 `?login_error=invite_expired|invite_used|invite_invalid`. 고객 진입에 대표 계정이면 `?login_error=owner`.
+**고객(일반 사용자) 로그인**(#40, `apps/tenants/members.py`): `GET /api/auth/authorize/member`(`scope=openid profile email login` — admin 없음)로 시작하면 같은 콜백이 A1~A3을 통과한 `acct=member`를 받아 `User(iss, sub, acct="member")`를 갱신(이름·이메일 캐시)하고, `AUTH_MEMBER_REDIRECT`(기본 `/admin-ui/tenant`)로 돌려보낸다. 멤버십 1개 → 그 Membership의 Refresh Family(`member_refresh` 쿠키, `/api/tenant/members/auth`), 여럿 → `?select_tenant=1` + 10분 서명 표 `member_ticket`(→ `GET /api/auth/member/tenants`, `POST /api/auth/member/select`), 없음 → `?onboarding=1`(같은 표). `?then=try_claim`(#42)으로 시작하면 멤버십 수와 무관하게 표를 주고 `AUTH_TRY_CLAIM_REDIRECT`(기본 `/admin-ui/try/claim`)로 보낸다. 초대 링크(`/api/auth/authorize/member?invite=<토큰>`)로 시작한 로그인은 먼저 멤버십을 만들고, 실패하면 `?login_error=invite_expired|invite_used|invite_invalid`. 고객 진입에 대표 계정이면 `?login_error=owner` — 단 계정 합치기(#350)로 멤버십을 받은 대표는 고객과 같은 길로 테넌트 세션을 연다.
 
 | 엔드포인트 | 인증 | 용도 |
 |------------|------|------|
@@ -397,7 +397,7 @@ Jenkins PR 검사 잡은 폐기했고 Jenkinsfile·설정 사본을 제거했다
 | `GET /api/auth/member/tenants` · `POST /api/auth/member/select` | `member_ticket` 쿠키 | 콜백 뒤 조직 목록·선택(테넌트 세션 열기) |
 | `POST /api/auth/member/tenants` | `member_ticket` 쿠키 | 온보딩: 조직 만들기 → 첫 Admin 세션(400 형식·409 중복/상한·429 IP 상한) |
 | `GET /api/tenant/trial/` | 멤버 | 체험 상태 `byok`·`trial`·`exhausted`·`unavailable`·`platform_default` + 남은 턴 |
-| `POST /api/auth/webhook` | HMAC 서명(`X-Sandcorp-Signature`) | sandcorp-auth 탈퇴 웹훅 `user.deleted` — 사용자·멤버십·세션 삭제(ADR-0028 「탈퇴」) |
+| `POST /api/auth/webhook` | HMAC 서명(`X-Sandcorp-Signature`) | sandcorp-auth 웹훅 — `user.deleted`: 사용자·멤버십·세션 삭제(ADR-0028 「탈퇴」), `user.merged {from_sub, to_sub}`: from 사용자의 멤버십·작성 기록을 to로 옮기고 from 행 삭제(「계정 합치기」, 손으로는 `manage.py merge_auth_user --from-sub X --to-sub Y [--dry-run]`) |
 | `POST /api/operator/auth/refresh` · `logout` · `logout-all` | Refresh 쿠키 / Operator | Flow 세션 회전·폐기 |
 | `POST /api/operator/tenants/` | Operator | Tenant 생성(+ 첫 Admin 초대 링크) |
 | `GET /.well-known/oauth-protected-resource` | 없음 | 보호 리소스 메타데이터(RFC 9728) |
