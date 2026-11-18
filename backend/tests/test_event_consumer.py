@@ -110,3 +110,83 @@ def test_poison_message_dead_lettered_after_max_attempts():
     items = bus.dead_letter_items(topic)
     assert any(m.payload["event_id"] == ev_id for m in items)  # DLQ로 이동
     assert bus.claim_stale(topic, group, "c2", min_idle_ms=0) == []  # 원 PEL ack(멈추지 않음)
+
+
+def _run_failing_consumer(monkeypatch, caplog, errors, clock_times):
+    """process_once가 errors를 차례로 던지게(끝나면 성공) 하고 run_consumer를 돌려 [consumer] 로그를 돌려준다."""
+    import logging
+
+    from apps.events import consumer as cmod
+
+    calls = {"n": 0}
+
+    def process_once(self, *a, **k):
+        calls["n"] += 1
+        if calls["n"] <= len(errors):
+            raise errors[calls["n"] - 1]
+        return 0
+
+    times = iter(clock_times)
+    last = [0.0]
+
+    def clock():
+        last[0] = next(times, last[0])
+        return last[0]
+
+    monkeypatch.setattr(cmod.EventConsumer, "process_once", process_once)
+    monkeypatch.setattr(cmod, "CONSUMER_BACKOFF_SECONDS", 0)
+    cmod.register_handler("streak-g", lambda env: None)
+    with caplog.at_level(logging.DEBUG, logger="apps.events.consumer"):
+        cmod.run_consumer("streak-g", topic=f"test.streak.{uuid.uuid4().hex}",
+                          stop=lambda: calls["n"] > len(errors) + 1, clock=clock)
+    return [r for r in caplog.records if r.name == "apps.events.consumer" and "[consumer]" in r.getMessage()
+            and r.levelno >= logging.WARNING]
+
+
+def _conn_errors(n):
+    from django.db import OperationalError
+
+    return [OperationalError("connection refused") for _ in range(n)]
+
+
+@pytest.mark.django_db
+def test_consumer_connection_blip_is_warning(monkeypatch, caplog):
+    import logging
+
+    recs = _run_failing_consumer(monkeypatch, caplog, _conn_errors(3), [0.0] * 20)
+    assert [r.levelno for r in recs] == [logging.WARNING] * 3
+    assert all(r.exc_info is None for r in recs)
+
+
+@pytest.mark.django_db
+def test_consumer_connection_errors_escalate_after_five(monkeypatch, caplog):
+    import logging
+
+    recs = _run_failing_consumer(monkeypatch, caplog, _conn_errors(6), [0.0] * 40)
+    assert [r.levelno for r in recs] == [logging.WARNING] * 4 + [logging.ERROR] * 2
+
+
+@pytest.mark.django_db
+def test_consumer_connection_errors_escalate_after_thirty_seconds(monkeypatch, caplog):
+    import logging
+
+    recs = _run_failing_consumer(monkeypatch, caplog, _conn_errors(2), [0.0, 31.0])
+    assert [r.levelno for r in recs] == [logging.WARNING, logging.ERROR]
+
+
+@pytest.mark.django_db
+def test_consumer_non_connection_error_is_always_exception(monkeypatch, caplog):
+    import logging
+
+    recs = _run_failing_consumer(monkeypatch, caplog, [RuntimeError("bug")], [0.0] * 10)
+    assert [r.levelno for r in recs] == [logging.ERROR]
+
+
+@pytest.mark.django_db
+def test_consumer_redis_connection_error_is_warning(monkeypatch, caplog):
+    import logging
+
+    import redis
+
+    recs = _run_failing_consumer(monkeypatch, caplog, [redis.ConnectionError("down"), redis.TimeoutError("t")], [0.0] * 20)
+    assert [r.levelno for r in recs] == [logging.WARNING] * 2

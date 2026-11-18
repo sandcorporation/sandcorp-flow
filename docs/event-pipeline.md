@@ -61,7 +61,7 @@ relay를 떼어낼 때도 `--exclude=relay` + `python manage.py relay` 서비스
 
 relay·소비자 루프는 **supervisor 패턴**이다(루프 안쪽 — 그 바깥의 스레드 감독은 위 `Supervisor`) — 한 반복에서 인프라 오류(Redis/DB 단절, 발행 실패,
 부팅 시 마이그레이션 미적용 등)가 나도 프로세스를 죽이지 않고 `logger.exception` + backoff
-(단 relay의 연결 계열 오류[DB `OperationalError`·`InterfaceError`, redis `ConnectionError`·`TimeoutError`]는 연속 5회 미만이고 첫 실패로부터 30초 미만이면 `logger.warning` — 배포 순간의 블립이 오류 이벤트가 되지 않게. Sentry 로깅 통합의 event_level 기본이 ERROR라 warning은 이벤트가 아니다)
+(단 relay·소비자 루프의 연결 계열 오류[DB `OperationalError`·`InterfaceError`, redis `ConnectionError`·`TimeoutError`]는 연속 5회 미만이고 첫 실패로부터 30초 미만이면 `logger.warning` — 배포 순간의 블립이 오류 이벤트가 되지 않게. Sentry 로깅 통합의 event_level 기본이 ERROR라 warning은 이벤트가 아니다)
 (`RELAY_BACKOFF_SECONDS`/`CONSUMER_BACKOFF_SECONDS`) 후 재구성(relay는 재구독+catch-up sweep,
 소비자는 `ensure_group` 재실행)해 재시도한다. 의존성이 복구되면 **컨테이너 재시작 없이 스스로
 회복**한다. (핸들러 자체 실패는 별도로 멱등 재시도→DLQ로 처리 — 아래.)

@@ -6,6 +6,9 @@ processed_events로 중복(at-least-once 재전달)을 막고, 핸들러가 제�
 """
 import logging
 import time
+from collections.abc import Callable
+
+from apps.events.failure_streak import FailureStreak
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +95,8 @@ class EventConsumer:
         self.bus.to_dead_letter(self.topic, self.group, msg, reason=str(last_exc))
 
 
-def run_consumer(group: str, bus=None, topic=None, consumer=None, stop=None, block_ms=1000) -> None:
+def run_consumer(group: str, bus=None, topic=None, consumer=None, stop=None, block_ms=1000,
+                 clock: Callable[[], float] = time.monotonic) -> None:
     """management command 진입점 — 등록된 핸들러로 group 소비 루프를 돈다(149).
 
     supervisor 루프: 한 반복에서 인프라 오류(Redis/DB 단절 등)가 나도 프로세스를 죽이지 않고
@@ -108,13 +112,15 @@ def run_consumer(group: str, bus=None, topic=None, consumer=None, stop=None, blo
     consumer = consumer or f"{group}-1"
     handler = get_handler(group)
     ec = None
+    streak = FailureStreak(clock, logger)
     while stop is None or not stop():
         tidy_db_connections()
         try:
             if ec is None:  # (재)구성 — ensure_group으로 재연결
                 ec = EventConsumer(bus, topic, group, consumer, handler)
             ec.process_once(block_ms=block_ms)
-        except Exception:  # noqa: BLE001 — 루프를 살려둔다(컨테이너 생존)
-            logger.exception("[consumer] group=%s 루프 오류 — %.1fs 후 재시도", group, CONSUMER_BACKOFF_SECONDS)
+            streak.reset()
+        except Exception as exc:  # noqa: BLE001 — 루프를 살려둔다(컨테이너 생존)
+            streak.log(exc, "[consumer] group=%s 루프 오류 — %.1fs 후 재시도", group, CONSUMER_BACKOFF_SECONDS)
             ec = None
             time.sleep(CONSUMER_BACKOFF_SECONDS)
