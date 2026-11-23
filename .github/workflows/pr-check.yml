@@ -24,6 +24,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: exp/ 갈래 PR 차단
+        if: github.event_name == 'pull_request'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$HEAD_REF" in
+            exp/*) echo "::error::exp/ 갈래는 실험용이라 병합하지 않는다 — 운영에 들이기로 정해졌으면 평소 갈래에서 PR을 다시 낸다"; exit 1;;
+          esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
